@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.ride_my_way"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+     ndkVersion = "27.0.1207973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

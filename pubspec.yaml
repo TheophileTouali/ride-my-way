@@ -38,6 +38,12 @@ dependencies:
   flutter_native_splash: ^2.4.6
   go_router: ^15.1.2
   permission_handler: ^12.0.0+1
+  image_picker: ^1.0.7
+  google_places_flutter: ^2.1.0
+  google_places_autocomplete_text_field: ^1.1.0
+
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

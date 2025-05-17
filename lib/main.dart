@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'config/app_routes.dart';
@@ -21,8 +22,17 @@ class RideMyWayApp extends StatelessWidget {
       child: MaterialApp.router(
         title: 'Ride My Way',
         theme: AppTheme.lightTheme,
-        routerConfig: AppRoutes.router,
         debugShowCheckedModeBanner: false,
+        locale: const Locale('fr', 'FR'),
+        supportedLocales: const [
+          Locale('fr', 'FR'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        routerConfig: AppRoutes.router,
       ),
     );
   }

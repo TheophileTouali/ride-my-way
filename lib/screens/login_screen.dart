@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
+import 'package:flutter/gestures.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
-    if (email == 'test@ride.com' && password == '123456') {
+    if (email == 'touali@ridemyway.com' && password == '123456') {
       Provider.of<UserProvider>(context, listen: false).login(email);
       context.go('/permission'); // 🔁 Redirige vers l'écran de géolocalisation
     } else {
@@ -134,22 +136,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // ✅ Lien vers inscription
                   Center(
-                    child: RichText(
-                      text: TextSpan(
-                        text: "Vous n’avez pas de compte ? ",
-                        style: TextStyle(color: Colors.grey[500], fontSize: 14),
-                        children: const [
-                          TextSpan(
-                            text: 'Créer un compte',
-                            style: TextStyle(
-                              color: AppColors.gold,
-                              fontWeight: FontWeight.bold,
+                          child: RichText(
+                            text: TextSpan(
+                              text: "Vous n’avez pas de compte ? ",
+                              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                              children: [
+                                TextSpan(
+                                  text: 'Créer un compte',
+                                  style: const TextStyle(
+                                    color: AppColors.gold,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  recognizer: TapGestureRecognizer()
+                                    ..onTap = () {
+                                      context.go('/signup-step1');
+                                    },
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
+                        ),
 
                   const SizedBox(height: 24),
                 ],

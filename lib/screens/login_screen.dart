@@ -1,32 +1,163 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../providers/user_provider.dart';
+import '../themes/app_theme.dart';
 
-class LoginScreen extends StatelessWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: const Text("Connexion")),
-    body: Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            "Ride My Way",
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 20),
-          // autres widgets ici...
-        ],
-      ),
-    ),
-  );
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
+class _LoginScreenState extends State<LoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  void _handleLogin() {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (email == 'test@ride.com' && password == '123456') {
+      Provider.of<UserProvider>(context, listen: false).login(email);
+      context.go('/permission'); // 🔁 Redirige vers l'écran de géolocalisation
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Identifiants incorrects")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.black,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Image.asset(
+                    'assets/images/logo_transparent.png',
+                    height: 180,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ✅ Email
+                  TextField(
+                    controller: emailController,
+                    style: const TextStyle(color: Colors.grey),
+                    cursorColor: AppColors.gold,
+                    decoration: InputDecoration(
+                      floatingLabelBehavior: FloatingLabelBehavior.never,
+                      labelText: 'Email',
+                      labelStyle: TextStyle(color: Colors.grey[400]),
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      enabledBorder: const UnderlineInputBorder(
+                        borderSide: BorderSide(color: Colors.grey),
+                      ),
+                      focusedBorder: const UnderlineInputBorder(
+                        borderSide: BorderSide(color: AppColors.gold),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // ✅ Mot de passe + lien
+                  Stack(
+                    alignment: Alignment.centerRight,
+                    children: [
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        style: const TextStyle(color: Colors.grey),
+                        cursorColor: AppColors.gold,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe',
+                          labelStyle: TextStyle(color: Colors.grey[400]),
+                          filled: false,
+                          fillColor: Colors.transparent,
+                          enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.grey),
+                          ),
+                          focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppColors.gold),
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {}, // TODO: mot de passe oublié
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.gold,
+                          padding: const EdgeInsets.only(right: 0),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          "Mot de passe oublié ?",
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // ✅ Bouton Connexion
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.gold,
+                      foregroundColor: AppColors.black,
+                      minimumSize: const Size.fromHeight(56),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      textStyle: const TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: _handleLogin,
+                    child: const Text('Connexion'),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // ✅ Lien vers inscription
+                  Center(
+                    child: RichText(
+                      text: TextSpan(
+                        text: "Vous n’avez pas de compte ? ",
+                        style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                        children: const [
+                          TextSpan(
+                            text: 'Créer un compte',
+                            style: TextStyle(
+                              color: AppColors.gold,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

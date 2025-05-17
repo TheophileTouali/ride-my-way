@@ -1,13 +1,19 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 class UserProvider with ChangeNotifier {
-  // Ex: Données utilisateur à exposer globalement
-  String _name = "Invité";
+  String? _userName;
 
-  String get name => _name;
+  bool get isLoggedIn => _userName != null;
 
-  void setName(String newName) {
-    _name = newName;
+  String get userName => _userName ?? "Invité";
+
+  void login(String name) {
+    _userName = name;
+    notifyListeners();
+  }
+
+  void logout() {
+    _userName = null;
     notifyListeners();
   }
 }

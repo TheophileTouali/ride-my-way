@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'config/app_routes.dart';
 import 'providers/user_provider.dart';
 import 'themes/app_theme.dart';
-import 'config/app_routes.dart';
 
 void main() {
   runApp(const RideMyWayApp());
@@ -20,11 +18,10 @@ class RideMyWayApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => UserProvider()),
       ],
-      child: MaterialApp(
+      child: MaterialApp.router(
         title: 'Ride My Way',
         theme: AppTheme.lightTheme,
-        initialRoute: AppRoutes.login,
-        routes: AppRoutes.routes,
+        routerConfig: AppRoutes.router,
         debugShowCheckedModeBanner: false,
       ),
     );

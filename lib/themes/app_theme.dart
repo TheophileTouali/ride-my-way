@@ -1,41 +1,45 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color gold = Color(0xFFD4AF37);
-  static const Color black = Color(0xFF121212);
-  static const Color grey = Color(0xFFF5F5F5);
-  static const Color error = Colors.redAccent;
+  static const Color black = Color(0xFF0A0A0A); // fond noir pur
+  static const Color gold = Color(0xFFB78E45); // or prélevé du logo
+  static const Color grey = Color(0xFFBDBDBD); // gris utilisé pour les labels
+  static const Color texturedBlack = Color(0xFF0A0A0A);
 }
+
 
 class AppTheme {
   static ThemeData lightTheme = ThemeData(
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: AppColors.grey,
+    scaffoldBackgroundColor: AppColors.texturedBlack,
     primaryColor: AppColors.gold,
-    colorScheme: ColorScheme.light(
+    fontFamily: 'PlayfairDisplay',
+
+    colorScheme: ColorScheme.fromSwatch().copyWith(
       primary: AppColors.gold,
-      secondary: AppColors.black,
-      background: AppColors.grey,
-      error: AppColors.error,
+      secondary: AppColors.grey,
+      background: AppColors.black,
     ),
+
+    textTheme: const TextTheme(
+      headlineLarge: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFFBDBDBD),
+        fontFamily: 'PlayfairDisplay',
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 16,
+        color: Color(0xFFBDBDBD),
+        fontFamily: 'PlayfairDisplay',
+      ),
+    ),
+
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.black,
       foregroundColor: AppColors.gold,
       elevation: 0,
     ),
-    textTheme: const TextTheme(
-      headlineLarge: TextStyle(
-        fontSize: 32,
-        fontWeight: FontWeight.bold,
-        color: AppColors.black,
-        fontFamily: 'PlayfairDisplay',
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 16,
-        color: AppColors.black,
-        fontFamily: 'PlayfairDisplay',
-      ),
-    ),
+
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.gold,
@@ -51,9 +55,10 @@ class AppTheme {
         ),
       ),
     ),
+
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
+      fillColor: Color(0xFFBDBDBD),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppColors.gold),

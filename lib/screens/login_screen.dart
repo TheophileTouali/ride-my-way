@@ -22,9 +22,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = passwordController.text.trim();
 
     if (email == 'touali@ridemyway.com' && password == '123456') {
-      Provider.of<UserProvider>(context, listen: false).login(email);
-      context.go('/permission'); // 🔁 Redirige vers l'écran de géolocalisation
-    } else {
+      Provider.of<UserProvider>(context, listen: false).login("Théophile Touali", email);
+      context.go('/permission');
+    }
+ else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Identifiants incorrects")),
       );

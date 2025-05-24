@@ -10,7 +10,9 @@ import '../screens/location_permission_screen.dart';
 import '../screens/signup_step1_screen.dart';
 import '../screens/signup_step2_screen.dart';
 import '../screens/signup_step3_screen.dart';
-import '../screens/forgot_password_screen.dart'; // ✅ AJOUT ICI
+import '../screens/forgot_password_screen.dart'; 
+import '../screens/passenger_profile_screen.dart'; 
+
 
 class AppRoutes {
   static final router = GoRouter(
@@ -49,6 +51,12 @@ class AppRoutes {
         name: 'forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
+      GoRoute(
+      path: '/profile',
+      name: 'profile',
+      builder: (context, state) => const PassengerProfileScreen(),
+    ),
+
     ],
   );
 }

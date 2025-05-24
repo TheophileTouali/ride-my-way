@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -15,14 +16,13 @@ class SignupStep2Screen extends StatefulWidget {
 
 class _SignupStep2ScreenState extends State<SignupStep2Screen> {
   final _formKey = GlobalKey<FormState>();
-
-  final TextEditingController phoneController = TextEditingController(text: "+33 ");
-  final TextEditingController birthdateController = TextEditingController(
+  final phoneController = TextEditingController(text: "+33 ");
+  final birthdateController = TextEditingController(
     text: DateFormat('dd/MM/yyyy', 'fr_FR').format(DateTime.now()),
   );
 
-  File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
+  XFile? _selectedImage;
 
   void _continue() {
     if (_formKey.currentState!.validate()) {
@@ -33,9 +33,9 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
   Future<void> _pickImage(ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source, imageQuality: 75);
     if (pickedFile != null) {
-      setState(() => _selectedImage = File(pickedFile.path));
+      setState(() => _selectedImage = pickedFile);
     }
-    Navigator.pop(context);
+    if (context.mounted) Navigator.pop(context);
   }
 
   void _showImagePickerOptions() {
@@ -121,6 +121,7 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
                 const Text("2/3", style: TextStyle(color: AppColors.gold, fontSize: 16)),
                 const SizedBox(height: 24),
 
+                // 📸 Image picker preview
                 GestureDetector(
                   onTap: _showImagePickerOptions,
                   child: Row(
@@ -132,12 +133,9 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
                         const Spacer(),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(30),
-                          child: Image.file(
-                            _selectedImage!,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                          ),
+                          child: kIsWeb
+                              ? Image.network(_selectedImage!.path, width: 48, height: 48, fit: BoxFit.cover)
+                              : Image.file(File(_selectedImage!.path), width: 48, height: 48, fit: BoxFit.cover),
                         ),
                       ]
                     ],
@@ -151,9 +149,7 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
 
                 GestureDetector(
                   onTap: _selectBirthDate,
-                  child: AbsorbPointer(
-                    child: _buildBirthDateField(birthdateController),
-                  ),
+                  child: AbsorbPointer(child: _buildBirthDateField(birthdateController)),
                 ),
 
                 const SizedBox(height: 32),
@@ -185,9 +181,7 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
       keyboardType: TextInputType.phone,
       style: const TextStyle(color: Colors.white),
       cursorColor: AppColors.gold,
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9+\-\s]')),
-      ],
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\-\s]'))],
       decoration: InputDecoration(
         labelText: "Téléphone",
         hintText: "+33 6 12 34 56 78",
@@ -206,8 +200,9 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
         ),
       ),
       validator: (value) {
-        if (value == null || value.isEmpty) return "Champ requis";
+        if (value == null || value.isEmpty) return "Veuillez entrer votre numéro de téléphone";
         if (!value.startsWith("+33")) return "Le numéro doit commencer par +33";
+        if (value.length < 12) return "Numéro trop court";
         return null;
       },
     );
@@ -237,7 +232,7 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
           borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
         ),
       ),
-      validator: (value) => (value == null || value.isEmpty) ? "Champ requis" : null,
+      validator: (value) => (value == null || value.isEmpty) ? "Veuillez choisir votre date de naissance" : null,
     );
   }
 }

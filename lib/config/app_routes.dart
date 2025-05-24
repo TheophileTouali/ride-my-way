@@ -10,6 +10,7 @@ import '../screens/location_permission_screen.dart';
 import '../screens/signup_step1_screen.dart';
 import '../screens/signup_step2_screen.dart';
 import '../screens/signup_step3_screen.dart';
+import '../screens/forgot_password_screen.dart'; // ✅ AJOUT ICI
 
 class AppRoutes {
   static final router = GoRouter(
@@ -42,6 +43,11 @@ class AppRoutes {
       GoRoute(
         path: '/signup-step3',
         builder: (context, state) => const SignupStep3Screen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
       ),
     ],
   );

@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
 import '../themes/app_theme.dart';
+import '../providers/user_provider.dart';
 
 class PassengerProfileScreen extends StatelessWidget {
   const PassengerProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final prefs = Provider.of<UserProvider>(context).preferences;
+
     return Scaffold(
       backgroundColor: AppColors.black,
       appBar: AppBar(
@@ -35,7 +40,6 @@ class PassengerProfileScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Avatar & Identité
                 Column(
                   children: [
                     const CircleAvatar(
@@ -80,8 +84,13 @@ class PassengerProfileScreen extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 _sectionCard(title: "Préférences", children: [
-                  _infoRow("Musique", "Oui"),
-                  _infoRow("Discussion", "Préférence au calme"),
+                  _infoRow("Ambiance", prefs.ambiance),
+                  _infoRow("Playlist exclusive", prefs.music ? "Oui" : "Non"),
+                  _infoRow("Parfum d’ambiance", prefs.perfume ? "Oui" : "Non"),
+                  _infoRow("Température réglée", prefs.temperature ? "Oui" : "Non"),
+                  _infoRow("Wi-Fi premium", prefs.wifi ? "Oui" : "Non"),
+                  _infoRow("Trajet non-fumeur", prefs.smokeFree ? "Oui" : "Non"),
+                  _infoRow("Animaux élégants acceptés", prefs.pets ? "Oui" : "Non"),
                 ]),
 
                 const SizedBox(height: 24),
@@ -96,10 +105,19 @@ class PassengerProfileScreen extends StatelessWidget {
                 const Divider(color: Colors.white12, thickness: 0.6, height: 32),
 
                 _sectionCard(title: "Actions", children: [
-                  _actionRow(Icons.lock_reset_rounded, "Modifier le mot de passe", () {}),
-                  _actionRow(Icons.tune_rounded, "Ajouter mes préférences", () {}),
-                  _actionRow(Icons.dashboard_customize_rounded, "Retour à l’accueil", () => context.go('/home')),
-                  _actionRow(Icons.logout_rounded, "Se déconnecter", () {}, color: Colors.redAccent),
+                  _actionRow(Icons.lock_reset_rounded, "Modifier le mot de passe", () {
+                    context.go('/reset-password');
+                  }),
+                  _actionRow(Icons.tune_rounded, "Ajouter mes préférences", () {
+                    context.go('/preferences');
+                  }),
+                  _actionRow(Icons.dashboard_customize_rounded, "Retour à l’accueil", () {
+                    context.go('/home');
+                  }),
+                  _actionRow(Icons.logout_rounded, "Se déconnecter", () {
+                    Provider.of<UserProvider>(context, listen: false).logout();
+                    context.go('/login');
+                  }, color: Colors.redAccent),
                 ]),
               ],
             ),

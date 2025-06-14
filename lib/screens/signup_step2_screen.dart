@@ -8,7 +8,16 @@ import 'package:intl/intl.dart';
 import '../themes/app_theme.dart';
 
 class SignupStep2Screen extends StatefulWidget {
-  const SignupStep2Screen({super.key});
+  final String firstName;
+  final String lastName;
+  final String email;
+
+  const SignupStep2Screen({
+    super.key,
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+  });
 
   @override
   State<SignupStep2Screen> createState() => _SignupStep2ScreenState();
@@ -16,16 +25,31 @@ class SignupStep2Screen extends StatefulWidget {
 
 class _SignupStep2ScreenState extends State<SignupStep2Screen> {
   final _formKey = GlobalKey<FormState>();
+
   final phoneController = TextEditingController(text: "+33 ");
-  final birthdateController = TextEditingController(
-    text: DateFormat('dd/MM/yyyy', 'fr_FR').format(DateTime.now()),
-  );
+  late final TextEditingController birthdateController;
 
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedImage;
 
+  @override
+  void initState() {
+    super.initState();
+    birthdateController = TextEditingController(
+      text: DateFormat('dd/MM/yyyy', 'fr_FR').format(DateTime.now()),
+    );
+  }
+
+  @override
+  void dispose() {
+    birthdateController.dispose();
+    phoneController.dispose();
+    super.dispose();
+  }
+
   void _continue() {
     if (_formKey.currentState!.validate()) {
+      // Tu peux transmettre ici les données collectées à l'étape 3 si besoin
       context.go('/signup-step3');
     }
   }
@@ -113,15 +137,20 @@ class _SignupStep2ScreenState extends State<SignupStep2Screen> {
                 const SizedBox(height: 48),
                 Image.asset('assets/images/logo_transparent.png', height: 120, fit: BoxFit.contain),
                 const SizedBox(height: 24),
-                const Text(
-                  "Création de compte",
-                  style: TextStyle(color: AppColors.gold, fontSize: 28, fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold),
+                Text(
+                  "Création de compte\n${widget.firstName} ${widget.lastName}",
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 28,
+                    fontFamily: 'PlayfairDisplay',
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 const Text("2/3", style: TextStyle(color: AppColors.gold, fontSize: 16)),
                 const SizedBox(height: 24),
 
-                // 📸 Image picker preview
                 GestureDetector(
                   onTap: _showImagePickerOptions,
                   child: Row(

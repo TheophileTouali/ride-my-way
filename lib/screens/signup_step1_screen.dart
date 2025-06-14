@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../themes/app_theme.dart';
-// import 'package:firebase_auth/firebase_auth.dart'; // 🔁 Décommenter quand Firebase est prêt
 
 class SignupStep1Screen extends StatefulWidget {
   const SignupStep1Screen({super.key});
@@ -24,43 +26,86 @@ class _SignupStep1ScreenState extends State<SignupStep1Screen> {
 
   void _continue() async {
     if (_formKey.currentState!.validate()) {
-      // 🔒 Étapes futures avec Firebase (décommenter quand prêt)
-      /*
       try {
         final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: emailController.text.trim(),
           password: passwordController.text.trim(),
         );
 
+        print("✅ Inscription réussie. UID : \${credential.user!.uid}");
+
+        await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+          'firstName': firstNameController.text.trim(),
+          'lastName': lastNameController.text.trim(),
+          'email': emailController.text.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
         await credential.user?.sendEmailVerification();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Un e-mail de vérification a été envoyé.")),
-        );
+        final userData = {
+  'firstName': firstNameController.text.trim(),
+  'lastName': lastNameController.text.trim(),
+  'email': emailController.text.trim(),
+};
+context.go('/signup-step2', extra: userData);
+
+await showDialog(
+  context: context,
+  builder: (_) => AlertDialog(
+    backgroundColor: Colors.black,
+    title: const Text("Compte créé", style: TextStyle(color: AppColors.gold)),
+    content: const Text("Un e-mail de vérification a été envoyé.", style: TextStyle(color: Colors.white)),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context), // ❗ Ferme le dialog
+        child: const Text("OK", style: TextStyle(color: AppColors.gold)),
+      )
+    ],
+  ),
+);
+
+// ✅ Met le navigation APRÈS showDialog
+if (mounted) {
+  print("🔁 Navigation vers étape 2 avec : $userData");
+  context.go('/signup-step2', extra: userData);
+}
+
+
       } on FirebaseAuthException catch (e) {
+        String message;
+        switch (e.code) {
+          case 'email-already-in-use':
+            message = "Cet e-mail est déjà utilisé.";
+            break;
+          case 'invalid-email':
+            message = "L'adresse e-mail est invalide.";
+            break;
+          case 'weak-password':
+            message = "Le mot de passe est trop faible.";
+            break;
+          case 'operation-not-allowed':
+            message = "L'inscription est désactivée sur ce projet.";
+            break;
+          default:
+            message = e.message ?? "Une erreur inconnue est survenue.";
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erreur : ${e.message}")),
+          const SnackBar(content: Text("Une erreur inattendue est survenue.")),
         );
-        return;
       }
-      */
-
-      // 🔁 Simulation en attendant Firebase
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Simulation : e-mail de vérification envoyé.")),
-      );
-
-      context.go('/signup-step2');
     }
   }
 
   bool _isPasswordStrong(String password) {
-    final pattern = RegExp(r'^(?=.*[A-Z])(?=.*\d)(?=.*[a-z]).{8,}$');
+    final pattern = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~.,;:\-_]).{8,}$');
     return pattern.hasMatch(password);
   }
 
   bool _isValidEmail(String email) {
-    final regex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
+    final regex = RegExp(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$");
     return regex.hasMatch(email);
   }
 
@@ -76,116 +121,46 @@ class _SignupStep1ScreenState extends State<SignupStep1Screen> {
             child: Column(
               children: [
                 const SizedBox(height: 48),
-                Image.asset(
-                  'assets/images/logo_transparent.png',
-                  height: 120,
-                  fit: BoxFit.contain,
-                ),
+                Image.asset('assets/images/logo_transparent.png', height: 120, fit: BoxFit.contain),
                 const SizedBox(height: 24),
-                const Text(
-                  "Inscription",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 28,
-                    fontFamily: 'PlayfairDisplay',
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                const Text("Inscription", style: TextStyle(color: AppColors.gold, fontSize: 28, fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text(
-                  "Étape 1 de 3",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 16,
-                  ),
-                ),
+                const Text("Étape 1 de 3", style: TextStyle(color: AppColors.gold, fontSize: 16)),
                 const SizedBox(height: 32),
-
-                _buildTextField(
-                  firstNameController,
-                  "Prénom",
-                  validator: (value) => (value == null || value.isEmpty)
-                      ? "Veuillez renseigner votre prénom"
-                      : null,
-                ),
+                _buildTextField(firstNameController, "Prénom", validator: (value) => (value == null || value.isEmpty) ? "Veuillez renseigner votre prénom" : null),
                 const SizedBox(height: 16),
-                _buildTextField(
-                  lastNameController,
-                  "Nom",
-                  validator: (value) => (value == null || value.isEmpty)
-                      ? "Veuillez renseigner votre nom"
-                      : null,
-                ),
+                _buildTextField(lastNameController, "Nom", validator: (value) => (value == null || value.isEmpty) ? "Veuillez renseigner votre nom" : null),
                 const SizedBox(height: 16),
-                _buildTextField(
-                  emailController,
-                  "Adresse e-mail",
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return "Veuillez entrer une adresse e-mail";
-                    }
-                    if (!_isValidEmail(value)) {
-                      return "Adresse e-mail invalide";
-                    }
-                    return null;
-                  },
-                ),
+                _buildTextField(emailController, "Adresse e-mail", keyboardType: TextInputType.emailAddress, validator: (value) {
+                  if (value == null || value.isEmpty) return "Veuillez entrer une adresse e-mail";
+                  if (!_isValidEmail(value)) return "Adresse e-mail invalide";
+                  return null;
+                }),
                 const SizedBox(height: 16),
-                _buildPasswordField(
-                  passwordController,
-                  "Mot de passe",
-                  obscure: _obscurePassword,
-                  toggle: () => setState(() => _obscurePassword = !_obscurePassword),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return "Veuillez définir un mot de passe";
-                    }
-                    if (!_isPasswordStrong(value)) {
-                      return "8+ caractères, 1 majuscule, 1 chiffre";
-                    }
-                    return null;
-                  },
-                ),
+                _buildPasswordField(passwordController, "Mot de passe", obscure: _obscurePassword, toggle: () => setState(() => _obscurePassword = !_obscurePassword), validator: (value) {
+                  if (value == null || value.isEmpty) return "Veuillez définir un mot de passe";
+                  if (!_isPasswordStrong(value)) return "8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial";
+                  return null;
+                }),
                 const SizedBox(height: 16),
-                _buildPasswordField(
-                  confirmPasswordController,
-                  "Confirmer le mot de passe",
-                  obscure: _obscureConfirm,
-                  toggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return "Veuillez confirmer le mot de passe";
-                    }
-                    if (value != passwordController.text) {
-                      return "Les mots de passe ne correspondent pas";
-                    }
-                    return null;
-                  },
-                ),
-
+                _buildPasswordField(confirmPasswordController, "Confirmer le mot de passe", obscure: _obscureConfirm, toggle: () => setState(() => _obscureConfirm = !_obscureConfirm), validator: (value) {
+                  if (value == null || value.isEmpty) return "Veuillez confirmer le mot de passe";
+                  if (value != passwordController.text) return "Les mots de passe ne correspondent pas";
+                  return null;
+                }),
                 const SizedBox(height: 32),
-
                 ElevatedButton(
                   onPressed: _continue,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.gold,
                     foregroundColor: AppColors.black,
                     minimumSize: const Size.fromHeight(56),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'PlayfairDisplay',
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay'),
                   ),
                   child: const Text("Continuer"),
                 ),
-
                 const SizedBox(height: 24),
-
                 GestureDetector(
                   onTap: () => context.go('/login'),
                   child: RichText(
@@ -193,13 +168,7 @@ class _SignupStep1ScreenState extends State<SignupStep1Screen> {
                       text: "Vous avez déjà un compte ? ",
                       style: TextStyle(color: Colors.grey[500], fontSize: 14),
                       children: const [
-                        TextSpan(
-                          text: 'Se connecter',
-                          style: TextStyle(
-                            color: AppColors.gold,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        TextSpan(text: 'Se connecter', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -230,14 +199,8 @@ class _SignupStep1ScreenState extends State<SignupStep1Screen> {
         labelText: label,
         labelStyle: const TextStyle(color: Colors.grey),
         filled: false,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
-        ),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.gold)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
       ),
       validator: validator,
     );
@@ -259,21 +222,12 @@ class _SignupStep1ScreenState extends State<SignupStep1Screen> {
         labelText: label,
         labelStyle: const TextStyle(color: Colors.grey),
         suffixIcon: IconButton(
-          icon: Icon(
-            obscure ? Icons.visibility_off : Icons.visibility,
-            color: Colors.grey[500],
-          ),
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey[500]),
           onPressed: toggle,
         ),
         filled: false,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
-        ),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.gold)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
       ),
       validator: validator,
     );

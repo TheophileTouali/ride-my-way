@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
-import '../providers/user_provider.dart';
 import '../screens/splash_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/home_screen.dart';
@@ -14,7 +12,9 @@ import '../screens/forgot_password_screen.dart';
 import '../screens/reset_password_screen.dart';
 import '../screens/passenger_profile_screen.dart';
 import '../screens/edit_preferences_screen.dart';
-
+import '../screens/reservations_screen.dart';
+import '../screens/favorites_screen.dart';
+import '../screens/results_screen.dart'; // ✅ manquant
 
 class AppRoutes {
   static final router = GoRouter(
@@ -30,6 +30,7 @@ class AppRoutes {
       ),
       GoRoute(
         path: '/home',
+        name: 'home',
         builder: (context, state) => const HomeScreen(),
       ),
       GoRoute(
@@ -42,7 +43,20 @@ class AppRoutes {
       ),
       GoRoute(
         path: '/signup-step2',
-        builder: (context, state) => const SignupStep2Screen(),
+        builder: (context, state) {
+          final extra = state.extra;
+          if (extra is! Map<String, dynamic>) {
+            return const Scaffold(
+              body: Center(child: Text("Erreur : données manquantes")),
+            );
+          }
+
+          return SignupStep2Screen(
+            firstName: extra['firstName'],
+            lastName: extra['lastName'],
+            email: extra['email'],
+          );
+        },
       ),
       GoRoute(
         path: '/signup-step3',
@@ -67,6 +81,24 @@ class AppRoutes {
         path: '/preferences',
         name: 'preferences',
         builder: (context, state) => const EditPreferencesScreen(),
+      ),
+      GoRoute(
+        path: '/reservations',
+        builder: (context, state) => const ReservationsScreen(),
+      ),
+      GoRoute(
+        path: '/favorites',
+        builder: (context, state) => const FavoritesScreen(),
+      ),
+
+      // ✅ Route pour l'écran de résultats avec query params
+      GoRoute(
+        path: '/results',
+        builder: (context, state) {
+          final from = state.uri.queryParameters['from'] ?? '';
+          final to = state.uri.queryParameters['to'] ?? '';
+          return ResultsScreen(from: from, to: to);
+        },
       ),
     ],
   );

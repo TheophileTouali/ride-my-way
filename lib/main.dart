@@ -1,39 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
-import 'config/app_routes.dart';
+import 'firebase_options.dart';
 import 'providers/user_provider.dart';
-import 'themes/app_theme.dart';
+import 'config/app_routes.dart'; // ✅ important
 
-void main() {
-  runApp(const RideMyWayApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => UserProvider(),
+      child: const RideMyWayApp(),
+    ),
+  );
 }
 
 class RideMyWayApp extends StatelessWidget {
-  const RideMyWayApp({Key? key}) : super(key: key);
+  const RideMyWayApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()),
-      ],
-      child: MaterialApp.router(
-        title: 'Ride My Way',
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        locale: const Locale('fr', 'FR'),
-        supportedLocales: const [
-          Locale('fr', 'FR'),
-        ],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        routerConfig: AppRoutes.router,
+    return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
+      title: 'Ride My Way',
+      theme: ThemeData(
+        fontFamily: 'PlayfairDisplay',
+        scaffoldBackgroundColor: Colors.black,
       ),
+      routerConfig: AppRoutes.router, // ✅ utilise le router central
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('fr', 'FR'),
+        Locale('en', 'US'),
+      ],
     );
   }
 }

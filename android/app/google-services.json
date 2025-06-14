@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "894264775353",
+    "project_id": "ride-my-way-7f258",
+    "storage_bucket": "ride-my-way-7f258.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894264775353:android:8867f62d4e5b7354dc8168",
+        "android_client_info": {
+          "package_name": "com.example.ride_my_way"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZ4Luk0fahKqGUWxt1iTa826mhbGDB27k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

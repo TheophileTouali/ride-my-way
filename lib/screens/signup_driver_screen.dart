@@ -40,7 +40,13 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
   File? driverLicense;
   File? registration;
   File? insurance;
-  XFile? profileImage;
+File? profileImage;
+Uint8List? profileImageBytes;
+
+File? vehiclePhoto;
+Uint8List? vehiclePhotoBytes;
+
+
 
   bool obscure1 = true;
   bool obscure2 = true;
@@ -156,6 +162,8 @@ anneesMoto = List.generate(DateTime.now().year - 2004, (i) => (DateTime.now().ye
     return pattern.hasMatch(password);
   }
 
+
+
 Future<void> _pickBirthDate() async {
   final now = DateTime.now();
   final maxDate = DateTime(now.year - 21, now.month, now.day); // 21 ans révolus
@@ -174,66 +182,93 @@ Future<void> _pickBirthDate() async {
 }
 
 
-Widget _uploadTile(String label, File? file, Function(File) onPicked) {
+Widget _uploadTileAligned(String label, File? file, VoidCallback onPressed) {
   final isAdded = file != null;
 
-  return ListTile(
-    title: Text(label, style: const TextStyle(color: Colors.white, fontFamily: 'PlayfairDisplay')),
-    trailing: OutlinedButton.icon(
-      onPressed: () async {
-        try {
-          final result = await FilePicker.platform.pickFiles(
-            type: FileType.custom,
-            allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-            withData: kIsWeb, // nécessaire pour récupérer les bytes sur Web
-          );
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'PlayfairDisplay',
+              fontSize: 18,
+            ),
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: onPressed,
+          icon: Icon(
+            isAdded ? Icons.check_box : Icons.upload_file,
+            color: isAdded ? Colors.lightGreen : Colors.grey,
+          ),
+          label: Text(
+            isAdded ? "Ajouté" : "Uploader",
+            style: const TextStyle(color: AppColors.deepGold),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: AppColors.deepGold),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
-          if (result != null) {
-            if (kIsWeb) {
-              // Web : pas de path, on travaille avec les bytes
-              final fileBytes = result.files.single.bytes;
-              final fileName = result.files.single.name;
 
-              if (fileBytes != null) {
-                // Crée un fichier temporaire dans la mémoire (non persistant)
-                final tempFile = File(fileName); // Faux path pour l'UI
-                onPicked(tempFile); // On passe à l'UI, mais l'upload doit utiliser `fileBytes`
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("$label ajouté (Web)"), backgroundColor: Colors.green),
-                );
-              }
-            } else if (result.files.single.path != null) {
-              // Mobile/Desktop
-              final sel = File(result.files.single.path!);
-              setState(() => onPicked(sel));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("$label ajouté"), backgroundColor: Colors.green),
-              );
-            }
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Aucun fichier sélectionné")),
-            );
-          }
-        } catch (e, st) {
-          debugPrint("Pick error: $e\n$st");
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Erreur: $e")),
-          );
-        }
-      },
-      icon: Icon(
-        isAdded ? Icons.check_circle : Icons.upload_file,
-        color: isAdded ? Colors.lightGreen : Colors.grey,
-      ),
-      label: Text(isAdded ? "Ajouté" : "Uploader",
-        style: const TextStyle(color: AppColors.deepGold),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.deepGold),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      ),
+
+
+Widget _uploadPhotoRowAligned(String label, Uint8List? imageBytes, VoidCallback onPressed) {
+  final hasImage = imageBytes != null;
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'PlayfairDisplay',
+              fontSize: 18,
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            if (hasImage)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.memory(imageBytes!, width: 48, height: 48, fit: BoxFit.cover),
+              ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(
+                hasImage ? Icons.check_circle : Icons.camera_alt,
+                color: hasImage ? Colors.lightGreen : Colors.grey,
+              ),
+              label: Text(
+                hasImage ? "Modifier" : "Ajouter photo",
+                style: const TextStyle(color: AppColors.deepGold),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.deepGold),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      ],
     ),
   );
 }
@@ -259,6 +294,15 @@ Widget _uploadTile(String label, File? file, Function(File) onPicked) {
         photoUrl = await ref.getDownloadURL();
       }
 
+      String? vehicleUrl;
+
+if (vehiclePhoto != null) {
+  final ref = FirebaseStorage.instance.ref().child("vehicle_images/$uid.jpg");
+  await ref.putFile(vehiclePhoto!);
+  vehicleUrl = await ref.getDownloadURL();
+}
+
+
       Future<String?> uploadDoc(File? doc, String name) async {
         if (doc == null) return null;
         final ext = doc.path.split('.').last.toLowerCase();
@@ -275,6 +319,7 @@ Widget _uploadTile(String label, File? file, Function(File) onPicked) {
         'firstName': firstName.text.trim(),
         'lastName': lastName.text.trim(),
         'email': email.text.trim(),
+        'vehiclePhotoUrl': vehicleUrl,
         'phone': phone.text.trim(),
         'birthdate': birthdate.text.trim(),
         'address': addressController.text.trim(),
@@ -299,6 +344,17 @@ Widget _uploadTile(String label, File? file, Function(File) onPicked) {
       );
     }
   }
+
+
+Future<void> _pickImage(Function(File, Uint8List) onPicked) async {
+  final picker = ImagePicker();
+  final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+  if (picked != null) {
+    final file = File(picked.path);
+    final bytes = await picked.readAsBytes(); // important pour Web
+    onPicked(file, bytes);
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -454,9 +510,9 @@ DropdownButtonFormField<String>(
     return null;
   },
 ),
+const SizedBox(height: 16),
 
-                const SizedBox(height: 16),
-                TextFormField(
+TextFormField(
   controller: driverLicenseNumber,
   style: const TextStyle(color: Colors.white),
   cursorColor: AppColors.deepGold,
@@ -474,10 +530,59 @@ DropdownButtonFormField<String>(
   },
 ),
 
-                const Divider(height: 40, color: AppColors.deepGold),
-_uploadTile("Permis de conduire", driverLicense, (f) => setState(() => driverLicense = f)),
-_uploadTile("Carte grise", registration, (f) => setState(() => registration = f)),
-_uploadTile("Assurance", insurance, (f) => setState(() => insurance = f)),
+const Divider(height: 40, color: AppColors.deepGold),
+
+_uploadTileAligned("Permis de conduire", driverLicense, () async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+  );
+  if (result != null && result.files.single.path != null) {
+    setState(() => driverLicense = File(result.files.single.path!));
+  }
+}),
+
+_uploadTileAligned("Carte grise", registration, () async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+  );
+  if (result != null && result.files.single.path != null) {
+    setState(() => registration = File(result.files.single.path!));
+  }
+}),
+
+_uploadTileAligned("Assurance", insurance, () async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+  );
+  if (result != null && result.files.single.path != null) {
+    setState(() => insurance = File(result.files.single.path!));
+  }
+}),
+
+
+
+_uploadPhotoRowAligned("Photo de profil", profileImageBytes, () {
+  _pickImage((f, bytes) {
+    setState(() {
+      profileImage = f;
+      profileImageBytes = bytes;
+    });
+  });
+}),
+
+_uploadPhotoRowAligned("Photo du véhicule", vehiclePhotoBytes, () {
+  _pickImage((f, bytes) {
+    setState(() {
+      vehiclePhoto = f;
+      vehiclePhotoBytes = bytes;
+    });
+  });
+}),
+
+
 
 
 

@@ -6,10 +6,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
 import '../themes/app_theme.dart';
+import 'package:image_picker/image_picker.dart';
+
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});

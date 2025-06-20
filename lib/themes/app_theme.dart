@@ -5,6 +5,7 @@ class AppColors {
   static const Color gold = Color(0xFFB78E45); // or prélevé du logo
   static const Color grey = Color(0xFFBDBDBD); // gris utilisé pour les labels
   static const Color texturedBlack = Color(0xFF0A0A0A);
+  static const Color deepGold = Color(0xFF8C6A2C); // ✅ or plus profond pour conducteurs
 }
 
 
@@ -18,6 +19,7 @@ class AppTheme {
       primary: AppColors.gold,
       secondary: AppColors.grey,
       background: AppColors.black,
+      
     ),
 
     textTheme: const TextTheme(

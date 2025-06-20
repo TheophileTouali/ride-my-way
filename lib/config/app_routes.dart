@@ -14,7 +14,10 @@ import '../screens/passenger_profile_screen.dart';
 import '../screens/edit_preferences_screen.dart';
 import '../screens/reservations_screen.dart';
 import '../screens/favorites_screen.dart';
-import '../screens/results_screen.dart'; // ✅ manquant
+import '../screens/results_screen.dart';
+import '../screens/signup_driver_screen.dart'; // ✅ 
+import '../screens/signup_screen.dart'; // ✅ 
+
 
 class AppRoutes {
   static final router = GoRouter(
@@ -91,7 +94,10 @@ class AppRoutes {
         builder: (context, state) => const FavoritesScreen(),
       ),
 
-      // ✅ Route pour l'écran de résultats avec query params
+      GoRoute(
+  path: '/signup',
+  builder: (context, state) => const SignupScreen(),
+),
       GoRoute(
         path: '/results',
         builder: (context, state) {
@@ -99,6 +105,11 @@ class AppRoutes {
           final to = state.uri.queryParameters['to'] ?? '';
           return ResultsScreen(from: from, to: to);
         },
+      ),
+      // ✅ Route pour le formulaire unique conducteur
+      GoRoute(
+        path: '/signup-driver',
+        builder: (context, state) => const SignupDriverScreen(),
       ),
     ],
   );

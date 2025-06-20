@@ -57,14 +57,44 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
     'Motos',
   ];
 
-  late final List<String> vehicleYears;
+  late final List<String> anneesVoiture;
+late final List<String> anneesMoto;
+
+final List<String> marquesVoitures = [
+  'Audi', 'BMW', 'Mercedes-Benz', 'Tesla', 'Lexus',
+  'Peugeot', 'Renault', 'Citroën', 'Volkswagen', 'Toyota'
+];
+
+final List<String> marquesMotos = [
+  'Honda Goldwing 1800',
+  'BMW R1250 RT',
+  'Yamaha TMAX 560',
+  'Suzuki Burgman 650',
+  'Harley-Davidson Touring'
+];
+
+List<String> get marquesSelonType {
+  if (selectedVehicleType?.toLowerCase().contains('moto') == true) {
+    return marquesMotos;
+  }
+  return marquesVoitures;
+}
+
+List<String> get anneesSelonType {
+  if (selectedVehicleType?.toLowerCase().contains('moto') == true) {
+    return anneesMoto;
+  }
+  return anneesVoiture;
+}
+
 
 @override
 void initState() {
   super.initState();
-  birthdate.text = DateFormat('dd/MM/yyyy').format(DateTime.now());
   final currentYear = DateTime.now().year;
-  vehicleYears = List.generate(currentYear - 1979, (index) => (currentYear - index).toString());
+  anneesVoiture = List.generate(DateTime.now().year - 1999, (i) => (DateTime.now().year - i).toString());
+anneesMoto = List.generate(DateTime.now().year - 2004, (i) => (DateTime.now().year - i).toString());
+
 
   // Ajout : on initialise à null pour éviter l’affichage "Ajouté" par défaut
   driverLicense = null;
@@ -126,16 +156,23 @@ void initState() {
     return pattern.hasMatch(password);
   }
 
-  Future<void> _pickBirthDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      locale: const Locale('fr', 'FR'),
-    );
-    if (picked != null) setState(() => birthdate.text = DateFormat('dd/MM/yyyy').format(picked));
+Future<void> _pickBirthDate() async {
+  final now = DateTime.now();
+  final maxDate = DateTime(now.year - 21, now.month, now.day); // 21 ans révolus
+
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: DateTime(now.year - 25), // Suggestion : par défaut 25 ans
+    firstDate: DateTime(1900),
+    lastDate: maxDate,
+    locale: const Locale('fr', 'FR'),
+  );
+
+  if (picked != null) {
+    setState(() => birthdate.text = DateFormat('dd/MM/yyyy').format(picked));
   }
+}
+
 
 Widget _uploadTile(String label, File? file, Function(File) onPicked) {
   final isAdded = file != null;
@@ -316,7 +353,20 @@ Widget _uploadTile(String label, File? file, Function(File) onPicked) {
                 const SizedBox(height: 16),
                 GestureDetector(
                   onTap: _pickBirthDate,
-                  child: AbsorbPointer(child: _buildTextField(birthdate, "Date de naissance")),
+                  child: AbsorbPointer(
+  child: TextFormField(
+    controller: birthdate,
+    style: const TextStyle(color: Colors.white),
+    cursorColor: AppColors.deepGold,
+    decoration: _inputDecoration("Date de naissance").copyWith(
+      hintText: "Sélectionnez votre date de naissance",
+      hintStyle: const TextStyle(color: Colors.white38, fontStyle: FontStyle.italic),
+    ),
+    validator: (value) => value == null || value.trim().isEmpty ? 'Champ requis' : null,
+  ),
+),
+
+                  
                 ),
                 const SizedBox(height: 16),
                 _buildPassword(password, "Mot de passe", obscure1, () => setState(() => obscure1 = !obscure1)),
@@ -336,37 +386,94 @@ Widget _uploadTile(String label, File? file, Function(File) onPicked) {
                   validator: (v) => v == null || v.isEmpty ? "Champ requis" : null,
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedVehicleType,
-                  items: vehicleTypes.map((type) => DropdownMenuItem(
-                    value: type,
-                    child: Text(type, style: const TextStyle(color: Colors.white)),
-                  )).toList(),
-                  onChanged: (val) => setState(() => selectedVehicleType = val),
-                  decoration: _inputDecoration("Type de véhicule"),
-                  dropdownColor: Colors.black,
-                  iconEnabledColor: AppColors.deepGold,
-                  validator: (v) => v == null ? "Champ requis" : null,
-                ),
+DropdownButtonFormField<String>(
+  value: selectedVehicleType,
+  items: vehicleTypes.map((type) => DropdownMenuItem(
+    value: type,
+    child: Text(type, style: const TextStyle(color: Colors.white)),
+  )).toList(),
+  onChanged: (val) {
+    setState(() {
+      selectedVehicleType = val;
+      carBrand.text = '';
+      selectedVehicleYear = null;
+    });
+  },
+  decoration: _inputDecoration("Type de véhicule"),
+  dropdownColor: Colors.black,
+  iconEnabledColor: AppColors.deepGold,
+  validator: (v) => v == null ? "Champ requis" : null,
+),
+const SizedBox(height: 16),
+
+DropdownButtonFormField<String>(
+  value: marquesSelonType.contains(carBrand.text) ? carBrand.text : null,
+  items: marquesSelonType.map((brand) {
+    return DropdownMenuItem(
+      value: brand,
+      child: Text(brand, style: const TextStyle(color: Colors.white)),
+    );
+  }).toList(),
+  onChanged: (value) {
+    setState(() => carBrand.text = value!);
+  },
+  decoration: _inputDecoration("Marque du véhicule"),
+  dropdownColor: Colors.black,
+  iconEnabledColor: AppColors.deepGold,
+  validator: (v) => v == null ? "Champ requis" : null,
+),
+const SizedBox(height: 16),
+
+DropdownButtonFormField<String>(
+  value: selectedVehicleYear,
+  items: anneesSelonType.map((year) => DropdownMenuItem(
+    value: year,
+    child: Text(year, style: const TextStyle(color: Colors.white)),
+  )).toList(),
+  onChanged: (val) => setState(() => selectedVehicleYear = val),
+  decoration: _inputDecoration("Année du véhicule"),
+  dropdownColor: Colors.black,
+  iconEnabledColor: AppColors.deepGold,
+  validator: (v) => v == null ? "Champ requis" : null,
+),
+
                 const SizedBox(height: 16),
-                _buildTextField(carBrand, "Marque"),
+                TextFormField(
+  controller: licensePlate,
+  style: const TextStyle(color: Colors.white),
+  cursorColor: AppColors.deepGold,
+  decoration: _inputDecoration("Immatriculation").copyWith(
+    hintText: "Ex : AB-123-CD",
+    hintStyle: const TextStyle(color: Colors.white38, fontStyle: FontStyle.italic),
+  ),
+  textCapitalization: TextCapitalization.characters,
+  validator: (value) {
+    if (value == null || value.trim().isEmpty) return 'Champ requis';
+    final reg = RegExp(r'^[A-HJ-NP-Z]{2}-?\d{3}-?[A-HJ-NP-Z]{2}$');
+    if (!reg.hasMatch(value.toUpperCase())) return 'Format invalide (ex : AB-123-CD)';
+    return null;
+  },
+),
+
                 const SizedBox(height: 16),
-                _buildTextField(licensePlate, "Immatriculation"),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedVehicleYear,
-                  items: vehicleYears.map((y) => DropdownMenuItem(
-                    value: y,
-                    child: Text(y, style: const TextStyle(color: Colors.white)),
-                  )).toList(),
-                  onChanged: (val) => setState(() => selectedVehicleYear = val),
-                  decoration: _inputDecoration("Année"),
-                  dropdownColor: Colors.black,
-                  iconEnabledColor: AppColors.deepGold,
-                  validator: (v) => v == null ? "Champ requis" : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(driverLicenseNumber, "N° Permis de conduire"),
+                TextFormField(
+  controller: driverLicenseNumber,
+  style: const TextStyle(color: Colors.white),
+  cursorColor: AppColors.deepGold,
+  decoration: _inputDecoration("N° Permis de conduire").copyWith(
+    hintText: "Ex : DUPONTRIC123456",
+    hintStyle: const TextStyle(color: Colors.white38, fontStyle: FontStyle.italic),
+  ),
+  textCapitalization: TextCapitalization.characters,
+  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]'))],
+  validator: (value) {
+    if (value == null || value.trim().isEmpty) return 'Champ requis';
+    final clean = value.trim().toUpperCase();
+    if (clean.length < 12 || clean.length > 16) return 'Numéro invalide (12 à 16 caractères)';
+    return null;
+  },
+),
+
                 const Divider(height: 40, color: AppColors.deepGold),
 _uploadTile("Permis de conduire", driverLicense, (f) => setState(() => driverLicense = f)),
 _uploadTile("Carte grise", registration, (f) => setState(() => registration = f)),

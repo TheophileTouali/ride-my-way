@@ -50,6 +50,10 @@ Uint8List? vehiclePhotoBytes;
 
   bool obscure1 = true;
   bool obscure2 = true;
+  bool driverLicenseSelected = false;
+  bool registrationSelected = false;
+  bool insuranceSelected = false;
+
 
   String? selectedVehicleType;
   String? selectedVehicleYear;
@@ -197,6 +201,19 @@ Future<void> _pickBirthDate() async {
     firstDate: DateTime(1900),
     lastDate: maxDate,
     locale: const Locale('fr', 'FR'),
+    builder: (context, child) {
+      return Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: ColorScheme.dark(
+            primary: AppColors.deepGold, // ← couleur bouton de sélection
+            surface: const Color(0xFF121212), // ← fond du calendrier
+            onSurface: Colors.white, // ← texte
+          ),
+          dialogBackgroundColor: const Color(0xFF0A0A0A), // ← fond du dialogue
+        ),
+        child: child!,
+      );
+    },
   );
 
   if (picked != null) {
@@ -205,8 +222,9 @@ Future<void> _pickBirthDate() async {
 }
 
 
-Widget _uploadTileAligned(String label, File? file, VoidCallback onPressed) {
-  final isAdded = file != null;
+
+Widget _uploadTileAligned(String label, File? file, VoidCallback onPressed, {bool showCheck = false}) {
+  final isAdded = file != null || showCheck;
 
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -226,7 +244,7 @@ Widget _uploadTileAligned(String label, File? file, VoidCallback onPressed) {
         OutlinedButton.icon(
           onPressed: onPressed,
           icon: Icon(
-            isAdded ? Icons.check_box : Icons.upload_file,
+            isAdded ? Icons.check_circle : Icons.upload_file,
             color: isAdded ? Colors.lightGreen : Colors.grey,
           ),
           label: Text(
@@ -243,6 +261,7 @@ Widget _uploadTileAligned(String label, File? file, VoidCallback onPressed) {
     ),
   );
 }
+
 
 
 
@@ -382,32 +401,44 @@ Widget _uploadPhotoRowAligned(String label, Uint8List? imageBytes, VoidCallback 
       TextButton(
         onPressed: () async {
           try {
-            await FirebaseAuth.instance.currentUser?.sendEmailVerification();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                  "Un nouveau lien de vérification vous a été envoyé avec succès.",
-                  style: TextStyle(fontFamily: 'PlayfairDisplay'),
-                ),
-                backgroundColor: AppColors.deepGold,
-              ),
+            await FirebaseAuth.instance.currentUser?.reload(); // <-- important
+            final user = FirebaseAuth.instance.currentUser;
 
-            );
+            if (user != null && !user.emailVerified) {
+              await user.sendEmailVerification();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Un nouveau lien de vérification vous a été envoyé avec succès.",
+                    style: TextStyle(fontFamily: 'PlayfairDisplay'),
+                  ),
+                  backgroundColor: AppColors.deepGold,
+                  behavior: SnackBarBehavior.floating,
+                  margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Votre email est déjà vérifié ou utilisateur introuvable.",
+                    style: TextStyle(fontFamily: 'PlayfairDisplay'),
+                  ),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "Un nouveau lien de vérification vous a été envoyé avec succès.",
-                style: TextStyle(fontFamily: 'PlayfairDisplay'),
+              SnackBar(
+                content: Text("Erreur lors de l'envoi : $e"),
+                backgroundColor: Colors.redAccent,
               ),
-              backgroundColor: AppColors.deepGold,
-              behavior: SnackBarBehavior.floating,
-              margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(16)),
-              ),
-            ),
-          );
+            );
           }
         },
         child: const Text(
@@ -418,6 +449,7 @@ Widget _uploadPhotoRowAligned(String label, Uint8List? imageBytes, VoidCallback 
           ),
         ),
       ),
+
     ],
   ),
 );
@@ -624,9 +656,112 @@ Widget build(BuildContext context) {
                     const SizedBox(height: 16),
                     _buildPassword(confirmPassword, "Confirmer le mot de passe", obscure2, () => setState(() => obscure2 = !obscure2)),
                     const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedVehicleType,
+                      items: vehicleTypes.map((type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(type, style: const TextStyle(color: Colors.white)),
+                      )).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          selectedVehicleType = val;
+                          carBrand.text = '';
+                          selectedVehicleYear = null;
+                        });
+                      },
+                      decoration: _inputDecoration("Type de véhicule"),
+                      dropdownColor: Colors.black,
+                      iconEnabledColor: AppColors.deepGold,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return "Veuillez choisir le type de véhicule utilisé.";
+                        return null;
+                      },
+                    ),
 
-                    // Ajoute ici le reste du formulaire (adresse, dropdowns, etc.)
-                    // ...
+                    const SizedBox(height: 16),
+
+                    DropdownButtonFormField<String>(
+                      value: marquesSelonType.contains(carBrand.text) ? carBrand.text : null,
+                      items: marquesSelonType.map((brand) {
+                        return DropdownMenuItem(
+                          value: brand,
+                          child: Text(brand, style: const TextStyle(color: Colors.white)),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() => carBrand.text = value!);
+                      },
+                      decoration: _inputDecoration("Marque du véhicule"),
+                      dropdownColor: Colors.black,
+                      iconEnabledColor: AppColors.deepGold,
+                      validator: (v) => v == null ? "Merci d’indiquer la marque de votre véhicule." : null,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    DropdownButtonFormField<String>(
+                      value: selectedVehicleYear,
+                      items: anneesSelonType.map((year) => DropdownMenuItem(
+                        value: year,
+                        child: Text(year, style: const TextStyle(color: Colors.white)),
+                      )).toList(),
+                      onChanged: (val) => setState(() => selectedVehicleYear = val),
+                      decoration: _inputDecoration("Année du véhicule"),
+                      dropdownColor: Colors.black,
+                      iconEnabledColor: AppColors.deepGold,
+                      validator: (v) => v == null ? "Merci de sélectionner l’année de mise en circulation." : null,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                   TextFormField(
+                    controller: licensePlate,
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: AppColors.deepGold,
+                    decoration: _inputDecoration("Immatriculation").copyWith(
+                      hintText: "Ex : AB-123-CD",
+                      hintStyle: const TextStyle(color: Colors.white38, fontStyle: FontStyle.italic),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                      _LicensePlateFormatter(),
+                    ],
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Merci d’indiquer l’immatriculation.';
+                      }
+                      final reg = RegExp(r'^[A-HJ-NP-Z]{2}-\d{3}-[A-HJ-NP-Z]{2}$');
+                      if (!reg.hasMatch(value.toUpperCase())) {
+                        return 'Format invalide (ex : AB-123-CD)';
+                      }
+                      return null;
+                    },
+                  ),
+
+
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                    controller: driverLicenseNumber,
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: AppColors.deepGold,
+                    decoration: _inputDecoration("N° Permis de conduire").copyWith(
+                      hintText: "Ex : 20AB12345", // Format conforme
+                      hintStyle: const TextStyle(color: Colors.white38, fontStyle: FontStyle.italic),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]'))],
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) return 'Champ requis';
+                      final clean = value.trim().toUpperCase();
+                      final reg = RegExp(r'^[0-9]{2}[A-Z]{2}[0-9]{5}$');
+                      if (!reg.hasMatch(clean)) {
+                        return 'Format attendu : 2 chiffres + 2 lettres + 5 chiffres (ex : 20AB12345)';
+                      }
+                      return null;
+                    },
+                  ),
 
                     const Divider(height: 40, color: AppColors.deepGold),
 
@@ -635,28 +770,40 @@ Widget build(BuildContext context) {
                         type: FileType.custom,
                         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                       );
-                      if (result != null && result.files.single.path != null) {
-                        setState(() => driverLicense = File(result.files.single.path!));
+                      if (result != null) {
+                        if (!kIsWeb && result.files.single.path != null) {
+                          setState(() => driverLicense = File(result.files.single.path!));
+                        }
+                        setState(() => driverLicenseSelected = true);
                       }
-                    }),
+                    }, showCheck: driverLicenseSelected),
+
                     _uploadTileAligned("Carte grise", registration, () async {
                       final result = await FilePicker.platform.pickFiles(
                         type: FileType.custom,
                         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                       );
-                      if (result != null && result.files.single.path != null) {
-                        setState(() => registration = File(result.files.single.path!));
+                      if (result != null) {
+                        if (!kIsWeb && result.files.single.path != null) {
+                          setState(() => registration = File(result.files.single.path!));
+                        }
+                        setState(() => registrationSelected = true);
                       }
-                    }),
+                    }, showCheck: registrationSelected),
+
                     _uploadTileAligned("Assurance", insurance, () async {
                       final result = await FilePicker.platform.pickFiles(
                         type: FileType.custom,
                         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                       );
-                      if (result != null && result.files.single.path != null) {
-                        setState(() => insurance = File(result.files.single.path!));
+                      if (result != null) {
+                        if (!kIsWeb && result.files.single.path != null) {
+                          setState(() => insurance = File(result.files.single.path!));
+                        }
+                        setState(() => insuranceSelected = true);
                       }
-                    }),
+                    }, showCheck: insuranceSelected),
+
                     _uploadPhotoRowAligned("Photo de profil", profileImageBytes, () {
                       _pickImage((f, bytes) {
                         setState(() {
@@ -721,3 +868,22 @@ class _FixedPrefixPhoneFormatter extends TextInputFormatter {
     );
   }
 }
+
+class _LicensePlateFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final rawText = newValue.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+
+    String formatted = '';
+    for (int i = 0; i < rawText.length && i < 7; i++) {
+      if (i == 2 || i == 5) formatted += '-';
+      formatted += rawText[i];
+    }
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+

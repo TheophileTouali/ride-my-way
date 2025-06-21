@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -22,33 +24,48 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   final RegExp passwordRegex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$');
 
-  void _submitPasswordChange() {
-    if (_formKey.currentState!.validate()) {
-      if (oldPasswordController.text.trim() != '123456') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Ancien mot de passe incorrect ❌"),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
+  Future<void> _submitPasswordChange() async {
+  if (!_formKey.currentState!.validate()) return;
 
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    final cred = EmailAuthProvider.credential(
+      email: user!.email!,
+      password: oldPasswordController.text.trim(),
+    );
+
+    // Re-authentifie d'abord (obligatoire pour changer le mot de passe)
+    await user.reauthenticateWithCredential(cred);
+
+    // Met à jour le mot de passe
+    await user.updatePassword(newPasswordController.text.trim());
+
+    if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Mot de passe modifié avec succès ✅"),
           backgroundColor: AppColors.gold,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
         ),
       );
-
-      Future.delayed(const Duration(seconds: 2), () {
-        context.go('/profile');
-      });
+      context.go('/profile');
     }
+  } on FirebaseAuthException catch (e) {
+    String errorMessage = "Une erreur est survenue.";
+    if (e.code == 'wrong-password') {
+      errorMessage = "Ancien mot de passe incorrect ❌";
+    } else if (e.code == 'requires-recent-login') {
+      errorMessage = "Reconnectez-vous pour modifier votre mot de passe.";
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
   }
+}
+
 
   InputDecoration _inputDecoration(String label, bool isObscured, VoidCallback toggle) {
     return InputDecoration(

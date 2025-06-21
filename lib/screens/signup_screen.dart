@@ -11,7 +11,6 @@ import 'package:google_places_autocomplete_text_field/google_places_autocomplete
 import '../themes/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 
-
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
@@ -21,28 +20,30 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
-
   final phoneController = TextEditingController(text: "+33 ");
   final birthdateController = TextEditingController();
-  XFile? _selectedImage;
-  final ImagePicker _picker = ImagePicker();
-
   final addressController = TextEditingController();
   final cityController = TextEditingController();
 
+  final ImagePicker _picker = ImagePicker();
+  XFile? _selectedImage;
+
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  File? profileImage;
+  Uint8List? profileImageBytes;
+  XFile? _identityCardImage;
+
+
 
   @override
   void initState() {
     super.initState();
-    birthdateController.text = DateFormat('dd/MM/yyyy').format(DateTime.now());
   }
 
   @override
@@ -60,73 +61,235 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
 Future<void> _submit() async {
-  if (_formKey.currentState!.validate()) {
-    try {
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+  if (!_formKey.currentState!.validate()) return;
+  if (_identityCardImage == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Merci de joindre une pièce d'identité pour finaliser votre inscription."),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+      ),
+    );
+    return;
+  }
 
-      final uid = credential.user!.uid;
+  try {
+    // Crée le compte avec Firebase Auth
+    final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: emailController.text.trim(),
+      password: passwordController.text.trim(),
+    );
 
-      // ✅ Envoie de l'e-mail de vérification
-      await credential.user?.sendEmailVerification();
+    // Envoie l'email de vérification
+    await cred.user?.sendEmailVerification();
 
-      // ✅ Message visuel
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Un e-mail de vérification vous a été envoyé."),
-            backgroundColor: AppColors.gold,
+    // Affiche une boîte de dialogue de confirmation
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0A0A0A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        actionsPadding: const EdgeInsets.only(bottom: 16, right: 12),
+        title: const Text(
+          "Vérification de l'email",
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: AppColors.deepGold,
+            fontFamily: 'PlayfairDisplay',
           ),
-        );
+        ),
+        content: const Text(
+          "Un lien a été envoyé à votre adresse email. Cliquez sur ce lien avant de continuer.",
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.white70,
+            fontFamily: 'PlayfairDisplay',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const Center(
+                  child: CircularProgressIndicator(color: AppColors.deepGold),
+                ),
+              );
+              await FirebaseAuth.instance.currentUser?.reload();
+              final refreshedUser = FirebaseAuth.instance.currentUser;
+              Navigator.of(context).pop(); // ferme le loader
+
+              if (refreshedUser != null && refreshedUser.emailVerified) {
+                Navigator.of(context).pop(); // ferme le dialog
+                if (context.mounted) context.go('/login');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Votre adresse email n’est pas encore vérifiée."),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              "J'ai vérifié",
+              style: TextStyle(
+                color: AppColors.deepGold,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await FirebaseAuth.instance.currentUser?.reload();
+                final user = FirebaseAuth.instance.currentUser;
+
+                if (user != null && !user.emailVerified) {
+                  await user.sendEmailVerification();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Lien de vérification renvoyé."),
+                      backgroundColor: AppColors.deepGold,
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Email déjà vérifié ou utilisateur introuvable."),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Erreur lors de l'envoi : $e"),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            },
+            child: const Text(
+              "Renvoyer le lien",
+              style: TextStyle(
+                color: AppColors.deepGold,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final uid = cred.user!.uid;
+
+    // Upload photo de profil si présente
+    String? photoUrl;
+    if (profileImageBytes != null) {
+      final ref = FirebaseStorage.instance.ref().child("profile_images/$uid.jpg");
+      if (kIsWeb) {
+        await ref.putData(profileImageBytes!);
+      } else {
+        await ref.putFile(profileImage!);
       }
-
-      // ✅ Upload photo s'il y en a une
-      String? profileImageUrl;
-      if (_selectedImage != null) {
-        final ref = FirebaseStorage.instance.ref().child("profile_images/$uid.jpg");
-        await ref.putFile(File(_selectedImage!.path));
-        profileImageUrl = await ref.getDownloadURL();
-      }
-
-      // ✅ Enregistrement dans Firestore
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'firstName': firstNameController.text.trim(),
-        'lastName': lastNameController.text.trim(),
-        'email': emailController.text.trim(),
-        'phone': phoneController.text.trim(),
-        'birthdate': birthdateController.text.trim(),
-        'address': addressController.text.trim(),
-        'city': cityController.text.trim(),
-        'photoUrl': profileImageUrl,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // ✅ Redirection après inscription
-      if (context.mounted) {
-        context.go('/login');
-      }
-    } on FirebaseAuthException catch (e) {
-      final message = switch (e.code) {
-        'email-already-in-use' => "Cet e-mail est déjà utilisé.",
-        'invalid-email' => "Adresse e-mail invalide.",
-        'weak-password' => "Mot de passe trop faible.",
-        _ => e.message ?? "Erreur inconnue."
-      };
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erreur inattendue.")),
-      );
+      photoUrl = await ref.getDownloadURL();
     }
+
+
+    String? idCardUrl;
+    if (_identityCardImage != null) {
+      final ref = FirebaseStorage.instance.ref().child("identity_cards/$uid.jpg");
+      if (kIsWeb) {
+        final bytes = await _identityCardImage!.readAsBytes();
+        await ref.putData(bytes);
+      } else {
+        await ref.putFile(File(_identityCardImage!.path));
+      }
+      idCardUrl = await ref.getDownloadURL();
+    }
+
+
+
+    // Enregistrement dans Firestore -> users/{uid}
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'firstName': firstNameController.text.trim(),
+      'lastName': lastNameController.text.trim(),
+      'email': emailController.text.trim(),
+      'phone': phoneController.text.trim(),
+      'birthdate': birthdateController.text.trim(),
+      'address': addressController.text.trim(),
+      'photoUrl': photoUrl,
+      'identityCardUrl': idCardUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (context.mounted) context.go('/login');
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Erreur : $e")),
+    );
   }
 }
 
 
+  Future<void> _showVerificationDialog() async {
+    bool emailVerified = false;
+    final user = FirebaseAuth.instance.currentUser;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: AppColors.black,
+          title: const Text("Vérifiez votre e-mail", style: TextStyle(color: AppColors.gold)),
+          content: const Text("Cliquez sur le lien dans l'e-mail reçu pour vérifier votre compte.",
+              style: TextStyle(color: Colors.white)),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await user?.reload();
+                if (user?.emailVerified ?? false) {
+                  emailVerified = true;
+                  if (context.mounted) context.go('/login');
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("L'e-mail n'a pas encore été vérifié."),
+                    backgroundColor: Colors.redAccent,
+                  ));
+                }
+              },
+              child: const Text("J’ai vérifié", style: TextStyle(color: AppColors.gold)),
+            ),
+            TextButton(
+              onPressed: () async {
+                await user?.sendEmailVerification();
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text("Lien de vérification renvoyé."),
+                  backgroundColor: AppColors.gold,
+                ));
+              },
+              child: const Text("Renvoyer le lien", style: TextStyle(color: AppColors.gold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool _isPasswordStrong(String password) {
-  final pattern = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~.,;:\-_]).{8,}$');
+    final pattern = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$&*~.,;:\-_]).{8,}$');
     return pattern.hasMatch(password.trim());
   }
 
@@ -135,107 +298,212 @@ Future<void> _submit() async {
     return regex.hasMatch(email.trim());
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.black,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 32),
-                Image.asset('assets/images/logo_transparent.png', height: 100),
-                const SizedBox(height: 24),
-                const Text("Créer un compte", style: TextStyle(color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 32),
-
-                _buildField(firstNameController, "Prénom"),
-                const SizedBox(height: 16),
-                _buildField(lastNameController, "Nom"),
-                const SizedBox(height: 16),
-                _buildField(emailController, "Email", keyboardType: TextInputType.emailAddress, validator: (v) {
-                  if (v == null || v.isEmpty) return "Champ requis";
-                  if (!_isValidEmail(v)) return "Email invalide";
-                  return null;
-                }),
-                const SizedBox(height: 16),
-                _buildPasswordField(passwordController, "Mot de passe", obscure: _obscurePassword, toggle: () => setState(() => _obscurePassword = !_obscurePassword), validator: (v) {
-                  if (v == null || v.isEmpty) return "Champ requis";
-                  if (!_isPasswordStrong(v)) return "8+ caractères, majuscule, chiffre, caractère spécial";
-                  return null;
-                }),
-                const SizedBox(height: 16),
-                _buildPasswordField(confirmPasswordController, "Confirmer le mot de passe", obscure: _obscureConfirm, toggle: () => setState(() => _obscureConfirm = !_obscureConfirm), validator: (v) {
-                  if (v != passwordController.text) return "Les mots de passe ne correspondent pas";
-                  return null;
-                }),
-
-                const SizedBox(height: 24),
-               TextFormField(
-  controller: phoneController,
-  keyboardType: TextInputType.number,
-  inputFormatters: [
-    _FixedPrefixPhoneFormatter(prefix: '+33 '),
-  ],
-  style: const TextStyle(color: Colors.white),
-  cursorColor: AppColors.gold,
-  decoration: _inputDecoration("Téléphone"),
-  validator: (value) {
-    final digits = value?.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits == null || digits.length != 11 || !digits.startsWith('33')) {
-      return 'Numéro invalide (ex: +33 612345678)';
-    }
-    return null;
-  },
-),
-
-
-
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: _selectBirthDate,
-                  child: AbsorbPointer(child: _buildField(birthdateController, "Date de naissance")),
-                ),
-                const SizedBox(height: 16),
-                _buildPhotoPicker(),
-
-                const SizedBox(height: 24),
-                GooglePlacesAutoCompleteTextFormField(
-                  textEditingController: addressController,
-                  googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
-                  debounceTime: 800,
-                  countries: ["fr"],
-                  fetchCoordinates: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration("Adresse"),
-                  onSuggestionClicked: (prediction) => addressController.text = prediction.description!,
-                  onPlaceDetailsWithCoordinatesReceived: (_) {},
-                  validator: (v) => v == null || v.isEmpty ? "Champ requis" : null,
-                ),
-
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: AppColors.black,
-                    minimumSize: const Size.fromHeight(56),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
-                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay'),
-                  ),
-                  child: const Text("S’inscrire"),
-                ),
-              ],
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: AppColors.black,
+    resizeToAvoidBottomInset: true,
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return CustomScrollView(
+            slivers: [
+              SliverAppBar(
+              pinned: true,
+              backgroundColor: AppColors.black,
+              automaticallyImplyLeading: false,
+              expandedHeight: 140,
+              collapsedHeight: 80,
+              flexibleSpace: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCollapsed = constraints.maxHeight <= 80;
+                  return FlexibleSpaceBar(
+                    centerTitle: false, // désactive le centrage
+                    titlePadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), // marge à gauche
+                    title: isCollapsed
+                        ? const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              "Votre trajet de prestige commence ici",
+                              style: TextStyle(
+                                color: AppColors.gold,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'PlayfairDisplay',
+                              ),
+                            ),
+                          )
+                        : null,
+                    background: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const SizedBox(height: 16),
+                        Image.asset('assets/images/logo_transparent.png', height: 60),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "Créer un compte",
+                          style: TextStyle(
+                            color: AppColors.gold,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'PlayfairDisplay',
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ),
+
+              SliverFillRemaining(
+              hasScrollBody: true,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 24,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 80, 
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                        const SizedBox(height: 16),
+                        _buildField(firstNameController, "Prénom", validator: (v) {
+                          if (v == null || v.trim().isEmpty) return "Merci d’indiquer votre prénom.";
+                          return null;
+                        }),
+
+                        const SizedBox(height: 16),
+                        _buildField(lastNameController, "Nom", validator: (v) {
+                            if (v == null || v.trim().isEmpty) return "Merci d’indiquer votre nom.";
+                            return null;
+                          }),
+
+                        const SizedBox(height: 16),
+                        _buildField(emailController, "Email",
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return "L’email est requis.";
+                          if (!_isValidEmail(v)) return "Email invalide.";
+                          return null;
+                        }),
+
+                        const SizedBox(height: 16),
+                        _buildPasswordField(
+                        passwordController,
+                        "Mot de passe",
+                        obscure: _obscurePassword,
+                        toggle: () => setState(() => _obscurePassword = !_obscurePassword),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return "Le mot de passe est requis.";
+                          if (!_isPasswordStrong(v)) return "8+ caractères, majuscule, chiffre, spécial.";
+                          return null;
+                        },
+                      ),
+
+                        const SizedBox(height: 16),
+                       _buildPasswordField(
+                        confirmPasswordController,
+                        "Confirmer le mot de passe",
+                        obscure: _obscureConfirm,
+                        toggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                        validator: (v) {
+                          if (v != passwordController.text) return "Les mots de passe ne correspondent pas.";
+                          return null;
+                        },
+                      ),
+
+                        const SizedBox(height: 24),
+                        TextFormField(
+                          controller: phoneController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [_FixedPrefixPhoneFormatter(prefix: '+33 ')],
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: AppColors.gold,
+                          decoration: _inputDecoration("Téléphone"),
+                          validator: (value) {
+                            final digits = value?.replaceAll(RegExp(r'[^0-9]'), '');
+                            if (digits == null || digits.length != 11 || !digits.startsWith('33')) {
+                              return 'Numéro invalide (ex : +33 612345678)';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        GooglePlacesAutoCompleteTextFormField(
+                          textEditingController: addressController,
+                          googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                          debounceTime: 800,
+                          countries: ["fr"],
+                          fetchCoordinates: true,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: _inputDecoration("Adresse"),
+                          onSuggestionClicked: (prediction) {
+                            addressController.text = prediction.description!;
+                          },
+                          onPlaceDetailsWithCoordinatesReceived: (_) {},
+                          validator: (v) => (v == null || v.trim().isEmpty) ? "Merci d’indiquer une adresse." : null,
+                        ),
+                        const SizedBox(height: 16),
+                        GestureDetector(
+                        onTap: _selectBirthDate,
+                        child: AbsorbPointer(
+                          child: TextFormField(
+                            controller: birthdateController,
+                            style: const TextStyle(color: Colors.white),
+                            cursorColor: AppColors.gold,
+                            decoration: _inputDecoration("Date de naissance"),
+                            validator: (v) => (v == null || v.trim().isEmpty) ? "Merci de sélectionner votre date de naissance." : null,
+                          ),
+                        ),
+                      ),
+                        const SizedBox(height: 16),
+                                              Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          _buildPhotoPicker(),
+                          const SizedBox(height: 20), // espace bien visible
+                          _buildIdentityCardPicker(),
+                          const SizedBox(height: 24), // un peu plus avant l'adresse
+                        ],
+                      ),
+                          const SizedBox(height: 24),
+
+                        
+                        const SizedBox(height: 32),
+                        ElevatedButton(
+                          onPressed: _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.gold,
+                            foregroundColor: AppColors.black,
+                            minimumSize: const Size.fromHeight(56),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                            textStyle: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'PlayfairDisplay',
+                            ),
+                          ),
+                          child: const Text("S’inscrire"),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
-    );
-  }
+    ),
+  );
+}
+
+
 
   InputDecoration _inputDecoration(String label) => InputDecoration(
     labelText: label,
@@ -244,40 +512,46 @@ Future<void> _submit() async {
     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
   );
 
-  Widget _buildField(TextEditingController controller, String label, {
-    TextInputType keyboardType = TextInputType.text,
-    String? Function(String?)? validator,
-  }) => TextFormField(
-    controller: controller,
-    keyboardType: keyboardType,
-    style: const TextStyle(color: Colors.white),
-    cursorColor: AppColors.gold,
-    decoration: _inputDecoration(label),
-    validator: validator ?? (v) => (v == null || v.isEmpty) ? "Champ requis" : null,
-  );
+  Widget _buildField(TextEditingController controller, String label,
+      {TextInputType keyboardType = TextInputType.text, String? Function(String?)? validator}) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      cursorColor: AppColors.gold,
+      decoration: _inputDecoration(label),
+      validator: validator ?? (v) => (v == null || v.isEmpty) ? "Champ requis" : null,
+    );
+  }
 
-  Widget _buildPasswordField(
-    TextEditingController controller,
-    String label, {
-    required bool obscure,
-    required VoidCallback toggle,
-    required String? Function(String?) validator,
-  }) => TextFormField(
-    controller: controller,
-    obscureText: obscure,
-    style: const TextStyle(color: Colors.white),
-    cursorColor: AppColors.gold,
-    decoration: _inputDecoration(label).copyWith(
-      suffixIcon: IconButton(
-        icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey[500]),
-        onPressed: toggle,
-      ),
-    ),
-    validator: validator,
-  );
+    Widget _buildPasswordField(
+      TextEditingController controller,
+      String label, {
+      required bool obscure,
+      required VoidCallback toggle,
+      required String? Function(String?) validator,
+    }) {
+      return TextFormField(
+        controller: controller,
+        obscureText: obscure,
+        style: const TextStyle(color: Colors.white),
+        cursorColor: AppColors.gold,
+        decoration: _inputDecoration(label).copyWith(
+          suffixIcon: IconButton(
+            icon: Icon(
+              obscure ? Icons.visibility_off : Icons.visibility,
+              color: Colors.grey[500],
+            ),
+            onPressed: toggle,
+          ),
+        ),
+        validator: validator,
+      );
+    }
+
 
   Widget _buildPhotoPicker() => GestureDetector(
-    onTap: _showImagePickerOptions,
+    onTap: () => _showImagePickerOptions(target: 'profile'),
     child: Row(
       children: [
         const Icon(Icons.add_a_photo_outlined, color: AppColors.gold),
@@ -288,15 +562,35 @@ Future<void> _submit() async {
           ClipRRect(
             borderRadius: BorderRadius.circular(30),
             child: kIsWeb
-                ? Image.network(_selectedImage!.path, width: 48, height: 48, fit: BoxFit.cover)
-                : Image.file(File(_selectedImage!.path), width: 48, height: 48, fit: BoxFit.cover),
+              ? Image.network(_selectedImage!.path, width: 48, height: 48, fit: BoxFit.cover)
+              : Image.file(File(_selectedImage!.path), width: 48, height: 48, fit: BoxFit.cover),
           )
         ]
       ],
     ),
   );
 
-  void _showImagePickerOptions() {
+  Widget _buildIdentityCardPicker() => GestureDetector(
+      onTap: () => _showImagePickerOptions(target: 'id'),
+      child: Row(
+        children: [
+          const Icon(Icons.credit_card, color: AppColors.gold),
+          const SizedBox(width: 8),
+          const Text("Ajouter carte d'identité", style: TextStyle(color: AppColors.gold)),
+          if (_identityCardImage != null) ...[
+            const Spacer(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: kIsWeb
+                  ? Image.network(_identityCardImage!.path, width: 48, height: 48, fit: BoxFit.cover)
+                  : Image.file(File(_identityCardImage!.path), width: 48, height: 48, fit: BoxFit.cover),
+            ),
+          ]
+        ],
+      ),
+    );
+
+    void _showImagePickerOptions({required String target}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.black,
@@ -308,12 +602,12 @@ Future<void> _submit() async {
             ListTile(
               leading: const Icon(Icons.camera_alt, color: AppColors.gold),
               title: const Text('Prendre une photo', style: TextStyle(color: Colors.white)),
-              onTap: () => _pickImage(ImageSource.camera),
+              onTap: () => _pickImageWithTarget(target),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library, color: AppColors.gold),
               title: const Text('Choisir depuis la galerie', style: TextStyle(color: Colors.white)),
-              onTap: () => _pickImage(ImageSource.gallery),
+              onTap: () => _pickImageWithTarget(target),
             ),
           ],
         ),
@@ -321,123 +615,94 @@ Future<void> _submit() async {
     );
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(source: source, imageQuality: 75);
-    if (pickedFile != null) setState(() => _selectedImage = pickedFile);
+
+    Future<void> _pickImageWithTarget(String target) async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+    if (pickedFile != null) {
+      setState(() {
+        if (target == 'profile') {
+          _selectedImage = pickedFile;
+        } else if (target == 'id') {
+          _identityCardImage = pickedFile;
+        }
+      });
+    }
     if (context.mounted) Navigator.pop(context);
   }
 
-Future<void> _selectBirthDate() async {
-  final now = DateTime.now();
-  final picked = await showDatePicker(
-    context: context,
-    initialDate: now,
-    firstDate: DateTime(1900),
-    lastDate: now,
-    locale: const Locale('fr', 'FR'),
-    builder: (context, child) => Theme(
-      data: Theme.of(context).copyWith(
-        dialogBackgroundColor: AppColors.black,
-        colorScheme: const ColorScheme.dark(primary: AppColors.gold),
-        textTheme: const TextTheme(
-          titleMedium: TextStyle(
-            color: AppColors.gold, // Titre "Saisir une date"
-            fontFamily: 'PlayfairDisplay',
-          ),
-          bodyMedium: TextStyle(
-            color: AppColors.gold, // <- Texte saisi ici
-            fontFamily: 'PlayfairDisplay',
-          ),
-          labelLarge: TextStyle(
-            color: Colors.white, // "Sélectionner une date"
-            fontFamily: 'PlayfairDisplay',
-          ),
+
+  Future<void> _selectBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now.subtract(const Duration(days: 365 * 18)), // par défaut 18 ans
+      firstDate: DateTime(1900),
+      lastDate: now,
+      locale: const Locale('fr', 'FR'),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          dialogBackgroundColor: AppColors.black,
+          colorScheme: const ColorScheme.dark(primary: AppColors.gold),
         ),
-        inputDecorationTheme: const InputDecorationTheme(
-          hintStyle: TextStyle(color: Colors.white54, fontFamily: 'PlayfairDisplay'),
-          labelStyle: TextStyle(color: Colors.white, fontFamily: 'PlayfairDisplay'),
-          floatingLabelStyle: TextStyle(color: AppColors.gold, fontFamily: 'PlayfairDisplay'),
-          enabledBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: AppColors.gold),
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(color: AppColors.gold, width: 1.5),
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
-        ),
+        child: child!,
       ),
-      child: child!,
-    ),
-  );
-  if (picked != null) {
-    setState(() {
-      birthdateController.text = DateFormat('dd/MM/yyyy').format(picked);
-    });
-  }
-}
-
-}
-
-class _FrenchPhoneFormatter extends TextInputFormatter {
-  static const String prefix = '+33 ';
-  
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    // Si l’utilisateur tente d’effacer ou modifier le préfixe, on le restaure
-    if (!newValue.text.startsWith(prefix)) {
-      return oldValue;
-    }
-
-    // Supprime tout sauf chiffres après le préfixe
-    final raw = newValue.text.substring(prefix.length);
-    final onlyDigits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // Reconstruit le texte avec le préfixe et les chiffres filtrés
-    final finalText = prefix + onlyDigits;
-
-    return TextEditingValue(
-      text: finalText,
-      selection: TextSelection.collapsed(offset: finalText.length),
     );
+    if (picked != null) {
+      final age = now.difference(picked).inDays ~/ 365;
+      if (age < 18) {
+        ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("L’âge minimum requis est de 18 ans pour rejoindre Ride My Way."),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+        ),
+      );
+        return;
+      }
+      setState(() {
+        birthdateController.text = DateFormat('dd/MM/yyyy').format(picked);
+      });
+    }
   }
+
 }
 
 class _FixedPrefixPhoneFormatter extends TextInputFormatter {
   final String prefix;
-
   _FixedPrefixPhoneFormatter({required this.prefix});
 
   @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    // Si suppression ou déplacement du curseur dans le préfixe : retour à old
-    if (!newValue.text.startsWith(prefix) ||
-        newValue.selection.start < prefix.length) {
-      return oldValue;
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    String raw = newValue.text;
+
+    // Supprime le préfixe temporairement pour traiter le reste
+    if (raw.startsWith(prefix)) {
+      raw = raw.substring(prefix.length);
     }
 
-    // Récupère uniquement les chiffres tapés après le préfixe
-    final digitsOnly = newValue.text
-        .replaceFirst(prefix, '')
-        .replaceAll(RegExp(r'[^0-9]'), '');
+    // Supprime tous les caractères non numériques
+    raw = raw.replaceAll(RegExp(r'[^0-9]'), '');
 
-    // Reconstruit le texte complet
-    final newText = prefix + digitsOnly;
+    // Si le premier chiffre est un 0, on l’enlève (cas courant en France)
+    if (raw.startsWith('0')) {
+      raw = raw.substring(1);
+    }
 
-    // Met le curseur à la fin
+    // Limite à 9 chiffres max (06XXXXXXXX)
+    if (raw.length > 9) {
+      raw = raw.substring(0, 9);
+    }
+
+    // Construit le texte final avec l’indicatif fixe
+    final newText = '$prefix$raw';
+
     return TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: newText.length),
     );
   }
 }
-
-
 
 

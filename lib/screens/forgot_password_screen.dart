@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -18,23 +20,42 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return regex.hasMatch(email);
   }
 
-  void _sendResetLink() {
+    void _sendResetLink() async {
     if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Lien de réinitialisation envoyé 📬"),
-          backgroundColor: AppColors.gold,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      try {
+        await FirebaseAuth.instance.sendPasswordResetEmail(
+          email: emailController.text.trim(),
+        );
 
-      // 🔁 Redirection après 2 secondes
-      Future.delayed(const Duration(seconds: 3), () {
-        context.go('/login');
-      });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Lien de réinitialisation envoyé 📬"),
+            backgroundColor: AppColors.gold,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Redirection après quelques secondes
+        await Future.delayed(const Duration(seconds: 3));
+        if (context.mounted) context.go('/login');
+      } on FirebaseAuthException catch (e) {
+        String message = "Une erreur est survenue.";
+
+        if (e.code == 'user-not-found') {
+          message = "Aucun utilisateur trouvé avec cet e-mail.";
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

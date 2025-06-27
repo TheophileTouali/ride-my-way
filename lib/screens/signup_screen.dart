@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
 import '../themes/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/user_model.dart';
+
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -29,6 +31,8 @@ class _SignupScreenState extends State<SignupScreen> {
   final birthdateController = TextEditingController();
   final addressController = TextEditingController();
   final cityController = TextEditingController();
+  bool _isSubmitting = false;
+
 
   final ImagePicker _picker = ImagePicker();
   XFile? _selectedImage;
@@ -62,6 +66,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
 Future<void> _submit() async {
   if (!_formKey.currentState!.validate()) return;
+
   if (_identityCardImage == null) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -75,17 +80,109 @@ Future<void> _submit() async {
     return;
   }
 
+  if (_isSubmitting) return;
+  setState(() => _isSubmitting = true);
+
   try {
-    // Crée le compte avec Firebase Auth
+    print("🟡 Création de compte Firebase Auth...");
     final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
       email: emailController.text.trim(),
       password: passwordController.text.trim(),
     );
 
-    // Envoie l'email de vérification
-    await cred.user?.sendEmailVerification();
+    final uid = cred.user!.uid;
+    print("✅ Compte créé. UID : $uid");
 
-    // Affiche une boîte de dialogue de confirmation
+    // Envoi de l'e-mail de vérification
+    await cred.user?.sendEmailVerification();
+    print("📧 Email de vérification envoyé");
+
+      // Upload photo de profil
+    String? photoUrl;
+    if (_selectedImage != null) {
+      print("📤 Upload photo de profil...");
+
+      final ext = _selectedImage!.name.split('.').last; // 📦 récupère l’extension
+      final profileRef = FirebaseStorage.instance.ref().child("users_data/$uid/profile.$ext");
+
+      try {
+        if (kIsWeb) {
+          final bytes = await _selectedImage!.readAsBytes();
+          await profileRef.putData(bytes, SettableMetadata(contentType: 'image/$ext'));
+        } else {
+          await profileRef.putFile(
+            File(_selectedImage!.path),
+            SettableMetadata(contentType: 'image/$ext'),
+          );
+        }
+
+        photoUrl = await profileRef.getDownloadURL();
+        print("✅ Photo de profil uploadée : $photoUrl");
+      } catch (e) {
+        print("❌ Erreur upload photo profil : $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur photo de profil : $e"), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+
+
+
+
+  // Upload pièce d'identité
+      String? idCardUrl;
+      if (_identityCardImage != null) {
+        print("📤 Upload carte d'identité...");
+
+        final ext = _identityCardImage!.name.split('.').last;
+        final idCardRef = FirebaseStorage.instance.ref().child("users_data/$uid/id_card.$ext");
+
+        try {
+          if (kIsWeb) {
+            final bytes = await _identityCardImage!.readAsBytes();
+            await idCardRef.putData(bytes, SettableMetadata(contentType: 'image/$ext'));
+          } else {
+            await idCardRef.putFile(
+              File(_identityCardImage!.path),
+              SettableMetadata(contentType: 'image/$ext'),
+            );
+          }
+
+          idCardUrl = await idCardRef.getDownloadURL();
+          print("✅ Carte d'identité uploadée : $idCardUrl");
+        } catch (e) {
+          print("❌ Erreur upload carte identité : $e");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Erreur carte d'identité : $e"), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+
+
+
+    // Création du modèle utilisateur
+    final userModel = UserModel(
+      uid: uid,
+      firstName: firstNameController.text.trim(),
+      lastName: lastNameController.text.trim(),
+      email: emailController.text.trim(),
+      phone: phoneController.text.trim(),
+      address: addressController.text.trim(),
+      birthdate: Timestamp.fromDate(
+        DateFormat('dd/MM/yyyy').parse(birthdateController.text.trim()),
+      ),
+      photoUrl: photoUrl,
+      identityCardUrl: idCardUrl,
+      role: 'passenger', // ou 'driver' si écran conducteur
+      createdAt: Timestamp.now(),
+    );
+
+    // Enregistrement Firestore
+    print("📄 Enregistrement Firestore...");
+    await FirebaseFirestore.instance.collection('users').doc(uid).set(userModel.toMap());
+    print("✅ Document Firestore créé");
+
+    // Dialogue de vérification email
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -124,10 +221,10 @@ Future<void> _submit() async {
               );
               await FirebaseAuth.instance.currentUser?.reload();
               final refreshedUser = FirebaseAuth.instance.currentUser;
-              Navigator.of(context).pop(); // ferme le loader
+              Navigator.of(context).pop();
 
               if (refreshedUser != null && refreshedUser.emailVerified) {
-                Navigator.of(context).pop(); // ferme le dialog
+                Navigator.of(context).pop();
                 if (context.mounted) context.go('/login');
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -138,39 +235,18 @@ Future<void> _submit() async {
                 );
               }
             },
-            child: const Text(
-              "J'ai vérifié",
-              style: TextStyle(
-                color: AppColors.deepGold,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: const Text("J'ai vérifié", style: TextStyle(color: AppColors.deepGold, fontWeight: FontWeight.w600)),
           ),
           TextButton(
             onPressed: () async {
               try {
-                await FirebaseAuth.instance.currentUser?.reload();
-                final user = FirebaseAuth.instance.currentUser;
-
-                if (user != null && !user.emailVerified) {
-                  await user.sendEmailVerification();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Lien de vérification renvoyé."),
-                      backgroundColor: AppColors.deepGold,
-                      behavior: SnackBarBehavior.floating,
-                      margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Email déjà vérifié ou utilisateur introuvable."),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                }
+                await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Lien de vérification renvoyé."),
+                    backgroundColor: AppColors.deepGold,
+                  ),
+                );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -180,67 +256,21 @@ Future<void> _submit() async {
                 );
               }
             },
-            child: const Text(
-              "Renvoyer le lien",
-              style: TextStyle(
-                color: AppColors.deepGold,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: const Text("Renvoyer le lien", style: TextStyle(color: AppColors.deepGold, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
-
-    final uid = cred.user!.uid;
-
-    // Upload photo de profil si présente
-    String? photoUrl;
-    if (profileImageBytes != null) {
-      final ref = FirebaseStorage.instance.ref().child("profile_images/$uid.jpg");
-      if (kIsWeb) {
-        await ref.putData(profileImageBytes!);
-      } else {
-        await ref.putFile(profileImage!);
-      }
-      photoUrl = await ref.getDownloadURL();
-    }
-
-
-    String? idCardUrl;
-    if (_identityCardImage != null) {
-      final ref = FirebaseStorage.instance.ref().child("identity_cards/$uid.jpg");
-      if (kIsWeb) {
-        final bytes = await _identityCardImage!.readAsBytes();
-        await ref.putData(bytes);
-      } else {
-        await ref.putFile(File(_identityCardImage!.path));
-      }
-      idCardUrl = await ref.getDownloadURL();
-    }
-
-
-
-    // Enregistrement dans Firestore -> users/{uid}
-    await FirebaseFirestore.instance.collection('users').doc(uid).set({
-      'firstName': firstNameController.text.trim(),
-      'lastName': lastNameController.text.trim(),
-      'email': emailController.text.trim(),
-      'phone': phoneController.text.trim(),
-      'birthdate': birthdateController.text.trim(),
-      'address': addressController.text.trim(),
-      'photoUrl': photoUrl,
-      'identityCardUrl': idCardUrl,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    if (context.mounted) context.go('/login');
   } catch (e) {
+    print("❌ Erreur pendant l'inscription : $e");
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Erreur : $e")),
+      SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.redAccent),
     );
+  } finally {
+    if (mounted) setState(() => _isSubmitting = false);
   }
 }
+
 
 
   Future<void> _showVerificationDialog() async {
@@ -550,25 +580,26 @@ Widget build(BuildContext context) {
     }
 
 
-  Widget _buildPhotoPicker() => GestureDetector(
-    onTap: () => _showImagePickerOptions(target: 'profile'),
-    child: Row(
-      children: [
-        const Icon(Icons.add_a_photo_outlined, color: AppColors.gold),
-        const SizedBox(width: 8),
-        const Text("Ajouter une photo", style: TextStyle(color: AppColors.gold)),
-        if (_selectedImage != null) ...[
-          const Spacer(),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: kIsWeb
-              ? Image.network(_selectedImage!.path, width: 48, height: 48, fit: BoxFit.cover)
-              : Image.file(File(_selectedImage!.path), width: 48, height: 48, fit: BoxFit.cover),
-          )
-        ]
-      ],
-    ),
-  );
+    Widget _buildPhotoPicker() => GestureDetector(
+      onTap: () => _showImagePickerOptions(target: 'profile'),
+      child: Row(
+        children: [
+          const Icon(Icons.add_a_photo_outlined, color: AppColors.gold),
+          const SizedBox(width: 8),
+          const Text("Ajouter une photo", style: TextStyle(color: AppColors.gold)),
+          if (_selectedImage != null) ...[
+            const Spacer(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: kIsWeb
+                  ? Image.network(_selectedImage!.path, width: 48, height: 48, fit: BoxFit.cover)
+                  : Image.file(File(_selectedImage!.path), width: 48, height: 48, fit: BoxFit.cover),
+            ),
+          ]
+        ],
+      ),
+    );
+
 
   Widget _buildIdentityCardPicker() => GestureDetector(
       onTap: () => _showImagePickerOptions(target: 'id'),

@@ -11,6 +11,7 @@ import '../screens/signup_step3_screen.dart';
 import '../screens/forgot_password_screen.dart';
 import '../screens/reset_password_screen.dart';
 import '../screens/passenger_profile_screen.dart';
+import '../screens/driver_profile_screen.dart';
 import '../screens/edit_preferences_screen.dart';
 import '../screens/reservations_screen.dart';
 import '../screens/favorites_screen.dart';
@@ -78,6 +79,11 @@ class AppRoutes {
       GoRoute(
         path: '/profile',
         name: 'profile',
+        builder: (context, state) => const PassengerProfileScreen(),
+      ),
+        GoRoute(
+        path: '/driver-profile',
+        name: 'driver-profile',
         builder: (context, state) => const PassengerProfileScreen(),
       ),
       GoRoute(

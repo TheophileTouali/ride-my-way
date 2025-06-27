@@ -37,9 +37,10 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
   final licensePlate = TextEditingController();
   final driverLicenseNumber = TextEditingController();
 
-  File? driverLicense;
-  File? registration;
-  File? insurance;
+File? driverLicenseFile, registrationFile, insuranceFile;
+Uint8List? driverLicenseBytes, registrationBytes, insuranceBytes;
+bool driverLicenseSelected = false, registrationSelected = false, insuranceSelected = false;
+
 File? profileImage;
 Uint8List? profileImageBytes;
 
@@ -50,9 +51,6 @@ Uint8List? vehiclePhotoBytes;
 
   bool obscure1 = true;
   bool obscure2 = true;
-  bool driverLicenseSelected = false;
-  bool registrationSelected = false;
-  bool insuranceSelected = false;
 
 
   String? selectedVehicleType;
@@ -107,9 +105,14 @@ anneesMoto = List.generate(DateTime.now().year - 2004, (i) => (DateTime.now().ye
 
 
   // Ajout : on initialise à null pour éviter l’affichage "Ajouté" par défaut
-  driverLicense = null;
-  registration = null;
-  insurance = null;
+driverLicenseFile = null;
+driverLicenseBytes = null;
+
+registrationFile = null;
+registrationBytes = null;
+
+insuranceFile = null;
+insuranceBytes = null;
 }
 
 
@@ -316,212 +319,189 @@ Widget _uploadPhotoRowAligned(String label, Uint8List? imageBytes, VoidCallback 
 }
 
 
-
-
-
-  Future<void> _submit() async {
+Future<void> _submit() async {
   if (!_formKey.currentState!.validate()) return;
 
   try {
+    print("🔐 Création du compte Firebase Auth...");
     final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
       email: email.text.trim(),
       password: password.text.trim(),
     );
+    final uid = cred.user!.uid;
+    print("✅ Compte créé : $uid");
 
+    print("📧 Envoi de l'email de vérification...");
     await cred.user?.sendEmailVerification();
 
-      await showDialog(
-  context: context,
-  barrierDismissible: false,
-  builder: (_) => AlertDialog(
-    backgroundColor: const Color(0xFF0A0A0A),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-    titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-    actionsPadding: const EdgeInsets.only(bottom: 16, right: 12),
-    title: const Text(
-      "Vérification de l'email",
-      style: TextStyle(
-        fontSize: 22,
-        fontWeight: FontWeight.bold,
-        color: AppColors.deepGold,
-        fontFamily: 'PlayfairDisplay',
-      ),
-    ),
-    content: const Text(
-      "Un lien a été envoyé à votre adresse email. Cliquez sur ce lien avant de continuer.",
-      style: TextStyle(
-        fontSize: 16,
-        color: Colors.white70,
-        fontFamily: 'PlayfairDisplay',
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () async {
-          // Loader circulaire sombre
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.deepGold,
-              ),
-            ),
-          );
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0A0A0A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text("Vérification de l'email", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.deepGold)),
+        content: const Text("Un lien a été envoyé à votre adresse email. Cliquez sur ce lien avant de continuer.", style: TextStyle(fontSize: 16, color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              print("🔄 Vérification email...");
+              showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.deepGold)));
+              await FirebaseAuth.instance.currentUser?.reload();
+              final refreshedUser = FirebaseAuth.instance.currentUser;
+              Navigator.of(context).pop();
 
-          await FirebaseAuth.instance.currentUser?.reload();
-          final refreshedUser = FirebaseAuth.instance.currentUser;
-
-          Navigator.of(context).pop(); // ferme loader
-
-          if (refreshedUser != null && refreshedUser.emailVerified) {
-            Navigator.of(context).pop(); // ferme dialog principal
-            if (context.mounted) context.go('/login');
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-              content: const Text(
-                "Votre adresse email n’a pas encore été confirmée. Veuillez cliquer sur le lien reçu.",
-                style: TextStyle(fontFamily: 'PlayfairDisplay'),
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
-            );
-          }
-        },
-        child: const Text(
-          "J'ai vérifié",
-          style: TextStyle(
-            color: AppColors.deepGold,
-            fontWeight: FontWeight.w600,
+              if (refreshedUser != null && refreshedUser.emailVerified) {
+                print("✅ Email vérifié !");
+                Navigator.of(context).pop();
+              } else {
+                print("❌ Email non vérifié !");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Email non vérifié. Veuillez cliquer sur le lien."), backgroundColor: Colors.redAccent),
+                );
+              }
+            },
+            child: const Text("J'ai vérifié", style: TextStyle(color: AppColors.deepGold, fontWeight: FontWeight.w600)),
           ),
-        ),
-      ),
-      TextButton(
-        onPressed: () async {
-          try {
-            await FirebaseAuth.instance.currentUser?.reload(); // <-- important
-            final user = FirebaseAuth.instance.currentUser;
-
-            if (user != null && !user.emailVerified) {
-              await user.sendEmailVerification();
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Un nouveau lien de vérification vous a été envoyé avec succès.",
-                    style: TextStyle(fontFamily: 'PlayfairDisplay'),
-                  ),
-                  backgroundColor: AppColors.deepGold,
-                  behavior: SnackBarBehavior.floating,
-                  margin: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(16)),
-                  ),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Votre email est déjà vérifié ou utilisateur introuvable.",
-                    style: TextStyle(fontFamily: 'PlayfairDisplay'),
-                  ),
-                  backgroundColor: Colors.redAccent,
-                ),
-              );
-            }
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Erreur lors de l'envoi : $e"),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
-        },
-        child: const Text(
-          "Renvoyer le lien",
-          style: TextStyle(
-            color: AppColors.deepGold,
-            fontWeight: FontWeight.w600,
+          TextButton(
+            onPressed: () async {
+              try {
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null && !user.emailVerified) {
+                  await user.sendEmailVerification();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Nouveau lien envoyé."), backgroundColor: AppColors.deepGold),
+                  );
+                }
+              } catch (e) {
+                print("❌ Erreur renvoi email : $e");
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : $e")));
+              }
+            },
+            child: const Text("Renvoyer le lien", style: TextStyle(color: AppColors.deepGold, fontWeight: FontWeight.w600)),
           ),
-        ),
+        ],
       ),
+    );
 
-    ],
-  ),
-);
+    // Fonction d'upload universelle
+    Future<String> uploadDocWebOrMobile({
+      required String name,
+      File? file,
+      Uint8List? bytes,
+    }) async {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw Exception("Utilisateur non connecté.");
 
+      final ref = FirebaseStorage.instance.ref().child('drivers_data/$uid/$name');
 
-      final uid = cred.user!.uid;
-      String? photoUrl;
-      if (profileImageBytes != null) {
-  final ref = FirebaseStorage.instance.ref().child("profile_images/$uid.jpg");
-  if (kIsWeb) {
-    await ref.putData(profileImageBytes!);
-  } else {
-    await ref.putFile(profileImage!);
-  }
-  photoUrl = await ref.getDownloadURL();
-}
-
-
-      String? vehicleUrl;
-
-if (vehiclePhotoBytes != null) {
-  final ref = FirebaseStorage.instance.ref().child("vehicle_images/$uid.jpg");
-  if (kIsWeb) {
-    await ref.putData(vehiclePhotoBytes!);
-  } else {
-    await ref.putFile(vehiclePhoto!);
-  }
-  vehicleUrl = await ref.getDownloadURL();
-}
-
-
-      Future<String?> uploadDoc(File? doc, String name) async {
-        if (doc == null) return null;
-        final ext = doc.path.split('.').last.toLowerCase();
-        final ref = FirebaseStorage.instance.ref().child('documents/$uid/$name.$ext');
-        await ref.putFile(doc);
-        return await ref.getDownloadURL();
+      if (kIsWeb && bytes != null) {
+        await ref.putData(bytes);
+      } else if (!kIsWeb && file != null) {
+        await ref.putFile(file);
+      } else {
+        throw Exception("Aucun fichier fourni pour $name.");
       }
 
-      final driverLicenseUrl = await uploadDoc(driverLicense, 'driver_license');
-      final registrationUrl = await uploadDoc(registration, 'registration');
-      final insuranceUrl = await uploadDoc(insurance, 'insurance');
-
-      await FirebaseFirestore.instance.collection('drivers').doc(uid).set({
-        'firstName': firstName.text.trim(),
-        'lastName': lastName.text.trim(),
-        'email': email.text.trim(),
-        'vehiclePhotoUrl': vehicleUrl,
-        'phone': phone.text.trim(),
-        'birthdate': birthdate.text.trim(),
-        'address': addressController.text.trim(),
-        'vehicleType': selectedVehicleType,
-        'carBrand': carBrand.text.trim(),
-        'licensePlate': licensePlate.text.trim(),
-        'vehicleYear': selectedVehicleYear,
-        'driverLicenseNumber': driverLicenseNumber.text.trim(),
-        'photoUrl': photoUrl,
-        'documents': {
-          'driverLicense': driverLicenseUrl,
-          'registration': registrationUrl,
-          'insurance': insuranceUrl,
-        },
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      if (context.mounted) context.go('/login');
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur : $e")),
-      );
+      final url = await ref.getDownloadURL();
+      print("✅ Upload réussi pour $name : $url");
+      return url;
     }
+
+    // Vérification présence des documents
+    if ((kIsWeb && (driverLicenseBytes == null || registrationBytes == null || insuranceBytes == null)) ||
+        (!kIsWeb && (driverLicenseFile == null || registrationFile == null || insuranceFile == null))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Merci de sélectionner tous les documents avant de continuer."),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    // Upload photo de profil
+    String? photoUrl;
+    if (profileImageBytes != null) {
+      final ref = FirebaseStorage.instance.ref().child("drivers_data/$uid/profile.jpg");
+      if (kIsWeb) {
+        await ref.putData(profileImageBytes!);
+      } else {
+        await ref.putFile(profileImage!);
+      }
+      photoUrl = await ref.getDownloadURL();
+    }
+
+    // Upload photo véhicule
+    String? vehicleUrl;
+    if (vehiclePhotoBytes != null) {
+      final ref = FirebaseStorage.instance.ref().child("drivers_data/$uid/vehicle.jpg");
+      if (kIsWeb) {
+        await ref.putData(vehiclePhotoBytes!);
+      } else {
+        await ref.putFile(vehiclePhoto!);
+      }
+      vehicleUrl = await ref.getDownloadURL();
+    }
+
+    // Upload des documents
+    print("📤 Upload des documents...");
+    final driverLicenseUrl = await uploadDocWebOrMobile(
+      name: "driver_license.pdf",
+      file: driverLicenseFile,
+      bytes: driverLicenseBytes,
+    );
+    final registrationUrl = await uploadDocWebOrMobile(
+      name: "registration.pdf",
+      file: registrationFile,
+      bytes: registrationBytes,
+    );
+    final insuranceUrl = await uploadDocWebOrMobile(
+      name: "insurance.pdf",
+      file: insuranceFile,
+      bytes: insuranceBytes,
+    );
+    print("✅ Documents uploadés");
+
+    // Enregistrement Firestore
+    print("📝 Enregistrement dans Firestore...");
+    await FirebaseFirestore.instance.collection('drivers').doc(uid).set({
+      'firstName': firstName.text.trim(),
+      'lastName': lastName.text.trim(),
+      'email': email.text.trim(),
+      'phone': phone.text.trim(),
+      'birthdate': birthdate.text.trim(),
+      'address': addressController.text.trim(),
+      'vehicleType': selectedVehicleType,
+      'carBrand': carBrand.text.trim(),
+      'licensePlate': licensePlate.text.trim(),
+      'vehicleYear': selectedVehicleYear,
+      'driverLicenseNumber': driverLicenseNumber.text.trim(),
+      'photoUrl': photoUrl,
+      'vehiclePhotoUrl': vehicleUrl,
+      'documents': {
+        'driverLicense': driverLicenseUrl,
+        'registration': registrationUrl,
+        'insurance': insuranceUrl,
+      },
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    print("✅ Données Firestore enregistrées avec succès !");
+
+    if (context.mounted) context.go('/login');
+  } catch (e) {
+    print("❌ Erreur générale : $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.redAccent),
+    );
   }
+}
+
+
+
+
+
+
 
 
 Future<void> _pickImage(Function(File, Uint8List) onPicked) async {
@@ -655,6 +635,24 @@ Widget build(BuildContext context) {
                     _buildPassword(password, "Mot de passe", obscure1, () => setState(() => obscure1 = !obscure1)),
                     const SizedBox(height: 16),
                     _buildPassword(confirmPassword, "Confirmer le mot de passe", obscure2, () => setState(() => obscure2 = !obscure2)),
+                    const SizedBox(height: 24),
+                    GooglePlacesAutoCompleteTextFormField(
+                      textEditingController: addressController,
+                      googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                      debounceTime: 800,
+                      countries: ["fr"],
+                      fetchCoordinates: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration("Adresse"),
+                      onSuggestionClicked: (prediction) {
+                        addressController.text = prediction.description!;
+                      },
+                      onChanged: (value) => addressController.text = value, // ← ajoute cette ligne !
+                      onPlaceDetailsWithCoordinatesReceived: (_) {},
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? "Merci d’indiquer une adresse."
+                          : null,
+                    ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: selectedVehicleType,
@@ -765,44 +763,90 @@ Widget build(BuildContext context) {
 
                     const Divider(height: 40, color: AppColors.deepGold),
 
-                    _uploadTileAligned("Permis de conduire", driverLicense, () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                      );
-                      if (result != null) {
-                        if (!kIsWeb && result.files.single.path != null) {
-                          setState(() => driverLicense = File(result.files.single.path!));
-                        }
-                        setState(() => driverLicenseSelected = true);
-                      }
-                    }, showCheck: driverLicenseSelected),
+                    _uploadTileAligned("Permis de conduire", driverLicenseFile, () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                          withData: true,
+                        );
 
-                    _uploadTileAligned("Carte grise", registration, () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                      );
-                      if (result != null) {
-                        if (!kIsWeb && result.files.single.path != null) {
-                          setState(() => registration = File(result.files.single.path!));
+                        if (result != null) {
+                          if (kIsWeb && result.files.single.bytes != null) {
+                            setState(() {
+                              driverLicenseBytes = result.files.single.bytes!;
+                              driverLicenseFile = null;
+                              driverLicenseSelected = true;
+                            });
+                          } else if (result.files.single.path != null) {
+                            setState(() {
+                              driverLicenseFile = File(result.files.single.path!);
+                              driverLicenseBytes = null;
+                              driverLicenseSelected = true;
+                            });
+                          }
                         }
-                        setState(() => registrationSelected = true);
-                      }
-                    }, showCheck: registrationSelected),
+                      }, showCheck: driverLicenseSelected),
 
-                    _uploadTileAligned("Assurance", insurance, () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                      );
-                      if (result != null) {
-                        if (!kIsWeb && result.files.single.path != null) {
-                          setState(() => insurance = File(result.files.single.path!));
+
+
+
+
+
+
+                    _uploadTileAligned("Assurance", insuranceFile, () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                            withData: true,
+                          );
+
+                          if (result != null) {
+                            if (kIsWeb && result.files.single.bytes != null) {
+                              setState(() {
+                                insuranceBytes = result.files.single.bytes!;
+                                insuranceFile = null;
+                                insuranceSelected = true;
+                              });
+                            } else if (result.files.single.path != null) {
+                              setState(() {
+                                insuranceFile = File(result.files.single.path!);
+                                insuranceBytes = null;
+                                insuranceSelected = true;
+                              });
+                            }
+                          }
+                        }, showCheck: insuranceSelected),
+
+
+
+
+
+                  _uploadTileAligned("Carte grise", registrationFile, () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                          withData: true,
+                        );
+
+                        if (result != null) {
+                          if (kIsWeb && result.files.single.bytes != null) {
+                            setState(() {
+                              registrationBytes = result.files.single.bytes!;
+                              registrationFile = null;
+                              registrationSelected = true;
+                            });
+                          } else if (result.files.single.path != null) {
+                            setState(() {
+                              registrationFile = File(result.files.single.path!);
+                              registrationBytes = null;
+                              registrationSelected = true;
+                            });
+                          }
                         }
-                        setState(() => insuranceSelected = true);
-                      }
-                    }, showCheck: insuranceSelected),
+                      }, showCheck: registrationSelected),
+
+
+
 
                     _uploadPhotoRowAligned("Photo de profil", profileImageBytes, () {
                       _pickImage((f, bytes) {

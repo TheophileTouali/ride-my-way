@@ -22,15 +22,42 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
+  void _showPremiumError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.grey.shade900,
+        behavior: SnackBarBehavior.floating,
+        elevation: 10,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        duration: const Duration(seconds: 4),
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.redAccent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleLogin() async {
     FocusScope.of(context).unfocus();
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Veuillez entrer l'email et le mot de passe.")),
-      );
+      _showPremiumError("Merci de renseigner votre email et votre mot de passe.");
       return;
     }
 
@@ -48,58 +75,47 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
       if (refreshedUser != null) {
         if (!refreshedUser.emailVerified) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Veuillez vérifier votre adresse e-mail.")),
-          );
+          _showPremiumError("Veuillez confirmer votre adresse e-mail avant de vous connecter.");
           return;
         }
 
         final doc = await FirebaseFirestore.instance
-        .collection('drivers')
-        .doc(refreshedUser.uid)
-        .get();
+            .collection('drivers')
+            .doc(refreshedUser.uid)
+            .get();
 
-    if (!doc.exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Aucun compte conducteur trouvé.")),
-      );
-      return;
-    }
+        if (!doc.exists) {
+          _showPremiumError("Aucun profil conducteur associé à ce compte.");
+          return;
+        }
 
-    final data = doc.data()!;
-    final role = data['role'];
+        final data = doc.data()!;
+        final role = data['role'];
 
-    if (role != 'driver') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Ce compte n'est pas autorisé à se connecter ici.")),
-      );
-      await FirebaseAuth.instance.signOut(); // Par sécurité
-      return;
-    }
+        if (role != 'driver') {
+          _showPremiumError("Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
+          await FirebaseAuth.instance.signOut();
+          return;
+        }
 
-    final driver = DriverUser.fromMap(data, uid: doc.id);
-    Provider.of<DriverProvider>(context, listen: false).setUser(driver);
-    context.go('/driver-home');
-
-
+        final driver = DriverUser.fromMap(data, uid: doc.id);
+        Provider.of<DriverProvider>(context, listen: false).setUser(driver);
+        context.go('/driver-home');
       }
     } on FirebaseAuthException catch (e) {
       final message = switch (e.code) {
-        'user-not-found' => "Aucun compte trouvé pour cet e-mail.",
-        'wrong-password' => "Mot de passe incorrect.",
+        'user-not-found' => "Aucun compte trouvé avec cet e-mail.",
+        'wrong-password' => "Le mot de passe saisi est incorrect.",
         'invalid-email' => "Adresse e-mail invalide.",
-        'too-many-requests' => "Trop de tentatives. Réessayez plus tard.",
-        _ => "Erreur : ${e.message ?? 'inconnue.'}"
+        'too-many-requests' => "Trop de tentatives : veuillez patienter un instant.",
+        'invalid-credential' => "Les identifiants fournis sont invalides ou ont expiré.",
+        _ => "Une erreur inconnue est survenue. Veuillez réessayer.",
       };
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      _showPremiumError(message);
     } catch (e, stack) {
       debugPrint("🔥 Erreur inattendue : $e");
       debugPrintStack(stackTrace: stack);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur inconnue : ${e.toString()}")),
-      );
+      _showPremiumError("Une erreur inattendue s’est produite. Veuillez réessayer.");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

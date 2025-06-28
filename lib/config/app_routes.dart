@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
+import '../screens/passenger_preferences_editor_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/home_screen.dart';
@@ -39,6 +39,13 @@ class AppRoutes {
             path: '/login-driver',
             builder: (context, state) => const DriverLoginScreen(),
           ),
+
+        GoRoute(
+          path: '/preferences-edit',
+          builder: (context, state) => const PassengerPreferencesEditorScreen(),
+        ),
+
+
 
       GoRoute(
         path: '/home',

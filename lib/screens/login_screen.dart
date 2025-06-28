@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
 import 'package:flutter/gestures.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final passwordController = TextEditingController();
   bool _obscurePassword = true;
 
+
   Future<void> _handleLogin() async {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
@@ -28,44 +31,86 @@ class _LoginScreenState extends State<LoginScreen> {
         password: password,
       );
 
-      // 🔁 Recharge les infos utilisateur pour être à jour
       await userCredential.user?.reload();
       final refreshedUser = FirebaseAuth.instance.currentUser;
 
       if (refreshedUser != null) {
         if (!refreshedUser.emailVerified) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Veuillez vérifier votre adresse e-mail.")),
+            const SnackBar(
+              content: Text("📧 Veuillez vérifier votre adresse e-mail avant de continuer."),
+              backgroundColor: Colors.red,
+            ),
           );
           return;
         }
 
-        // ✅ Connexion réussie
-        Provider.of<UserProvider>(context, listen: false)
-            .login(refreshedUser.displayName ?? '', email);
-        context.go('/home');
+        // 🔍 Récupération du document Firestore
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(refreshedUser.uid)
+            .get();
 
+        if (!doc.exists || doc.data()?['role'] != 'passenger') {
+          await FirebaseAuth.instance.signOut();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("🚫 Ce compte n'est pas autorisé à se connecter ici."),
+              backgroundColor: Colors.red.shade900,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+          return;
+        }
+
+        // ✅ Connexion côté Provider
+        final firstName = doc.data()?['firstName'] ?? 'Nom inconnu';
+        final avatarUrl = doc.data()?['photoUrl'] as String?;
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+        userProvider.login(
+          firstName,
+          email,
+          avatarUrl: avatarUrl,
+        );
+
+        await userProvider.loadUserData();
+
+        // ✅ Redirection vers la home passager
+        context.go('/home');
       }
     } on FirebaseAuthException catch (e) {
       final message = switch (e.code) {
-        'user-not-found' => "Aucun compte trouvé pour cet e-mail.",
-        'wrong-password' => "Mot de passe incorrect.",
-        'invalid-email' => "Adresse e-mail invalide.",
-        'too-many-requests' => "Trop de tentatives. Réessayez plus tard.",
-        _ => "Erreur : ${e.message ?? 'inconnue.'}"
+        'user-not-found' => "🚫 Aucun compte ne correspond à cet e-mail. Vérifiez votre saisie.",
+        'wrong-password' => "🔐 Le mot de passe est incorrect. Veuillez réessayer.",
+        'invalid-email' => "✉️ L'adresse e-mail saisie est invalide.",
+        'too-many-requests' => "⏳ Trop de tentatives. Patientez un moment avant de réessayer.",
+        'user-disabled' => "❌ Ce compte a été désactivé. Contactez le support.",
+        'invalid-credential' => "⚠️ Identifiants invalides ou expirés. Réessayez.",
+        'network-request-failed' => "🌐 Problème de connexion. Vérifiez votre réseau.",
+        _ => "❗ Une erreur inconnue est survenue. Réessayez plus tard.",
       };
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    } catch (e, stack) {
-      // 🔍 Affiche l'erreur complète dans la console
-      debugPrint("🔥 Erreur inattendue lors de la connexion : $e");
-      debugPrintStack(stackTrace: stack);
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur inconnue : ${e.toString()}")),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red.shade900,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } catch (e, stack) {
+      debugPrint("🔥 Erreur inattendue : $e");
+      debugPrintStack(stackTrace: stack);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❗ Une erreur est survenue : ${e.toString()}")),
       );
     }
   }
+
+
+
 
   @override
   Widget build(BuildContext context) {

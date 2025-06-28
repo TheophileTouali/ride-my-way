@@ -1,4 +1,6 @@
-class DriverUser {
+import 'package:equatable/equatable.dart';
+
+class DriverUser extends Equatable {
   final String uid;
   final String firstName;
   final String lastName;
@@ -16,7 +18,7 @@ class DriverUser {
   final String? vehiclePhotoUrl;
   final Map<String, dynamic>? documents;
 
-  DriverUser({
+  const DriverUser({
     required this.uid,
     required this.firstName,
     required this.lastName,
@@ -62,4 +64,44 @@ class DriverUser {
       documents: map['documents'] != null ? Map<String, dynamic>.from(map['documents']) : null,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phone': phone,
+      'photoUrl': photoUrl,
+      'address': address,
+      'birthdate': birthdate,
+      'vehicleType': vehicleType,
+      'carBrand': vehicleBrand,
+      'vehicleModel': vehicleModel,
+      'vehicleYear': vehicleYear,
+      'licensePlate': licensePlate,
+      'driverLicenseNumber': driverLicenseNumber,
+      'vehiclePhotoUrl': vehiclePhotoUrl,
+      'documents': documents,
+    };
+  }
+
+  @override
+  List<Object?> get props => [
+        uid,
+        firstName,
+        lastName,
+        email,
+        phone,
+        photoUrl,
+        address,
+        birthdate,
+        vehicleType,
+        vehicleBrand,
+        vehicleModel,
+        vehicleYear,
+        licensePlate,
+        driverLicenseNumber,
+        vehiclePhotoUrl,
+        documents,
+      ];
 }

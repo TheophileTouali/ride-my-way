@@ -4,8 +4,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
+import 'config/app_routes.dart';
 import 'providers/user_provider.dart';
-import 'config/app_routes.dart'; // ✅ important
+import 'providers/driver_provider.dart'; // ✅ conducteur
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,12 +15,18 @@ void main() async {
   );
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => UserProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(
+          create: (_) => DriverProvider()..initializeUser(), // ✅ Chargement automatique
+        ),
+      ],
       child: const RideMyWayApp(),
     ),
   );
 }
+
 
 class RideMyWayApp extends StatelessWidget {
   const RideMyWayApp({super.key});
@@ -33,7 +40,7 @@ class RideMyWayApp extends StatelessWidget {
         fontFamily: 'PlayfairDisplay',
         scaffoldBackgroundColor: Colors.black,
       ),
-      routerConfig: AppRoutes.router, // ✅ utilise le router central
+      routerConfig: AppRoutes.router, // ✅ Utilise le routeur central GoRouter
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

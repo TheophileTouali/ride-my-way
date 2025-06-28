@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:equatable/equatable.dart';
 
-class UserModel {
+class UserModel extends Equatable {
   final String uid;
   final String firstName;
   final String lastName;
@@ -13,7 +14,7 @@ class UserModel {
   final String role;
   final Timestamp createdAt;
 
-  UserModel({
+  const UserModel({
     required this.uid,
     required this.firstName,
     required this.lastName,
@@ -44,16 +45,31 @@ class UserModel {
     final data = doc.data() as Map<String, dynamic>;
     return UserModel(
       uid: doc.id,
-      firstName: data['firstName'],
-      lastName: data['lastName'],
-      email: data['email'],
-      phone: data['phone'],
-      address: data['address'],
-      birthdate: data['birthdate'],
+      firstName: data['firstName'] ?? '',
+      lastName: data['lastName'] ?? '',
+      email: data['email'] ?? '',
+      phone: data['phone'] ?? '',
+      address: data['address'] ?? '',
+      birthdate: data['birthdate'] ?? Timestamp.now(),
       photoUrl: data['photoUrl'],
       identityCardUrl: data['identityCardUrl'],
-      role: data['role'],
-      createdAt: data['createdAt'],
+      role: data['role'] ?? 'passenger',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
     );
   }
+
+  @override
+  List<Object?> get props => [
+        uid,
+        firstName,
+        lastName,
+        email,
+        phone,
+        address,
+        birthdate,
+        photoUrl,
+        identityCardUrl,
+        role,
+        createdAt,
+      ];
 }

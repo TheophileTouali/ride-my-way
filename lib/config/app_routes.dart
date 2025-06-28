@@ -18,6 +18,9 @@ import '../screens/favorites_screen.dart';
 import '../screens/results_screen.dart';
 import '../screens/signup_driver_screen.dart'; // ✅ 
 import '../screens/signup_screen.dart'; // ✅ 
+import '../screens/driver_home_screen.dart'; // ✅
+import '../screens/login_driver_screen.dart'; // 👈 Manquant pour le moment
+
 
 
 class AppRoutes {
@@ -32,6 +35,11 @@ class AppRoutes {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
+           GoRoute(
+            path: '/login-driver',
+            builder: (context, state) => const DriverLoginScreen(),
+          ),
+
       GoRoute(
         path: '/home',
         name: 'home',
@@ -81,11 +89,18 @@ class AppRoutes {
         name: 'profile',
         builder: (context, state) => const PassengerProfileScreen(),
       ),
-        GoRoute(
-        path: '/driver-profile',
-        name: 'driver-profile',
-        builder: (context, state) => const PassengerProfileScreen(),
+      GoRoute(
+      path: '/driver-profile',
+      name: 'driver-profile',
+      builder: (context, state) => const DriverProfileScreen(), // ✅ Correct
+    ),
+      GoRoute(
+        path: '/driver-home',
+        name: 'driver-home',
+        builder: (context, state) => const DriverHomeScreen(),
       ),
+
+
       GoRoute(
         path: '/preferences',
         name: 'preferences',

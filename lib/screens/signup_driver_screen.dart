@@ -484,6 +484,7 @@ Future<void> _submit() async {
         'registration': registrationUrl,
         'insurance': insuranceUrl,
       },
+      'role': 'driver',
       'createdAt': FieldValue.serverTimestamp(),
     });
     print("✅ Données Firestore enregistrées avec succès !");

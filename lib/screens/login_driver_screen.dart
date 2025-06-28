@@ -20,12 +20,23 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   Future<void> _handleLogin() async {
+    FocusScope.of(context).unfocus();
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Veuillez entrer l'email et le mot de passe.")),
+      );
+      return;
+    }
+
     try {
+      setState(() => _isLoading = true);
+
       final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -43,19 +54,34 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           return;
         }
 
-        final doc = await FirebaseFirestore.instance.collection('drivers').doc(refreshedUser.uid).get();
+        final doc = await FirebaseFirestore.instance
+        .collection('drivers')
+        .doc(refreshedUser.uid)
+        .get();
 
-        if (!doc.exists) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Aucun compte conducteur trouvé.")),
-          );
-          return;
-        }
+    if (!doc.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Aucun compte conducteur trouvé.")),
+      );
+      return;
+    }
 
-        final data = doc.data()!;
-        final driver = DriverUser.fromMap(data, uid: doc.id);
-        Provider.of<DriverProvider>(context, listen: false).setUser(driver);
-        context.go('/driver-profile');
+    final data = doc.data()!;
+    final role = data['role'];
+
+    if (role != 'driver') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Ce compte n'est pas autorisé à se connecter ici.")),
+      );
+      await FirebaseAuth.instance.signOut(); // Par sécurité
+      return;
+    }
+
+    final driver = DriverUser.fromMap(data, uid: doc.id);
+    Provider.of<DriverProvider>(context, listen: false).setUser(driver);
+    context.go('/driver-home');
+
+
       }
     } on FirebaseAuthException catch (e) {
       final message = switch (e.code) {
@@ -74,6 +100,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Erreur inconnue : ${e.toString()}")),
       );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -181,8 +209,10 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    onPressed: _handleLogin,
-                    child: const Text('Connexion'),
+                    onPressed: _isLoading ? null : _handleLogin,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: AppColors.black)
+                        : const Text('Connexion'),
                   ),
 
                   const SizedBox(height: 32),

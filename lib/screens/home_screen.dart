@@ -182,18 +182,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 28),
                   GooglePlacesAutoCompleteTextFormField(
-                    textEditingController: _fromController,
-                    googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
-                    debounceTime: 800,
-                    countries: ["fr"],
-                    fetchCoordinates: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDecoration(_hintFrom, Icons.place_rounded),
-                    onSuggestionClicked: (prediction) {
-                      _fromController.text = prediction.description!;
-                      FocusScope.of(context).unfocus();
-                    },
+                  textEditingController: _fromController,
+                  googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                  debounceTime: 800,
+                  countries: ["fr"],
+                  fetchCoordinates: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration(_hintFrom, Icons.place_rounded),
+                  onSuggestionClicked: (prediction) {
+                    _fromController.text = prediction.description!;
+                    FocusScope.of(context).unfocus();
+                  },
+                  overlayContainerBuilder: (child) => Material(
+                    elevation: 2.0,
+                    color: Colors.grey[900], // fond noir
+                    borderRadius: BorderRadius.circular(12),
+                    child: child,
                   ),
+                ),
                   const SizedBox(height: 16),
                   GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _toController,
@@ -212,7 +218,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       final to = _toController.text.trim();
                       if (to.isNotEmpty) context.go('/results?from=$from&to=$to');
                     },
+                    overlayContainerBuilder: (child) => Material(
+                      elevation: 2.0,
+                      color: Colors.grey[900],
+                      borderRadius: BorderRadius.circular(12),
+                      child: child,
+                    ),
                   ),
+
                   const SizedBox(height: 16),
                   InkWell(
                     onTap: () {

@@ -472,10 +472,21 @@ Widget build(BuildContext context) {
                           decoration: _inputDecoration("Adresse"),
                           onSuggestionClicked: (prediction) {
                             addressController.text = prediction.description!;
+                            FocusScope.of(context).unfocus(); // Pour fermer le clavier
                           },
+                          onChanged: (value) => addressController.text = value,
                           onPlaceDetailsWithCoordinatesReceived: (_) {},
-                          validator: (v) => (v == null || v.trim().isEmpty) ? "Merci d’indiquer une adresse." : null,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? "Merci d’indiquer une adresse."
+                              : null,
+                          overlayContainerBuilder: (child) => Material(
+                            elevation: 2.0,
+                            color: Colors.grey[900],
+                            borderRadius: BorderRadius.circular(12),
+                            child: child,
+                          ),
                         ),
+
                         const SizedBox(height: 16),
                         GestureDetector(
                         onTap: _selectBirthDate,

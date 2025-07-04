@@ -637,6 +637,7 @@ Widget build(BuildContext context) {
                     const SizedBox(height: 16),
                     _buildPassword(confirmPassword, "Confirmer le mot de passe", obscure2, () => setState(() => obscure2 = !obscure2)),
                     const SizedBox(height: 24),
+
                     GooglePlacesAutoCompleteTextFormField(
                       textEditingController: addressController,
                       googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
@@ -647,13 +648,21 @@ Widget build(BuildContext context) {
                       decoration: _inputDecoration("Adresse"),
                       onSuggestionClicked: (prediction) {
                         addressController.text = prediction.description!;
+                        FocusScope.of(context).unfocus(); // Pour fermer le clavier
                       },
-                      onChanged: (value) => addressController.text = value, // ← ajoute cette ligne !
+                      onChanged: (value) => addressController.text = value,
                       onPlaceDetailsWithCoordinatesReceived: (_) {},
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? "Merci d’indiquer une adresse."
                           : null,
+                      overlayContainerBuilder: (child) => Material(
+                        elevation: 2.0,
+                        color: Colors.grey[900],
+                        borderRadius: BorderRadius.circular(12),
+                        child: child,
+                      ),
                     ),
+
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: selectedVehicleType,

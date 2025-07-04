@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
@@ -17,15 +19,69 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(viewportFraction: 0.9);
-  int _currentPage = 0;
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _toController = TextEditingController();
+  int _currentPage = 0;
   String _hintFrom = "Détection en cours...";
+  List<Map<String, dynamic>> _trips = [];
 
   @override
   void initState() {
     super.initState();
     _detectCurrentLocation();
+    _loadTrips();
+  }
+
+  Future<void> _loadTrips() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('reservations')
+        .where('userId', isEqualTo: user.uid)
+        .get();
+
+    final now = DateTime.now();
+
+    final upcoming = snapshot.docs
+        .where((doc) => (doc['timestamp'] as Timestamp).toDate().isAfter(now))
+        .toList()
+      ..sort((a, b) => (a['timestamp'] as Timestamp).compareTo(b['timestamp'] as Timestamp));
+
+    final past = snapshot.docs
+        .where((doc) => (doc['timestamp'] as Timestamp).toDate().isBefore(now))
+        .toList()
+      ..sort((a, b) => (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
+
+    setState(() {
+      _trips = [
+        if (upcoming.isNotEmpty)
+          {
+            "title": "Prochain trajet",
+            "from": upcoming.first['from'],
+            "to": upcoming.first['to'],
+            "date": _formatDate(upcoming.first['timestamp']),
+          },
+        if (past.isNotEmpty)
+          {
+            "title": "Dernier trajet",
+            "from": past.first['from'],
+            "to": past.first['to'],
+            "date": _formatDate(past.first['timestamp']),
+          },
+        {
+          "title": "Voir tous mes trajets",
+          "from": "",
+          "to": "",
+          "date": "",
+        },
+      ];
+    });
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return "${date.day}/${date.month} à ${date.hour}h${date.minute.toString().padLeft(2, '0')}";
   }
 
   Future<void> _detectCurrentLocation() async {
@@ -48,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _fromController.text = city;
         _hintFrom = city;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() {
         _hintFrom = "Saisir votre point de départ";
       });
@@ -80,69 +136,52 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Accueil", style: TextStyle(color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
-                    IconButton(icon: const Icon(Icons.person_outline, color: AppColors.gold), onPressed: () => context.go('/profile')),
-                  ],
-                ),
-                const SizedBox(height: 8),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Accueil", style: TextStyle(color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
+                      IconButton(
+                        icon: const Icon(Icons.person_outline, color: AppColors.gold),
+                        onPressed: () => context.go('/profile'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   FadeInRight(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        RichText(
-                          text: TextSpan(
+                        ShaderMask(
+                          shaderCallback: (Rect bounds) {
+                            return const LinearGradient(
+                              colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                            ).createShader(bounds);
+                          },
+                          child: Text(
+                            "$greeting $userName 👋",
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
                               fontFamily: 'PlayfairDisplay',
-                              color: AppColors.gold,
+                              color: Colors.white,
                             ),
-                            children: [
-                              TextSpan(text: "$greeting "),
-                              TextSpan(
-                                text: userName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const TextSpan(text: " 👋"),
-                            ],
                           ),
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          "Préparez-vous à vivre un trajet d’exception. Luxe, confort et sérénité vous attendent. ✨",
-                          style: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                            fontFamily: 'PlayfairDisplay',
-                          ),
+                          "Préparez-vous à vivre un trajet d’exception. ✨",
+                          style: TextStyle(color: Colors.white60, fontSize: 14, fontStyle: FontStyle.italic, fontFamily: 'PlayfairDisplay'),
                         ),
                       ],
                     ),
                   ),
-
-
-
-
-
-
-
-
-
-                const SizedBox(height: 28),
-
-                FadeInDown(
-                  duration: const Duration(milliseconds: 500),
-                  child: GooglePlacesAutoCompleteTextFormField(
+                  const SizedBox(height: 28),
+                  GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _fromController,
                     googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
                     debounceTime: 800,
@@ -154,15 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       _fromController.text = prediction.description!;
                       FocusScope.of(context).unfocus();
                     },
-                    onPlaceDetailsWithCoordinatesReceived: (place) {
-                      print("📍 Départ : ${place.description} (${place.lat}, ${place.lng})");
-                    },
                   ),
-                ),
-                const SizedBox(height: 16),
-                FadeInDown(
-                  duration: const Duration(milliseconds: 600),
-                  child: GooglePlacesAutoCompleteTextFormField(
+                  const SizedBox(height: 16),
+                  GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _toController,
                     googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
                     debounceTime: 800,
@@ -174,56 +207,111 @@ class _HomeScreenState extends State<HomeScreen> {
                       _toController.text = prediction.description!;
                       FocusScope.of(context).unfocus();
                     },
-                    onPlaceDetailsWithCoordinatesReceived: (place) {
-                      print("📍 Destination : ${place.description} (${place.lat}, ${place.lng})");
-                    },
                     onEditingComplete: () {
                       final from = _fromController.text.trim();
                       final to = _toController.text.trim();
                       if (to.isNotEmpty) context.go('/results?from=$from&to=$to');
                     },
                   ),
-                ),
-                const SizedBox(height: 24),
-                FadeInLeft(child: _homeButton(context, Icons.event_note, "Mes réservations", '/reservations')),
-                FadeInLeft(delay: const Duration(milliseconds: 200), child: _homeButton(context, Icons.favorite_border, "Mes favoris", '/favorites')),
-                const SizedBox(height: 28),
-                FadeInUp(
-                  child: SizedBox(
-                    height: 160,
-                    child: PageView(
-                      controller: _pageController,
-                      onPageChanged: (index) => setState(() => _currentPage = index),
-                      children: const [
-                        _TripCard(title: "Prochain trajet", from: "Boissy st leger", to: "Paris", date: "24 mai à 19h30"),
-                        _TripCard(title: "Dernier trajet", from: "Paris", to: "Créteil", date: "20 mai à 18h00"),
-                        _TripCard(title: "Voir tous mes trajets", from: "", to: "", date: ""),
+                  const SizedBox(height: 16),
+                  InkWell(
+                    onTap: () {
+                      final from = _fromController.text.trim();
+                      final to = _toController.text.trim();
+                      if (from.isNotEmpty && to.isNotEmpty) {
+                        context.go('/results?from=$from&to=$to');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Merci de renseigner le départ et la destination"),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          "Trouver un véhicule",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            fontFamily: 'PlayfairDisplay',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _homeButton(context, Icons.event_note, "Mes réservations", '/reservations'),
+                  _homeButton(context, Icons.favorite_border, "Mes favoris", '/favorites'),
+                  const SizedBox(height: 28),
+                  if (_trips.isEmpty)
+                    const Center(child: CircularProgressIndicator(color: AppColors.gold))
+                  else
+                    Column(
+                      children: [
+                        SizedBox(
+                          height: 160,
+                          child: PageView.builder(
+                            controller: _pageController,
+                            onPageChanged: (index) => setState(() => _currentPage = index),
+                            itemCount: _trips.length,
+                            itemBuilder: (context, index) {
+                              final trip = _trips[index];
+                              return _TripCard(
+                                title: trip['title'],
+                                from: trip['from'],
+                                to: trip['to'],
+                                date: trip['date'],
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(_trips.length, (index) => _buildDot(index == _currentPage)),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(3, (index) => _buildDot(index == _currentPage)),
-                ),
-                const SizedBox(height: 28),
-                Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Provider.of<UserProvider>(context, listen: false).logout();
-                      context.go('/login');
-                    },
-                    icon: const Icon(Icons.logout),
-                    label: const Text("Se déconnecter"),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  const SizedBox(height: 28),
+                  Center(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Provider.of<UserProvider>(context, listen: false).logout();
+                        context.go('/login');
+                      },
+                      icon: const Icon(Icons.logout),
+                      label: const Text("Se déconnecter"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: const BorderSide(color: Colors.redAccent),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -253,21 +341,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _homeButton(BuildContext context, IconData icon, String label, String route) {
     return InkWell(
       onTap: () => context.go(route),
-      borderRadius: BorderRadius.circular(12),
-      splashColor: AppColors.gold.withOpacity(0.2),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12.0),
+        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.grey[900],
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.gold.withOpacity(0.15),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: AppColors.gold.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(
           children: [
@@ -301,16 +381,11 @@ class _TripCard extends StatelessWidget {
   final String to;
   final String date;
 
-  const _TripCard({
-    required this.title,
-    required this.from,
-    required this.to,
-    required this.date,
-  });
+  const _TripCard({required this.title, required this.from, required this.to, required this.date});
 
   @override
   Widget build(BuildContext context) {
-    final bool isRedirectCard = from.isEmpty && to.isEmpty;
+    final isRedirect = from.isEmpty && to.isEmpty;
 
     return FadeInUp(
       duration: const Duration(milliseconds: 400),
@@ -319,60 +394,30 @@ class _TripCard extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.gold,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'PlayfairDisplay',
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (!isRedirectCard) ...[
-                Text(
-                  "$from ➔ $to",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  "Départ prévu : $date",
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-              if (isRedirectCard)
-                Center(
+          child: isRedirect
+              ? Center(
                   child: OutlinedButton.icon(
                     onPressed: () => context.go('/reservations'),
                     icon: const Icon(Icons.directions_car, color: AppColors.gold),
-                    label: const Text(
-                      "Voir tous mes trajets",
-                      style: TextStyle(
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'PlayfairDisplay',
-                      ),
-                    ),
+                    label: const Text("Voir tous mes trajets", style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600, fontFamily: 'PlayfairDisplay')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppColors.gold),
                       foregroundColor: AppColors.gold,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
                   ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
+                    const SizedBox(height: 8),
+                    Text("$from ➔ $to", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                    Text("Départ prévu : $date", style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                  ],
                 ),
-            ],
-          ),
         ),
       ),
     );
   }
 }
-

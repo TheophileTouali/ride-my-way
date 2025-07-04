@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../screens/passenger_preferences_editor_screen.dart';
+
+// Import des écrans
 import '../screens/splash_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/login_driver_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/location_permission_screen.dart';
 import '../screens/signup_step1_screen.dart';
@@ -13,15 +15,18 @@ import '../screens/reset_password_screen.dart';
 import '../screens/passenger_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
 import '../screens/edit_preferences_screen.dart';
+import '../screens/passenger_preferences_editor_screen.dart';
 import '../screens/reservations_screen.dart';
 import '../screens/favorites_screen.dart';
 import '../screens/results_screen.dart';
-import '../screens/signup_driver_screen.dart'; // ✅ 
-import '../screens/signup_screen.dart'; // ✅ 
-import '../screens/driver_home_screen.dart'; // ✅
-import '../screens/login_driver_screen.dart'; // 👈 Manquant pour le moment
+import '../screens/signup_driver_screen.dart';
+import '../screens/signup_screen.dart';
+import '../screens/driver_home_screen.dart';
+import '../screens/confirmation_screen.dart'; 
+import '../screens/booking_success_screen.dart';
 
 
+// 👈 ajoute ce fichier à ton projet
 
 class AppRoutes {
   static final router = GoRouter(
@@ -35,18 +40,14 @@ class AppRoutes {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
-           GoRoute(
-            path: '/login-driver',
-            builder: (context, state) => const DriverLoginScreen(),
-          ),
-
-        GoRoute(
-          path: '/preferences-edit',
-          builder: (context, state) => const PassengerPreferencesEditorScreen(),
-        ),
-
-
-
+      GoRoute(
+        path: '/login-driver',
+        builder: (context, state) => const DriverLoginScreen(),
+      ),
+      GoRoute(
+        path: '/preferences-edit',
+        builder: (context, state) => const PassengerPreferencesEditorScreen(),
+      ),
       GoRoute(
         path: '/home',
         name: 'home',
@@ -63,13 +64,12 @@ class AppRoutes {
       GoRoute(
         path: '/signup-step2',
         builder: (context, state) {
-          final extra = state.extra;
-          if (extra is! Map<String, dynamic>) {
+          final extra = state.extra as Map<String, dynamic>?;
+          if (extra == null) {
             return const Scaffold(
               body: Center(child: Text("Erreur : données manquantes")),
             );
           }
-
           return SignupStep2Screen(
             firstName: extra['firstName'],
             lastName: extra['lastName'],
@@ -97,17 +97,15 @@ class AppRoutes {
         builder: (context, state) => const PassengerProfileScreen(),
       ),
       GoRoute(
-      path: '/driver-profile',
-      name: 'driver-profile',
-      builder: (context, state) => const DriverProfileScreen(), // ✅ Correct
-    ),
+        path: '/driver-profile',
+        name: 'driver-profile',
+        builder: (context, state) => const DriverProfileScreen(),
+      ),
       GoRoute(
         path: '/driver-home',
         name: 'driver-home',
         builder: (context, state) => const DriverHomeScreen(),
       ),
-
-
       GoRoute(
         path: '/preferences',
         name: 'preferences',
@@ -121,11 +119,14 @@ class AppRoutes {
         path: '/favorites',
         builder: (context, state) => const FavoritesScreen(),
       ),
-
       GoRoute(
-  path: '/signup',
-  builder: (context, state) => const SignupScreen(),
-),
+        path: '/signup',
+        builder: (context, state) => const SignupScreen(),
+      ),
+      GoRoute(
+        path: '/signup-driver',
+        builder: (context, state) => const SignupDriverScreen(),
+      ),
       GoRoute(
         path: '/results',
         builder: (context, state) {
@@ -134,11 +135,25 @@ class AppRoutes {
           return ResultsScreen(from: from, to: to);
         },
       ),
-      // ✅ Route pour le formulaire unique conducteur
       GoRoute(
-        path: '/signup-driver',
-        builder: (context, state) => const SignupDriverScreen(),
+        path: '/confirmation',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return ConfirmationScreen(
+            from: extra['from'],
+            to: extra['to'],
+            vehicle: extra['vehicle'],
+            price: extra['price'],
+            distance: extra['distance'],
+          );
+        },
       ),
+            GoRoute(
+        path: '/success',
+        builder: (context, state) => const BookingSuccessScreen(),
+      ),
+
+
     ],
   );
 }

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:animate_do/animate_do.dart';
@@ -10,134 +12,236 @@ class ReservationsScreen extends StatefulWidget {
   State<ReservationsScreen> createState() => _ReservationsScreenState();
 }
 
+
+
 class _ReservationsScreenState extends State<ReservationsScreen> {
-  String _filter = 'Tous';
+  String _filter = 'À venir';
 
-  final List<Map<String, String>> upcomingReservations = const [
-    {"from": "Boissy St Léger", "to": "Paris", "date": "31 mai à 19h45", "status": "Confirmée"},
-    {"from": "Créteil", "to": "La Défense", "date": "2 juin à 08h30", "status": "En attente"},
-  ];
+  Future<void> _addToFavorites({
+  required String from,
+  required String to,
+  required String frequency,
+}) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-  final List<Map<String, String>> pastReservations = const [
-    {"from": "Paris", "to": "Créteil", "date": "24 mai à 18h00", "status": "Terminée"},
-    {"from": "Lyon", "to": "Paris", "date": "18 mai à 15h30", "status": "Annulée"},
-  ];
+  // Évite les doublons exacts
+  final existing = await FirebaseFirestore.instance
+      .collection('favorites')
+      .where('userId', isEqualTo: user.uid)
+      .where('from', isEqualTo: from)
+      .where('to', isEqualTo: to)
+      .get();
 
-  List<Map<String, String>> _filteredList(List<Map<String, String>> list) {
-    if (_filter == 'Tous') return list;
-    return list.where((res) => res['status'] == _filter).toList();
+  if (existing.docs.isNotEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Ce trajet est déjà dans vos favoris"),
+        backgroundColor: Colors.orangeAccent,
+      ),
+    );
+    return;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.black,
-      appBar: AppBar(
-        backgroundColor: AppColors.black,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.gold),
-          onPressed: () => context.go('/home'),
-        ),
-        title: const Text(
-          "Mes réservations",
-          style: TextStyle(
-            color: AppColors.gold,
-            fontFamily: 'PlayfairDisplay',
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+  try {
+    await FirebaseFirestore.instance.collection('favorites').add({
+      'userId': user.uid,
+      'from': from,
+      'to': to,
+      'frequency': frequency,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Trajet ajouté à vos favoris"),
+        backgroundColor: AppColors.gold,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Filtre
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: ['Tous', 'Confirmée', 'En attente', 'Annulée', 'Terminée']
-                    .map((status) => Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: ChoiceChip(
-                            label: Text(status),
-                            selected: _filter == status,
-                            selectedColor: AppColors.gold,
-                            backgroundColor: Colors.grey[800],
-                            labelStyle: TextStyle(
-                              color: _filter == status ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            onSelected: (_) => setState(() => _filter = status),
-                          ),
-                        ))
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_filteredList(upcomingReservations).isNotEmpty) ...[
-              const Text("À venir",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'PlayfairDisplay',
-                  )),
-              const SizedBox(height: 12),
-              ..._filteredList(upcomingReservations).asMap().entries.map(
-                    (entry) => FadeInLeft(
-                      delay: Duration(milliseconds: entry.key * 200),
-                      child: _reservationCard(
-                        context,
-                        from: entry.value["from"]!,
-                        to: entry.value["to"]!,
-                        date: entry.value["date"]!,
-                        status: entry.value["status"]!,
-                        showActions: true,
-                      ),
-                    ),
-                  ),
-            ],
-            const SizedBox(height: 28),
-            if (_filteredList(pastReservations).isNotEmpty) ...[
-              const Text("Historique",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'PlayfairDisplay',
-                  )),
-              const SizedBox(height: 12),
-              ..._filteredList(pastReservations).asMap().entries.map(
-                    (entry) => FadeInLeft(
-                      delay: Duration(milliseconds: entry.key * 200),
-                      child: _reservationCard(
-                        context,
-                        from: entry.value["from"]!,
-                        to: entry.value["to"]!,
-                        date: entry.value["date"]!,
-                        status: entry.value["status"]!,
-                        faded: true,
-                      ),
-                    ),
-                  ),
-            ]
-          ],
-        ),
-      ),
+    );
+  } catch (e) {
+    print("Erreur lors de l'ajout aux favoris : $e");
+  }
+}
+
+
+  Stream<QuerySnapshot> _reservationsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const Stream.empty();
+
+    return FirebaseFirestore.instance
+        .collection('reservations')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots();
+  }
+
+  List<QueryDocumentSnapshot> _filterReservations(List<QueryDocumentSnapshot> reservations) {
+    final now = DateTime.now();
+
+    return reservations.map((doc) {
+      final ts = doc['timestamp'] as Timestamp;
+      final date = ts.toDate();
+      final status = (doc['status'] ?? '').toString();
+
+      if (status != 'Annulée' && date.isBefore(now)) {
+        FirebaseFirestore.instance.collection('reservations').doc(doc.id).update({
+          'status': 'Terminée'
+        });
+        return null;
+      }
+      return doc;
+    }).whereType<QueryDocumentSnapshot>().where((doc) {
+      final ts = doc['timestamp'] as Timestamp;
+      final date = ts.toDate();
+      final status = (doc['status'] ?? '').toString();
+
+      if (_filter == 'Tous') return true;
+      if (_filter == 'À venir') return date.isAfter(now);
+      return status.toLowerCase() == _filter.trim().toLowerCase();
+    }).toList()
+      ..sort((a, b) {
+        final tsA = a['timestamp'] as Timestamp;
+        final tsB = b['timestamp'] as Timestamp;
+        return tsA.toDate().compareTo(tsB.toDate());
+      });
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return "${date.day}/${date.month}/${date.year} à ${date.hour}h${date.minute.toString().padLeft(2, '0')}";
+  }
+
+
+  Future<void> _cancelReservation(String docId) async {
+    await FirebaseFirestore.instance.collection('reservations').doc(docId).update({
+      'status': 'Annulée',
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Réservation annulée'), backgroundColor: Colors.redAccent),
     );
   }
 
-  Widget _reservationCard(
-    BuildContext context, {
+  String _getFieldOrDefault(QueryDocumentSnapshot doc, String key, String fallback) {
+    return doc.data().toString().contains(key) ? doc[key].toString() : fallback;
+  }
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: AppColors.black,
+    appBar: AppBar(
+      backgroundColor: AppColors.black,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.gold),
+        onPressed: () => context.go('/home'),
+      ),
+      title: const Text(
+        "Mes réservations",
+        style: TextStyle(
+          color: AppColors.gold,
+          fontFamily: 'PlayfairDisplay',
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ),
+    body: Column(
+      children: [
+        const SizedBox(height: 16),
+        _buildFilterChips(),
+        const SizedBox(height: 16),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _reservationsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+              }
+
+              if (!snapshot.hasData) {
+                return const Center(child: Text("Chargement des réservations...", style: TextStyle(color: Colors.white70)));
+              }
+
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return const Center(child: Text("Aucune réservation trouvée.", style: TextStyle(color: Colors.white70)));
+              }
+
+              final filtered = _filterReservations(docs);
+              if (filtered.isEmpty) {
+                return const Center(child: Text("Aucune réservation pour ce filtre.", style: TextStyle(color: Colors.white70)));
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                itemCount: filtered.length,
+                itemBuilder: (context, index) {
+                  final doc = filtered[index];
+                  return FadeInLeft(
+                    delay: Duration(milliseconds: index * 100),
+                    child: Column(
+                      children: [
+                        _reservationCard(
+                          docId: doc.id,
+                          from: doc['from'] ?? '',
+                          to: doc['to'] ?? '',
+                          date: _formatDate(doc['timestamp'] as Timestamp),
+                          status: doc['status'] ?? 'Confirmée',
+                          price: _getFieldOrDefault(doc, 'price', 'À définir'),
+                          vehicle: _getFieldOrDefault(doc, 'vehicle', 'Non assigné'),
+                          driver: _getFieldOrDefault(doc, 'driverName', 'Non assigné'),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+
+  Widget _buildFilterChips() {
+    final statuses = ['À venir', 'Confirmée', 'En attente', 'Annulée', 'Terminée', 'Tous' ];
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        children: statuses.map((status) {
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: ChoiceChip(
+              label: Text(status),
+              selected: _filter == status,
+              selectedColor: AppColors.gold,
+              backgroundColor: Colors.grey[800],
+              labelStyle: TextStyle(
+                color: _filter == status ? Colors.black : Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+              onSelected: (_) => setState(() => _filter = status),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+  
+
+  Widget _reservationCard({
+    required String docId,
     required String from,
     required String to,
     required String date,
     required String status,
-    bool faded = false,
-    bool showActions = false,
+    required String price,
+    required String vehicle,
+    required String driver,
   }) {
     final Color statusColor = switch (status) {
       "Confirmée" => AppColors.gold,
@@ -151,7 +255,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: faded ? Colors.grey[850] : Colors.grey[900],
+        color: Colors.grey[900],
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.gold.withOpacity(0.3)),
       ),
@@ -177,25 +281,47 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           const SizedBox(height: 8),
           Text("Départ : $date", style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 6),
+          Text("Prix : $price", style: const TextStyle(color: Colors.white70)),
+          Text("Véhicule : $vehicle", style: const TextStyle(color: Colors.white70)),
+          Text("Conducteur : $driver", style: const TextStyle(color: Colors.white70)),
+          const SizedBox(height: 6),
           Text("Statut : $status", style: TextStyle(color: statusColor)),
-          if (showActions) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
+                    const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (status != 'Annulée')
                 TextButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.phone_in_talk, color: AppColors.gold),
-                  label: const Text("Contacter", style: TextStyle(color: AppColors.gold)),
-                ),
-                const SizedBox(width: 16),
-                TextButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
+                  onPressed: () => _cancelReservation(docId),
+                  icon: const Icon(Icons.cancel, color: Colors.redAccent),
                   label: const Text("Annuler", style: TextStyle(color: Colors.redAccent)),
-                )
-              ],
-            )
-          ]
+                ),
+              ElevatedButton.icon(
+                onPressed: () => _addToFavorites(
+                  from: from,
+                  to: to,
+                  frequency: 'Ponctuelle',
+                ),
+                icon: const Icon(Icons.favorite_border, color: Colors.black),
+                label: const Text(
+                  "Favori",
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.black,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

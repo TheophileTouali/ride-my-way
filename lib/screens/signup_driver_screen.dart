@@ -486,6 +486,7 @@ Future<void> _submit() async {
       },
       'role': 'driver',
       'createdAt': FieldValue.serverTimestamp(),
+      'isVisible': false, // ✅ visible par défaut : non
     });
     print("✅ Données Firestore enregistrées avec succès !");
 

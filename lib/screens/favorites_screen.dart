@@ -14,6 +14,7 @@ class FavoritesScreen extends StatefulWidget {
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
   String selectedFilter = "Tous";
+  OverlayEntry? _overlayEntry;
 
   Stream<QuerySnapshot> _favoritesStream() {
     final user = FirebaseAuth.instance.currentUser;
@@ -28,6 +29,61 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     }
 
     return baseQuery.snapshots();
+  }
+
+  void _showGoldenOverlay(String message) {
+    _overlayEntry?.remove();
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 20,
+        right: 20,
+        child: Material(
+          color: Colors.transparent,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.favorite, color: Colors.black87),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+
+    Future.delayed(const Duration(seconds: 3), () {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+    });
   }
 
   Future<void> _confirmDeleteFavorite(String docId) async {
@@ -59,9 +115,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     if (confirmed == true) {
       await FirebaseFirestore.instance.collection('favorites').doc(docId).delete();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Favori supprimé."), backgroundColor: AppColors.gold),
-      );
+      _showGoldenOverlay("Favori supprimé ✨");
     }
   }
 

@@ -40,9 +40,23 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
       builder: (context, child) => Theme(
-        data: ThemeData.dark(),
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.gold,
+            onPrimary: Colors.black,
+            surface: Color(0xFF1A1A1A),
+            onSurface: Colors.white,
+          ),
+          dialogBackgroundColor: const Color(0xFF0D0D0D),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.gold,
+            ),
+          ),
+        ),
         child: child!,
       ),
+
     );
 
     if (pickedDate != null) {
@@ -50,9 +64,23 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         context: context,
         initialTime: TimeOfDay.now(),
         builder: (context, child) => Theme(
-          data: ThemeData.dark(),
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.gold,
+              onPrimary: Colors.black,
+              surface: Color(0xFF1A1A1A),
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: const Color(0xFF0D0D0D),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold,
+              ),
+            ),
+          ),
           child: child!,
         ),
+
       );
 
       if (pickedTime != null) {
@@ -96,21 +124,13 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         'distance': widget.distance,
         'userId': user.uid,
         'timestamp': Timestamp.fromDate(departureTime),
-        'status': 'Confirmée',
+        'status': 'En attente', // ✅ correct
+
       };
 
       await FirebaseFirestore.instance
           .collection('reservations')
           .add(reservationData);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Réservation confirmée 🎉"),
-          backgroundColor: AppColors.gold,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
       context.go('/success');
     } catch (e) {
       print("Erreur Firestore: $e");
@@ -219,19 +239,47 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                     firstDate: now,
                     lastDate: now.add(const Duration(days: 365)),
                     builder: (context, child) => Theme(
-                      data: ThemeData.dark(),
-                      child: child!,
+                    data: ThemeData.dark().copyWith(
+                      colorScheme: const ColorScheme.dark(
+                        primary: AppColors.gold,
+                        onPrimary: Colors.black,
+                        surface: Color(0xFF1A1A1A),
+                        onSurface: Colors.white,
+                      ),
+                      dialogBackgroundColor: const Color(0xFF0D0D0D),
+                      textButtonTheme: TextButtonThemeData(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.gold,
+                        ),
+                      ),
                     ),
+                    child: child!,
+                  ),
+
                   );
 
                   if (pickedDate != null) {
                     final pickedTime = await showTimePicker(
                       context: context,
                       initialTime: TimeOfDay.now(),
-                      builder: (context, child) => Theme(
-                        data: ThemeData.dark(),
-                        child: child!,
-                      ),
+                        builder: (context, child) => Theme(
+                          data: ThemeData.dark().copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: AppColors.gold,
+                              onPrimary: Colors.black,
+                              surface: Color(0xFF1A1A1A),
+                              onSurface: Colors.white,
+                            ),
+                            dialogBackgroundColor: const Color(0xFF0D0D0D),
+                            textButtonTheme: TextButtonThemeData(
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.gold,
+                              ),
+                            ),
+                          ),
+                          child: child!,
+                        ),
+
                     );
 
                     if (pickedTime != null) {

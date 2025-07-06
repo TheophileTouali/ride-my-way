@@ -28,7 +28,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     'Vans Standing': {'base': 6.5, 'perKm': 2.0},
     'Classe S': {'base': 8.0, 'perKm': 2.8},
     'Classe E': {'base': 7.0, 'perKm': 2.2},
-    'Motos': {'base': 2.5, 'perKm': 0.9},
+    'Motos': {'base': 2.5, 'perKm': 3.0},
   };
 
   @override

@@ -101,44 +101,48 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
   }
 
 
-  Future<void> _confirmTrip() async {
-    final user = FirebaseAuth.instance.currentUser;
+    Future<void> _confirmTrip() async {
+      final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Utilisateur non connecté")),
-      );
-      return;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Utilisateur non connecté")),
+        );
+        return;
+      }
+
+      try {
+        final departureTime = _isNowSelected
+            ? DateTime.now().add(const Duration(minutes: 3))
+            : _selectedDateTime!;
+
+        final reservationData = {
+          'from': widget.from,
+          'to': widget.to,
+          'vehicle': widget.vehicle,
+          'price': widget.price,
+          'distance': widget.distance,
+          'userId': user.uid,
+          'timestamp': Timestamp.fromDate(departureTime),
+          'status': 'En attente',
+          'createdAt': FieldValue.serverTimestamp(),
+          'expiredSearch': false,
+        };
+
+        final docRef = await FirebaseFirestore.instance.collection('reservations').add(reservationData);
+
+        // ✅ Redirection vers la page de recherche
+        context.go('/searching?reservationId=${docRef.id}');
+      } catch (e) {
+        print("Erreur Firestore: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erreur lors de la confirmation.")),
+        );
+      }
     }
 
-    try {
-      final departureTime = _isNowSelected
-          ? DateTime.now().add(const Duration(minutes: 3))
-          : _selectedDateTime!;
 
-      final reservationData = {
-        'from': widget.from,
-        'to': widget.to,
-        'vehicle': widget.vehicle,
-        'price': widget.price,
-        'distance': widget.distance,
-        'userId': user.uid,
-        'timestamp': Timestamp.fromDate(departureTime),
-        'status': 'En attente', // ✅ correct
 
-      };
-
-      await FirebaseFirestore.instance
-          .collection('reservations')
-          .add(reservationData);
-      context.go('/success');
-    } catch (e) {
-      print("Erreur Firestore: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erreur lors de la confirmation.")),
-      );
-    }
-  }
 
   Widget _infoRow(String label, String value) {
     return Padding(

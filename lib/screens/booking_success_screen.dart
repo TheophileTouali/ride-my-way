@@ -12,11 +12,14 @@ class BookingSuccessScreen extends StatefulWidget {
 }
 
 class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
+  late final String reservationId;
+
   @override
   void initState() {
     super.initState();
+    reservationId = GoRouterState.of(context).uri.queryParameters['reservationId']!;
     Timer(const Duration(seconds: 3), () {
-      context.go('/home'); // Redirection vers l’accueil après succès
+      context.go('/searching?reservationId=$reservationId');
     });
   }
 

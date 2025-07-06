@@ -24,6 +24,8 @@ import '../screens/signup_screen.dart';
 import '../screens/driver_home_screen.dart';
 import '../screens/confirmation_screen.dart'; 
 import '../screens/booking_success_screen.dart';
+import '../screens/driver_search_screen.dart';
+
 
 
 // 👈 ajoute ce fichier à ton projet
@@ -152,6 +154,14 @@ class AppRoutes {
         path: '/success',
         builder: (context, state) => const BookingSuccessScreen(),
       ),
+
+      GoRoute(
+      path: '/searching',
+      builder: (context, state) {
+        final reservationId = state.uri.queryParameters['reservationId']!;
+        return DriverSearchScreen(reservationId: reservationId);
+      },
+    ),
 
 
     ],

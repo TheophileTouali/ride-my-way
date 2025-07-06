@@ -1,11 +1,9 @@
 // lib/screens/driver_home_screen.dart
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
 import '../themes/app_theme.dart';
 import '../providers/driver_provider.dart';
 import 'package:animate_do/animate_do.dart';
@@ -20,6 +18,10 @@ import 'package:http/http.dart' as http;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:animate_do/animate_do.dart'; // pour animation du bouton
 import 'package:assets_audio_player/assets_audio_player.dart';
+import '../models/trip.dart';
+import 'package:lucide_icons/lucide_icons.dart'; 
+import 'package:ride_my_way/services/weather_service.dart';
+
 
 
 
@@ -50,6 +52,20 @@ Future<({double lat, double lng})?> getCoordinatesFromAddress(String address) as
 
   return null;
 }
+
+Future<WeatherInfo> getWeatherFromPosition() async {
+  LocationPermission permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
+      throw Exception("La permission de localisation est requise.");
+    }
+  }
+
+  final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+  return await fetchWeather(position.latitude, position.longitude);
+}
+
 
 
 
@@ -91,36 +107,6 @@ Future<List<Testimonial>> fetchDriverTestimonials() async {
   ];
 }
 
-
-class Trip {
-  final String departure;
-  final String destination;
-  final DateTime date;
-  final String status;
-  final double price;
-
-  Trip({
-    required this.departure,
-    required this.destination,
-    required this.date,
-    required this.status,
-    required this.price,
-  });
-}
-
-Future<List<Trip>> fetchDriverTrips() async {
-  await Future.delayed(const Duration(milliseconds: 800));
-  return [
-    Trip(departure: "Paris", destination: "Versailles", date: DateTime.now().add(const Duration(days: 1)), status: 'à venir', price: 25.0),
-    Trip(departure: "Paris", destination: "Lyon", date: DateTime.now().add(const Duration(days: 3)), status: 'à venir', price: 120.0),
-    Trip(departure: "Orly", destination: "Paris", date: DateTime.now().subtract(const Duration(days: 1)), status: 'effectué', price: 35.0),
-    Trip(departure: "Paris", destination: "Roissy Charles de Gaulle", date: DateTime.now().subtract(const Duration(days: 3)), status: 'effectué', price: 45.0),
-    Trip(departure: "Paris", destination: "Disneyland", date: DateTime.now().subtract(const Duration(days: 6)), status: 'annulé', price: 60.0),
-    Trip(departure: "La Défense", destination: "Paris", date: DateTime.now().subtract(const Duration(days: 2)), status: 'annulé', price: 18.0),
-  ];
-}
-
-
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
 
@@ -155,8 +141,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             _nearbyReservations = newData;
           });
 
-          // 🔊 Joue un son de notification
-          _audioPlayer.play(AssetSource('sounds/notification.mp3')); // à mettre dans assets
+          // 🔊 ✅ SON D’URGENCE
+          AssetsAudioPlayer.newPlayer().open(
+            Audio("assets/sounds/urgent_alert.mp3"),
+            showNotification: false,
+          );
         } else {
           setState(() {
             _hasNewNearbyCourse = false;
@@ -165,6 +154,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         }
       });
     }
+
+
+  
 
 
   @override
@@ -202,7 +194,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             );
           }
 
+
+
       void showNearbyCoursesDialog(BuildContext context) {
+        final player = AudioPlayer();
+        final alertedTripIds = <String>{};
       showDialog(
         context: context,
         barrierDismissible: true,
@@ -255,256 +251,256 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       }
 
                       return Expanded(
-  child: ListView.builder(
-    itemCount: reservations.length,
-    itemBuilder: (context, index) {
-      final doc = reservations[index];
-      final from = doc['from'] ?? '';
-      final to = doc['to'] ?? '';
-      final price = (doc['price'] as num?)?.toStringAsFixed(2) ?? 'N/A';
-      final date = (doc['timestamp'] as Timestamp).toDate();
-      final distance = (doc['distance'] as double?)?.toStringAsFixed(1) ?? '?';
-      final duration = date.difference(DateTime.now());
-      final timeUntil = duration.inMinutes < 60
-          ? 'dans ${duration.inMinutes} min'
-          : 'dans ${duration.inHours}h';
+      child: ListView.builder(
+        itemCount: reservations.length,
+        itemBuilder: (context, index) {
+          final doc = reservations[index];
+          final from = doc['from'] ?? '';
+          final to = doc['to'] ?? '';
+          final price = (doc['price'] as num?)?.toStringAsFixed(2) ?? 'N/A';
+          final date = (doc['timestamp'] as Timestamp).toDate();
+          final distance = (doc['distance'] as double?)?.toStringAsFixed(1) ?? '?';
+          final duration = date.difference(DateTime.now());
+          final timeUntil = duration.inMinutes < 60
+              ? 'dans ${duration.inMinutes} min'
+              : 'dans ${duration.inHours}h';
 
-      final isUrgent = duration.inMinutes <= 5;
+          final isUrgent = duration.inMinutes <= 5;
 
-            return FadeInUp(
-              duration: const Duration(milliseconds: 400),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade900,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.gold.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                return FadeInUp(
+                  duration: const Duration(milliseconds: 400),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade900,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.location_on, color: AppColors.gold, size: 18),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            "$from ➜ $to",
-                            style: const TextStyle(
-                              color: AppColors.gold,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                        if (isUrgent)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              "URGENT",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on, color: AppColors.gold, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                "$from ➜ $to",
+                                style: const TextStyle(
+                                  color: AppColors.gold,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
-                          ),
+                            if (isUrgent)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  "URGENT",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text("Départ : ${date.toLocal().toString().split('.')[0]} ($timeUntil)",
+                            style: const TextStyle(color: Colors.white70)),
+                        Text("Distance : $distance km", style: const TextStyle(color: Colors.white70)),
+                        Text("Prix : $price €", style: const TextStyle(color: Colors.white70)),
+                        const SizedBox(height: 10),
+                        ElevatedButton.icon(
+                        onPressed: () async {
+                          try {
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+                            );
+
+                            // 🔐 Sécurité : timeout au cas où ça bloque
+                            await _acceptReservation(doc.id).timeout(
+                              const Duration(seconds: 5),
+                              onTimeout: () {
+                                throw Exception("⏳ Timeout lors de l'acceptation de la course");
+                              },
+                            );
+
+                            if (context.mounted) Navigator.of(context).pop(); // ferme loader
+                            if (context.mounted) Navigator.of(context).pop(); // ferme popup
+                            AssetsAudioPlayer.newPlayer().open(
+                              Audio("assets/sounds/success.mp3"),
+                              showNotification: false,
+                            );
+
+
+                            setState(() {
+                              _hasNewNearbyCourse = false;
+                              _nearbyReservations.removeWhere((r) => r.id == doc.id);
+                            });
+
+                            if (context.mounted) {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: true,
+                                builder: (context) => Center(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: FadeIn( // 👈 Animation changée ici
+                                      duration: const Duration(milliseconds: 500),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(24),
+                                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade900,
+                                          borderRadius: BorderRadius.circular(24),
+                                          border: Border.all(color: AppColors.gold.withOpacity(0.5)),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.check_circle_rounded, size: 64, color: AppColors.gold),
+                                            const SizedBox(height: 16),
+                                            const Text(
+                                              "Course acceptée avec succès 🎉",
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.gold,
+                                                fontFamily: 'PlayfairDisplay',
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            const Text(
+                                              "Vous pouvez maintenant consulter les détails dans vos trajets.",
+                                              style: TextStyle(color: Colors.white70),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 24),
+                                            ElevatedButton.icon(
+                                              onPressed: () => Navigator.of(context).pop(),
+                                              icon: const Icon(Icons.check, color: Colors.black),
+                                              label: const Text("Fermer", style: TextStyle(color: Colors.black)),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.gold,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+
+                            }
+                          } catch (e) {
+                            if (context.mounted) Navigator.of(context).pop(); // ferme loader
+                            print("❌ ERREUR acceptReservation : $e");
+                            if (context.mounted) {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: true,
+                                builder: (context) => Center(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: FadeIn(
+                                      duration: const Duration(milliseconds: 400),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(24),
+                                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade900,
+                                          borderRadius: BorderRadius.circular(24),
+                                          border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
+                                            const SizedBox(height: 16),
+                                            const Text(
+                                              "Erreur lors de l'acceptation ❌",
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.redAccent,
+                                                fontFamily: 'PlayfairDisplay',
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            const Text(
+                                              "Une erreur est survenue. Veuillez réessayer ou vérifier votre connexion.",
+                                              style: TextStyle(color: Colors.white70),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 24),
+                                            ElevatedButton.icon(
+                                              onPressed: () => Navigator.of(context).pop(),
+                                              icon: const Icon(Icons.close, color: Colors.black),
+                                              label: const Text("Fermer", style: TextStyle(color: Colors.black)),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.redAccent,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+
+                            }
+                          }
+                        },
+
+                        icon: const Icon(Icons.check_circle_outline, color: Colors.black),
+                        label: const Text("Accepter cette course", style: TextStyle(color: Colors.black)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.gold,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text("Départ : ${date.toLocal().toString().split('.')[0]} ($timeUntil)",
-                        style: const TextStyle(color: Colors.white70)),
-                    Text("Distance : $distance km", style: const TextStyle(color: Colors.white70)),
-                    Text("Prix : $price €", style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
-                        );
-
-                        // 🔐 Sécurité : timeout au cas où ça bloque
-                        await _acceptReservation(doc.id).timeout(
-                          const Duration(seconds: 5),
-                          onTimeout: () {
-                            throw Exception("⏳ Timeout lors de l'acceptation de la course");
-                          },
-                        );
-
-                        if (context.mounted) Navigator.of(context).pop(); // ferme loader
-                        if (context.mounted) Navigator.of(context).pop(); // ferme popup
-                        AssetsAudioPlayer.newPlayer().open(
-                          Audio("assets/sounds/success.mp3"),
-                          showNotification: false,
-                        );
-
-
-                        setState(() {
-                          _hasNewNearbyCourse = false;
-                          _nearbyReservations.removeWhere((r) => r.id == doc.id);
-                        });
-
-                        if (context.mounted) {
-                          showDialog(
-                            context: context,
-                            barrierDismissible: true,
-                            builder: (context) => Center(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: FadeIn( // 👈 Animation changée ici
-                                  duration: const Duration(milliseconds: 500),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(24),
-                                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade900,
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(color: AppColors.gold.withOpacity(0.5)),
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.check_circle_rounded, size: 64, color: AppColors.gold),
-                                        const SizedBox(height: 16),
-                                        const Text(
-                                          "Course acceptée avec succès 🎉",
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.gold,
-                                            fontFamily: 'PlayfairDisplay',
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        const Text(
-                                          "Vous pouvez maintenant consulter les détails dans vos trajets.",
-                                          style: TextStyle(color: Colors.white70),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 24),
-                                        ElevatedButton.icon(
-                                          onPressed: () => Navigator.of(context).pop(),
-                                          icon: const Icon(Icons.check, color: Colors.black),
-                                          label: const Text("Fermer", style: TextStyle(color: Colors.black)),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.gold,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-
-                        }
-                      } catch (e) {
-                        if (context.mounted) Navigator.of(context).pop(); // ferme loader
-                        print("❌ ERREUR acceptReservation : $e");
-                        if (context.mounted) {
-                          showDialog(
-                            context: context,
-                            barrierDismissible: true,
-                            builder: (context) => Center(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: FadeIn(
-                                  duration: const Duration(milliseconds: 400),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(24),
-                                    margin: const EdgeInsets.symmetric(horizontal: 24),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade900,
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent),
-                                        const SizedBox(height: 16),
-                                        const Text(
-                                          "Erreur lors de l'acceptation ❌",
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.redAccent,
-                                            fontFamily: 'PlayfairDisplay',
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        const Text(
-                                          "Une erreur est survenue. Veuillez réessayer ou vérifier votre connexion.",
-                                          style: TextStyle(color: Colors.white70),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 24),
-                                        ElevatedButton.icon(
-                                          onPressed: () => Navigator.of(context).pop(),
-                                          icon: const Icon(Icons.close, color: Colors.black),
-                                          label: const Text("Fermer", style: TextStyle(color: Colors.black)),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.redAccent,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-
-                        }
-                      }
-                    },
-
-                    icon: const Icon(Icons.check_circle_outline, color: Colors.black),
-                    label: const Text("Accepter cette course", style: TextStyle(color: Colors.black)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.gold,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
                   ),
-
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      );
-
-
-
-
-                    },
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           );
-        },
-      );
-    }
+
+
+
+
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        }
 
 
     Future<List<DocumentSnapshot>> _fetchNearbyPendingReservations() async {
@@ -601,6 +597,34 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
   }
 
+  Future<List<Trip>> fetchDriverTrips() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final snapshot = await FirebaseFirestore.instance
+          .collection('reservations')
+          .where('driverId', isEqualTo: uid)
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return Trip(
+          id: doc.id,
+          from: data['from'] ?? '',
+          to: data['to'] ?? '',
+          departureTime: (data['timestamp'] as Timestamp).toDate(), // ✅ ICI !
+          price: (data['price'] as num).toDouble(),
+          status: data['status'] ?? '',
+        );
+      }).toList();
+    } catch (e) {
+      print("❌ ERREUR fetchDriverTrips: $e");
+      return [];
+    }
+  }
+
+
+
+
   @override
     Widget build(BuildContext context) {
       final user = Provider.of<DriverProvider>(context).user;
@@ -650,38 +674,62 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
+                  Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "Bienvenue ${user?.firstName ?? 'conducteur'} 👋",
-                      style: const TextStyle(
-                        color: AppColors.gold,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Row(
-                      children: const [
-                        Icon(Icons.star, color: Colors.amber, size: 20),
-                        SizedBox(width: 4),
-                        Text("4.8", style: TextStyle(color: Colors.white70)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Bienvenue",
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        Text(
+                          "${user?.firstName ?? 'Conducteur'} 👋",
+                          style: const TextStyle(
+                            color: AppColors.gold,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                       ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        children: const [
+                          Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                          SizedBox(width: 4),
+                          Text(
+                            "4.8",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
 
+              // METEO
                 const SizedBox(height: 32),
                 _buildWeatherCard(),
-                const SizedBox(height: 24),
-                _buildStatsSection(),
-                const SizedBox(height: 24),
-                _buildRevenueChart(),
 
                 // 🔥 Nouvelle section : Courses proches à accepter
                 const SizedBox(height: 24),
-                
-
                 ...(_hasNewNearbyCourse
     ? [
         Pulse(
@@ -708,6 +756,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   final timeBefore = diff.inMinutes < 60
                       ? "dans ${diff.inMinutes} min"
                       : "dans ${diff.inHours} h";
+
+                  final isUrgent = diff.inMinutes <= 5; // ✅ ajoute cette ligne ici
 
                   return FadeInUp(
                     duration: const Duration(milliseconds: 400),
@@ -780,21 +830,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           ),
                           const SizedBox(height: 16),
                           Center(
-                            child: ElevatedButton.icon(
-                              onPressed: () => _acceptReservation(doc.id),
-                              icon: const Icon(Icons.check_circle, color: AppColors.black),
-                              label: const Text("Accepter cette course"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.gold,
-                                foregroundColor: AppColors.black,
-                                minimumSize: const Size.fromHeight(48),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await _acceptReservation(doc.id);
+                                // Ajoute ici ta logique après acceptation (fermeture, son, toast, etc.)
+                              } catch (e) {
+                                print("❌ Erreur acceptReservation : $e");
+                              }
+                            },
+                            icon: const Icon(Icons.check_circle, color: Colors.black),
+                            label: Text(
+                              isUrgent ? "ACCEPTER IMMÉDIATEMENT" : "Accepter cette course",
+                              style: const TextStyle(color: Colors.black),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isUrgent ? Colors.redAccent : AppColors.gold,
+                              foregroundColor: Colors.black,
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
                               ),
+                              textStyle: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
+                        ),
                         ],
                       ),
                     ),
@@ -817,7 +877,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                 const SizedBox(height: 24),
 
-                // 🔁 Trajets classés par statut
+            // 🔁 Trajets classés par statut
+
+
                 DefaultTabController(
                   length: 3,
                   child: Column(
@@ -834,22 +896,60 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        height: 240,
+
+                      // ✅ Bloc responsive avec chargement Firestore
+                      Container(
+                        height: MediaQuery.of(context).size.height * 0.45,
                         child: FutureBuilder<List<Trip>>(
                           future: fetchDriverTrips(),
                           builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(
+                                child: CircularProgressIndicator(color: AppColors.gold),
+                              );
                             }
+
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return const Center(
+                                child: Text(
+                                  "Aucun trajet trouvé.",
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              );
+                            }
+
                             final trips = snapshot.data!;
+                            final now = DateTime.now();
+
+                            final Map<String, List<Trip>> categorizedTrips = {
+                              'À venir': trips
+                              .where((t) => t.status == 'Confirmée' && t.departureTime.isAfter(now))
+                              .toList(),
+                              'Effectués': trips
+                                .where((t) => t.status == 'Terminée')
+                                .toList(),
+                              'Annulés': trips
+                              .where((t) => t.status == 'Annulée')
+                              .toList(),
+                            };
+
                             return TabBarView(
-                              children: ['à venir', 'effectué', 'annulé'].map((status) {
-                                final filtered = trips.where((t) => t.status == status).toList();
+                              children: categorizedTrips.entries.map((entry) {
+                                final status = entry.key;
+                                final filtered = entry.value;
+
                                 if (filtered.isEmpty) {
-                                  return Center(child: Text("Aucun trajet $status.", style: const TextStyle(color: Colors.white54)));
+                                  return Center(
+                                    child: Text(
+                                      "Aucun trajet $status.",
+                                      style: const TextStyle(color: Colors.white54),
+                                    ),
+                                  );
                                 }
+
                                 return ListView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
                                   itemCount: filtered.length,
                                   itemBuilder: (_, i) => _tripCard(filtered[i]),
                                 );
@@ -858,9 +958,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           },
                         ),
                       ),
+
+                      const SizedBox(height: 24), // ✅ Espace final
                     ],
                   ),
                 ),
+                const SizedBox(height: 24),
+                _buildStatsSection(),
+                const SizedBox(height: 24),
+                _buildRevenueChart(),
 
                 const SizedBox(height: 24),
 
@@ -969,109 +1075,64 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           }
 
 
-      Widget _buildWeatherCard() {
+
+    Widget _buildWeatherCard() {
       return FutureBuilder<WeatherInfo>(
-          future: fetchWeather(),
-          builder: (context, snapshot) {
+        future: _fetchWeatherFromCurrentLocation(),
+        builder: (context, snapshot) {
           if (!snapshot.hasData) {
-              return _loadingCard("Chargement météo...");
+            return _loadingCard("Chargement météo...");
           }
+
           final weather = snapshot.data!;
+
           return _infoCard(
-              title: "Météo actuelle",
-              child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            title: "Météo à ${weather.city}",
+            child: Row(
               children: [
-                  // Bloc gauche (icône + ville + température)
-                  Container(
+                // Bloc gauche
+                Container(
+                  width: 100,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(16),
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white24),
                   ),
                   child: Column(
-                      children: [
-                      const Icon(Icons.wb_sunny_rounded, color: Colors.amber, size: 38),
+                    children: [
+                      Image.network(weather.iconUrl, width: 36),
                       const SizedBox(height: 8),
-                      const Text("Paris", style: TextStyle(color: Colors.white60, fontSize: 14)),
                       Text(
-                          "${weather.temperature}°C",
-                          style: const TextStyle(
+                        weather.city,
+                        style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                      Text(
+                        "${weather.temperature.toStringAsFixed(1)}°C",
+                        style: const TextStyle(
                           color: AppColors.gold,
-                          fontSize: 26,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'PlayfairDisplay',
-                          ),
+                        ),
                       ),
-                      ],
+                    ],
                   ),
+                ),
+                const SizedBox(width: 16),
+                // Bloc droit
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _weatherDetailRow("🌥️", weather.condition),
+                      const SizedBox(height: 6),
+                      _weatherDetailRow("💨", "${weather.windSpeed} km/h"),
+                      const SizedBox(height: 6),
+                      _weatherDetailRow("💧", "${weather.humidity} %"),
+                    ],
                   ),
-
-                  const SizedBox(width: 24),
-
-                  // Bloc droit (détails)
-                  Expanded(
-                  child: Padding(
-                      padding: const EdgeInsets.only(left: 8, top: 4),
-                      child: Column(
-                      children: [
-                          _weatherDetailRow("Conditions", weather.condition),
-                          const SizedBox(height: 6),
-                          _weatherDetailRow("Vent", "${weather.windDirection} – ${weather.windSpeed} km/h"),
-                          const SizedBox(height: 6),
-                          _weatherDetailRow("Humidité", "${weather.humidity} %"),
-                          const SizedBox(height: 6),
-                          _weatherDetailRow("Ressenti", "${weather.feelsLike}°C"),
-                      ],
-                      ),
-                  ),
-                  ),
-              ],
-              ),
-          );
-          },
-      );
-      }
-
-      Widget _weatherDetailRow(String label, String value) {
-      return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-          Text(
-              "$label :",
-              style: const TextStyle(
-              color: Colors.white60,
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              ),
-          ),
-          Text(
-              value,
-              style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              ),
-          ),
-          ],
-      );
-      }
-
-
-    Widget _buildStatsSection() {
-      return FutureBuilder<DriverStats>(
-        future: fetchDriverStats(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return _loadingCard("Chargement stats...");
-          final stats = snapshot.data!;
-          return _infoCard(
-            title: "Mes statistiques",
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _statRow("Trajets", "${stats.nbTrajets}"),
-                _statRow("Kilomètres", "${stats.totalKm} km"),
-                _statRow("Note moyenne", "${stats.note} ⭐"),
+                ),
               ],
             ),
           );
@@ -1079,65 +1140,172 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       );
     }
 
-      Widget _tripCard(Trip trip) {
-      return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-          color: Colors.grey.shade900,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade800),
-          ),
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-              Text("${trip.departure} ➜ ${trip.destination}", style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text("Date : ${trip.date.toLocal().toString().split(' ')[0]}", style: const TextStyle(color: Colors.white70)),
-              Text("Tarif : ${trip.price.toStringAsFixed(2)} €", style: const TextStyle(color: Colors.white70)),
-          ],
-          ),
-      );
+    Future<WeatherInfo> _fetchWeatherFromCurrentLocation() async {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Les services de localisation sont désactivés.');
       }
 
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Permission de localisation refusée.');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Permissions de localisation refusées définitivement.');
+      }
+
+      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      return await fetchWeather(position.latitude, position.longitude);
+    }
+
+
+          Widget _weatherDetailRow(String icon, String value) {
+            return Row(
+              children: [
+                Text(icon, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+
+
+        Widget _buildStatsSection() {
+          return FutureBuilder<DriverStats>(
+            future: fetchDriverStats(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return _loadingCard("Chargement stats...");
+              final stats = snapshot.data!;
+
+              return _infoCard(
+                title: "Mes statistiques",
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _statColumn(Icons.directions_car, "${stats.nbTrajets}", "Trajets"),
+                    _statColumn(Icons.map_rounded, "${stats.totalKm} km", "Kilomètres"),
+                    _statColumn(Icons.star_rounded, "${stats.note}", "Note"),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+                  Widget _statColumn(IconData icon, String value, String label) {
+            return Column(
+              children: [
+                Icon(icon, color: AppColors.gold, size: 30),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.white54,
+                  ),
+                ),
+              ],
+            );
+          }
+
+
+
     Widget _buildRevenueChart() {
+      final revenueData = [320, 450, 270, 620, 500, 710, 560];
+      final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juillet'];
+
       return _infoCard(
         title: "Mes revenus (mois) 💸",
         child: SizedBox(
-          height: 180,
+          height: 200,
           child: BarChart(
             BarChartData(
-              borderData: FlBorderData(show: false),
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  tooltipBgColor: Colors.black87,
+                  getTooltipItem: (group, _, rod, __) {
+                    return BarTooltipItem(
+                      "${months[group.x]} : ${rod.toY.toInt()}€",
+                      const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600),
+                    );
+                  },
+                ),
+              ),
               titlesData: FlTitlesData(
-                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true)),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 32,
+                    getTitlesWidget: (value, _) => Text(
+                      "${value.toInt()}€",
+                      style: const TextStyle(color: Colors.white38, fontSize: 10),
+                    ),
+                  ),
+                ),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    getTitlesWidget: (value, _) {
-                      final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin'];
-                      return Text(months[value.toInt() % 6], style: const TextStyle(color: Colors.white70, fontSize: 10));
-                    },
+                    getTitlesWidget: (value, _) => Text(
+                      months[value.toInt() % 6],
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
                   ),
                 ),
+                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
+              borderData: FlBorderData(show: false),
+              gridData: FlGridData(show: false),
               barGroups: List.generate(6, (index) {
                 return BarChartGroupData(
                   x: index,
                   barRods: [
                     BarChartRodData(
-                      toY: [320, 450, 270, 620, 500, 710][index].toDouble(),
+                      toY: revenueData[index].toDouble(),
                       width: 18,
                       color: AppColors.gold,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(6),
+                      backDrawRodData: BackgroundBarChartRodData(
+                        show: true,
+                        toY: 800,
+                        color: Colors.white12,
+                      ),
                     ),
                   ],
                 );
               }),
             ),
+            swapAnimationDuration: const Duration(milliseconds: 600),
+            swapAnimationCurve: Curves.easeOutExpo,
           ),
         ),
       );
     }
+
 
     Widget _infoCard({required String title, required Widget child}) {
       return Container(
@@ -1197,43 +1365,109 @@ class DriverStats {
   DriverStats({required this.nbTrajets, required this.totalKm, required this.note});
 }
 
-Future<DriverStats> fetchDriverStats() async {
-  await Future.delayed(const Duration(milliseconds: 800));
-  return DriverStats(nbTrajets: 14, totalKm: 320, note: 4.8);
-}
+  Future<DriverStats> fetchDriverStats() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    return DriverStats(nbTrajets: 14, totalKm: 320, note: 4.8);
+  }
 
-class WeatherInfo {
-  final int temperature;
-  final String iconCode;
+ 
+  Widget _tripCard(Trip trip) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A), // fond légèrement plus clair que le noir total
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          /// Ligne avec icône, "Trajet", date et prix
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.location_on, color: Color(0xFFFFD700), size: 20),
+                  SizedBox(width: 6),
+                  Text(
+                    "Trajet",
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Icon(Icons.calendar_today_rounded, color: Colors.white60, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    trip.departureTime.toLocal().toIso8601String().split('T').first,
+                    style: const TextStyle(color: Colors.white60, fontSize: 14),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.euro, color: Colors.white60, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    trip.price.toStringAsFixed(2),
+                    style: const TextStyle(color: Colors.white60, fontSize: 14),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
 
-  final String condition;
-  final String windDirection;
-  final double windSpeed;
-  final int humidity;
-  final double feelsLike;
+          /// Ligne de l'adresse complète : from ➜ to
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(width: 4),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 16, color: Colors.white),
+                    children: [
+                      TextSpan(
+                        text: trip.from,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFFD700),
+                        ),
+                      ),
+                      const TextSpan(
+                        text: "  ➜  ",
+                        style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
+                      ),
+                      TextSpan(
+                        text: trip.to,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFFD700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-  WeatherInfo({
-    required this.temperature,
-    required this.iconCode,
-    required this.condition,
-    required this.windDirection,
-    required this.windSpeed,
-    required this.humidity,
-    required this.feelsLike,
-  });
-}
 
 
-Future<WeatherInfo> fetchWeather() async {
-  await Future.delayed(const Duration(milliseconds: 500));
-  return WeatherInfo(
-    temperature: 26,
-    iconCode: '01d',
-    condition: 'Ensoleillé',
-    windDirection: 'Nord-Ouest',
-    windSpeed: 12.0,
-    humidity: 60,
-    feelsLike: 28.0,
-  );
-}
 

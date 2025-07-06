@@ -72,6 +72,7 @@ flutter:
     - assets/animations/
     - assets/sounds/notification.mp3
     - assets/sounds/success.mp3
+    - assets/sounds/urgent_alert.mp3
 
   fonts:
     - family: PlayfairDisplay

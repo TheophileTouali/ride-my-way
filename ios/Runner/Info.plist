@@ -5,6 +5,8 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Nous avons besoin de la caméra pour prendre votre photo de profil.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nous avons besoin de votre position pour afficher la météo locale.</string>
 	<string>Nous avons besoin de la galerie pour choisir une photo de profil.</string>
 
 		<key>CFBundleDevelopmentRegion</key>

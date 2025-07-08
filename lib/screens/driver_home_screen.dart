@@ -951,7 +951,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 16, vertical: 12),
                                   itemCount: filtered.length,
-                                  itemBuilder: (_, i) => _tripCard(filtered[i]),
+                                  itemBuilder: (context, i) => _tripCard(context, filtered[i]),
                                 );
                               }).toList(),
                             );
@@ -1371,12 +1371,16 @@ class DriverStats {
   }
 
  
-  Widget _tripCard(Trip trip) {
-    return Container(
+ Widget _tripCard(BuildContext context, Trip trip) {
+  return GestureDetector(
+    onTap: () {
+      context.go('/driver/trip/${trip.id}');
+    },
+    child: Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A), // fond légèrement plus clair que le noir total
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -1389,7 +1393,7 @@ class DriverStats {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// Ligne avec icône, "Trajet", date et prix
+          // ... même contenu que tu avais ...
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1428,8 +1432,6 @@ class DriverStats {
             ],
           ),
           const SizedBox(height: 14),
-
-          /// Ligne de l'adresse complète : from ➜ to
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1465,9 +1467,6 @@ class DriverStats {
           ),
         ],
       ),
-    );
-  }
-
-
-
-
+    ),
+  );
+}

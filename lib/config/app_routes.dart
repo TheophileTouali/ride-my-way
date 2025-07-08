@@ -25,6 +25,9 @@ import '../screens/driver_home_screen.dart';
 import '../screens/confirmation_screen.dart'; 
 import '../screens/booking_success_screen.dart';
 import '../screens/driver_search_screen.dart';
+import '../screens/live_tracking_screen.dart';
+import '../screens/driver_trip_detail_screen.dart';
+
 
 
 
@@ -156,13 +159,29 @@ class AppRoutes {
       ),
 
       GoRoute(
+      path: '/driver/live_tracking/:reservationId',
+      builder: (context, state) => LiveTrackingScreen(
+        reservationId: state.pathParameters['reservationId']!,
+      ),
+    ),
+
+    GoRoute(
+      path: '/driver/trip/:reservationId',
+      builder: (context, state) {
+        final reservationId = state.pathParameters['reservationId']!;
+        return DriverTripDetailScreen(reservationId: reservationId);
+      },
+    ),
+
+
+
+      GoRoute(
       path: '/searching',
       builder: (context, state) {
         final reservationId = state.uri.queryParameters['reservationId']!;
         return DriverSearchScreen(reservationId: reservationId);
       },
     ),
-
 
     ],
   );

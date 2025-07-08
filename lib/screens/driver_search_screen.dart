@@ -119,15 +119,18 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
               final status = data['status'];
               final driverId = data['driverId'];
 
-              if (status == 'Confirmée' || (driverId != null && driverId.toString().isNotEmpty)) {
-                if (!_showDriverFoundMessage) {
+              if (!_showDriverFoundMessage) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
                   setState(() => _showDriverFoundMessage = true);
-                  _playDriverFoundSound(); // 👈 Son de confirmation
+                  _playDriverFoundSound();
                   Future.delayed(const Duration(seconds: 1), () {
                     if (mounted) context.go('/reservations');
                   });
                 }
-              }
+              });
+            }
+
             }
 
             // ✅ Il manquait ce return !

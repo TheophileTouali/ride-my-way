@@ -113,29 +113,35 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
               .collection('reservations')
               .doc(widget.reservationId)
               .snapshots(),
+
+              
           builder: (context, snapshot) {
             if (snapshot.hasData && snapshot.data!.exists) {
               final data = snapshot.data!.data() as Map<String, dynamic>;
               final status = data['status'];
               final driverId = data['driverId'];
 
-              if (!_showDriverFoundMessage) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  setState(() => _showDriverFoundMessage = true);
-                  _playDriverFoundSound();
-                  Future.delayed(const Duration(seconds: 1), () {
-                    if (mounted) context.go('/reservations');
+              if (status == 'Confirmée' || (driverId != null && driverId.toString().isNotEmpty)) {
+                if (!_showDriverFoundMessage) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    setState(() => _showDriverFoundMessage = true);
+                    _playDriverFoundSound();
+                    Future.delayed(const Duration(seconds: 1), () {
+                      if (mounted) context.go('/reservations');
+                    });
                   });
                 }
-              });
-            }
-
+              }
             }
 
             // ✅ Il manquait ce return !
             return _buildSearchUI();
           },
+
+
+
+
         ),
       );
     }

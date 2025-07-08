@@ -272,39 +272,61 @@ class DriverTripDetailScreen extends StatelessWidget {
                             ),
                           );
                         },
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            await FirebaseFirestore.instance
-                                .collection('reservations')
-                                .doc(reservationId)
-                                .update({
-                              'status': 'En cours',
-                              'startTime': FieldValue.serverTimestamp(),
-                            });
 
-                            if (context.mounted) {
-                              context.go('/driver/live_tracking/$reservationId');
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.gold,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            textStyle: const TextStyle(fontSize: 16),
-                            elevation: 8,
-                            shadowColor: AppColors.gold,
-                          ),
-                          child: const Text(
-                            "Commencer la course",
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'PlayfairDisplay',
-                            ),
-                          ),
-                        ),
+
+
+                        child: ElevatedButton(
+  onPressed: () async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(reservationId)
+          .update({
+        'status': 'En cours',
+        'startTime': FieldValue.serverTimestamp(),
+      });
+
+      print("➡️ Redirection vers /driver/live_tracking/$reservationId");
+
+      if (context.mounted) {
+        GoRouter.of(context).go('/driver/live_tracking/$reservationId');
+      }
+    } catch (e) {
+      print("❌ Erreur lors de la mise à jour ou navigation : $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Erreur lors du démarrage de la course."),
+          ),
+        );
+      }
+    }
+  },
+  style: ElevatedButton.styleFrom(
+    backgroundColor: AppColors.gold,
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(30),
+    ),
+    textStyle: const TextStyle(fontSize: 16),
+    elevation: 8,
+    shadowColor: AppColors.gold,
+  ),
+  child: const Text(
+    "Commencer la course",
+    style: TextStyle(
+      color: Colors.black,
+      fontWeight: FontWeight.bold,
+      fontFamily: 'PlayfairDisplay',
+    ),
+  ),
+),
+
+
+
+
+
+
                       ),
                     ),
 

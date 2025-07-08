@@ -32,6 +32,7 @@ dependencies:
   # Géolocalisation
   geolocator: ^10.1.0
   geocoding: ^2.1.0
+  google_maps_flutter: ^2.6.1
 
   # Autocomplétion
   google_places_flutter: ^2.1.0
@@ -53,7 +54,7 @@ dependencies:
   diacritic: ^0.1.3
   audioplayers: ^5.2.1
   assets_audio_player: ^3.0.6+8
-  
+  flutter_polyline_points: ^1.0.0
 
   # Splash
   flutter_native_splash: ^2.4.4
@@ -75,6 +76,8 @@ flutter:
     - assets/sounds/success.mp3
     - assets/sounds/urgent_alert.mp3
     - assets/sounds/driver_found.mp3
+    - assets/map_style_dark.json
+    - assets/icons/car_gold.png
 
   fonts:
     - family: PlayfairDisplay

@@ -29,6 +29,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
 
   double _remainingDistance = 0;
   double _estimatedDuration = 0;
+  String? _status;
 
   final List<LatLng> _polylineCoordinates = [];
   Set<Polyline> _polylines = {};
@@ -41,6 +42,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
     _loadCarIcon();
     _loadReservationData();
     _startDriverLocationUpdates();
+    _listenReservationStatus();
 
     _haloController = AnimationController(
       duration: const Duration(seconds: 2),
@@ -64,9 +66,13 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
         .doc(widget.reservationId)
         .get();
     final data = doc.data();
-    if (data != null && data['dropoffLocation'] != null) {
-      final d = data['dropoffLocation'];
-      setState(() => _destination = LatLng(d['lat'], d['lng']));
+    if (data != null) {
+      final location = (data['status'] == 'En cours')
+          ? data['dropoffLocation']
+          : data['pickupLocation'];
+      if (location != null) {
+        setState(() => _destination = LatLng(location['lat'], location['lng']));
+      }
     }
   }
 
@@ -99,7 +105,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
 
       setState(() {
         _remainingDistance = distanceInMeters / 1000;
-        _estimatedDuration = (_remainingDistance / 0.5) * 1.2; // ~30km/h
+        _estimatedDuration = (_remainingDistance / 0.5) * 1.2;
       });
     }
   }
@@ -137,6 +143,43 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
     _mapController?.setMapStyle(style);
   }
 
+  void _listenReservationStatus() {
+    FirebaseFirestore.instance
+        .collection('reservations')
+        .doc(widget.reservationId)
+        .snapshots()
+        .listen((doc) {
+      final data = doc.data();
+      if (data != null) {
+        setState(() {
+          _status = data['status'];
+        });
+
+        if (_status == 'Terminée' && mounted) {
+          context.go('/feedback/${widget.reservationId}');
+        }
+
+        // Met à jour la destination si le statut change (ex: En route → En cours)
+        _loadReservationData();
+      }
+    });
+  }
+
+  String get statusMessage {
+    switch (_status) {
+      case 'En route':
+        return "🚕 Votre chauffeur est en route vers vous";
+      case 'Arrivé':
+        return "📍 Votre chauffeur est arrivé à votre point de départ";
+      case 'En cours':
+        return "🛣️ Trajet en cours vers votre destination";
+      case 'Terminée':
+        return "✅ Course terminée";
+      default:
+        return "⏳ En attente du chauffeur...";
+    }
+  }
+
   @override
   void dispose() {
     _refreshTimer?.cancel();
@@ -171,15 +214,14 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 Marker(
                   markerId: const MarkerId('driver'),
                   position: _driverPosition!,
-                  icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueYellow),
+                  icon: _carIcon ??
+                      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
                 ),
                 if (_destination != null)
                   Marker(
                     markerId: const MarkerId('destination'),
                     position: _destination!,
-                    icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueAzure),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
                   ),
               },
             ),
@@ -188,10 +230,8 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
             AnimatedBuilder(
               animation: _haloAnimation,
               builder: (context, child) => Positioned(
-                top: MediaQuery.of(context).size.height / 2 -
-                    _haloAnimation.value / 2 - 80,
-                left: MediaQuery.of(context).size.width / 2 -
-                    _haloAnimation.value / 2,
+                top: MediaQuery.of(context).size.height / 2 - _haloAnimation.value / 2 - 80,
+                left: MediaQuery.of(context).size.width / 2 - _haloAnimation.value / 2,
                 child: Container(
                   width: _haloAnimation.value,
                   height: _haloAnimation.value,
@@ -203,7 +243,6 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
               ),
             ),
 
-          // Infos de trajet
           Positioned(
             bottom: 20,
             left: 20,
@@ -218,19 +257,14 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "🚘 Trajet en cours",
-                    style: TextStyle(
+                  Text(
+                    statusMessage,
+                    style: const TextStyle(
                       color: AppColors.gold,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'PlayfairDisplay',
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "Suivi du conducteur en temps réel.",
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
                   Text(

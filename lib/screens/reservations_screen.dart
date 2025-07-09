@@ -200,30 +200,56 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
 
                 final docs = snapshot.data!.docs;
 
-// ✅ Recherche de la course "En cours" la plus récente
-if (_redirectedReservationIds.isEmpty) {
-  final enCoursDocs = docs.where((doc) => doc['status'] == 'En cours').toList();
+      // ✅ Recherche de la course "En cours" la plus récente
+      if (_redirectedReservationIds.isEmpty) {
+        // 1. Redirection si "En cours"
+        final enCoursDocs = docs.where((doc) => doc['status'] == 'En cours').toList();
 
-  if (enCoursDocs.isNotEmpty) {
-    // Trie par date descendante (la plus récente en premier)
-    enCoursDocs.sort((a, b) {
-      final aTime = (a['timestamp'] as Timestamp).toDate();
-      final bTime = (b['timestamp'] as Timestamp).toDate();
-      return bTime.compareTo(aTime);
-    });
+        if (enCoursDocs.isNotEmpty) {
+          enCoursDocs.sort((a, b) {
+            final aTime = (a['timestamp'] as Timestamp).toDate();
+            final bTime = (b['timestamp'] as Timestamp).toDate();
+            return bTime.compareTo(aTime);
+          });
 
-    final latestDoc = enCoursDocs.first;
-    final id = latestDoc.id;
+          final latestDoc = enCoursDocs.first;
+          final id = latestDoc.id;
 
-    if (!_redirectedReservationIds.contains(id)) {
-      _redirectedReservationIds.add(id);
-      print("🚀 Redirection vers /tracking/$id");
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.go('/tracking/$id');
-      });
-    }
-  }
-}
+          _redirectedReservationIds.add(id);
+          print("🚀 Redirection vers /tracking/$id");
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            context.go('/tracking/$id');
+          });
+
+          return const SizedBox.shrink(); // ✅ correction ici
+        }
+
+        // 2. Sinon, redirection si "En route"
+        final enRouteDocs = docs.where((doc) => doc['status'] == 'En route').toList();
+
+        if (enRouteDocs.isNotEmpty) {
+          enRouteDocs.sort((a, b) {
+            final aTime = (a['timestamp'] as Timestamp).toDate();
+            final bTime = (b['timestamp'] as Timestamp).toDate();
+            return bTime.compareTo(aTime);
+          });
+
+          final latestDoc = enRouteDocs.first;
+          final id = latestDoc.id;
+
+          _redirectedReservationIds.add(id);
+          print("🛰️ Redirection vers /tracking/$id (En route)");
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            context.go('/tracking/$id');
+          });
+
+          return const SizedBox.shrink(); // ✅ ici aussi (optionnel)
+        }
+      }
+
+
+
+
 
 
 
@@ -418,6 +444,36 @@ if (_redirectedReservationIds.isEmpty) {
             ),
           ),
           if (status == 'En cours') const SizedBox(height: 6),
+          // Nouveau bouton pour le passager : "Je monte"
+          if (status == 'Arrivé')
+            ElevatedButton.icon(
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('reservations')
+                    .doc(docId)
+                    .update({'status': 'En cours'});
+
+                _showPremiumFavoriteOverlay("Trajet démarré !");
+              },
+              icon: const Icon(Icons.directions_car, color: Colors.black),
+              label: const Text(
+                "Je monte",
+                style: TextStyle(
+                  fontFamily: 'PlayfairDisplay',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.black,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+
           if (status == 'En cours')
             ElevatedButton.icon(
               onPressed: () => context.go('/tracking/$docId'),

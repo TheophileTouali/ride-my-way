@@ -28,6 +28,8 @@ import '../screens/driver_search_screen.dart';
 import '../screens/live_tracking_screen.dart';
 import '../screens/live_tracking_passenger_screen.dart';
 import '../screens/driver_trip_detail_screen.dart';
+import '../screens/driver_pickup_tracking_screen.dart';
+
 
 
 
@@ -186,6 +188,14 @@ class AppRoutes {
       },
     ),
 
+    GoRoute(
+      path: '/driver/pickup_tracking/:id',
+      name: 'driver-pickup-tracking',
+      builder: (context, state) {
+        final reservationId = state.pathParameters['id']!;
+        return DriverPickupTrackingScreen(reservationId: reservationId);
+      },
+    ),
 
 
       GoRoute(

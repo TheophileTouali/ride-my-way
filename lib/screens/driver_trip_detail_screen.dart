@@ -17,17 +17,17 @@ class DriverTripDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.black,
       appBar: AppBar(
-      backgroundColor: AppColors.black,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-        onPressed: () => context.go('/driver-home'),
+        backgroundColor: AppColors.black,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => context.go('/driver-home'),
+        ),
+        title: const Text(
+          "Détail de la course",
+          style: TextStyle(color: Colors.white, fontFamily: 'PlayfairDisplay', fontSize: 20),
+        ),
       ),
-      title: const Text(
-        "Détail de la course",
-        style: TextStyle(color: Colors.white, fontFamily: 'PlayfairDisplay', fontSize: 20),
-      ),
-    ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('reservations').doc(reservationId).snapshots(),
         builder: (context, snapshot) {
@@ -59,7 +59,7 @@ class DriverTripDetailScreen extends StatelessWidget {
               if (userSnapshot.hasError) {
                 return Center(
                   child: Text(
-                    "Erreur de chargement : ${userSnapshot.error}",
+                    "Erreur de chargement : \${userSnapshot.error}",
                     style: const TextStyle(color: Colors.redAccent),
                   ),
                 );
@@ -78,17 +78,13 @@ class DriverTripDetailScreen extends StatelessWidget {
               final firstName = userData['firstName'] ?? '';
               final lastName = userData['lastName'] ?? '';
               final passengerName = "$firstName $lastName".trim();
-                final prefs = userData['preferences'] as Map<String, dynamic>?; // ✅ corriger ici
-                print("Préférences passager : $prefs");
-
-
+              final prefs = userData['preferences'] as Map<String, dynamic>?;
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // === Détails du trajet ===
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       padding: const EdgeInsets.all(24),
@@ -111,25 +107,19 @@ class DriverTripDetailScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SizedBox(height: 6), //
+                          const SizedBox(height: 6),
                           const SizedBox(height: 18),
-                          _infoRow(Icons.location_on, "Départ : $from"),
-                          const SizedBox(height: 12),
-                          _infoRow(Icons.flag, "Arrivée : $to"),
-                          const SizedBox(height: 12),
-                          _infoRow(Icons.access_time,
-                              "Départ prévu : ${DateFormat.yMMMMd('fr_FR').add_Hm().format(departureTime)}"),
-                          const SizedBox(height: 12),
-                          _infoRow(Icons.euro, "Prix : ${price.toStringAsFixed(2)} €"),
-                          const SizedBox(height: 12),
-                          _infoRow(Icons.info_outline, "Statut : ${_getStatusLabel(status)}"),
+                         _infoRow(Icons.location_on, 'Départ : $from'),
+                        _infoRow(Icons.flag, 'Arrivée : $to'),
+                        _infoRow(Icons.access_time, 'Départ prévu : ${DateFormat.yMMMMd('fr_FR').add_Hm().format(departureTime)}'),
+                        _infoRow(Icons.euro, 'Prix : ${price.toStringAsFixed(2)} €'),
+                        _infoRow(Icons.info_outline, 'Statut : ${_getStatusLabel(status)}'),
                         ],
                       ),
                     ),
 
                     const SizedBox(height: 30),
 
-                    // === Infos passager ===
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -195,7 +185,6 @@ class DriverTripDetailScreen extends StatelessWidget {
                       ),
                     ),
 
-                    // === Préférences passager ===
                     if (prefs != null) ...[
                       const SizedBox(height: 30),
                       Container(
@@ -239,102 +228,125 @@ class DriverTripDetailScreen extends StatelessWidget {
 
                     const SizedBox(height: 30),
 
-                    // === Bouton commencer ===
-                    if (isCurrentDriver && status == 'Confirmée')
+                    if (isCurrentDriver && status == 'Confirmée') ...[
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                        onPressed: () async {
+                          await FirebaseFirestore.instance
+                              .collection('reservations')
+                              .doc(reservationId)
+                              .update({
+                            'status': 'En route',
+                            'startTime': FieldValue.serverTimestamp(),
+                          });
 
-
-                      Center(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 1.0, end: 1.05),
-                        duration: const Duration(milliseconds: 500),
-                        curve: Curves.easeInOut,
-                        onEnd: () => Future.delayed(const Duration(seconds: 15)).then(
-                          (_) => (context as Element).markNeedsBuild(),
-                        ),
-                        builder: (context, scale, child) {
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 500),
-                            curve: Curves.easeInOut,
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.gold.withOpacity(0.6), // 🌟 halo
-                                  blurRadius: 20 * (scale - 1),           // pulsation
-                                  spreadRadius: 1.5 * (scale - 1),
-                                ),
-                              ],
-                              borderRadius: BorderRadius.circular(40),
-                            ),
-                            child: Transform.scale(
-                              scale: scale,
-                              child: child,
-                            ),
-                          );
+                          if (context.mounted) {
+                            context.go('/driver/pickup_tracking/$reservationId');
+                          }
                         },
-
-
-
-                        child: ElevatedButton(
-  onPressed: () async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('reservations')
-          .doc(reservationId)
-          .update({
-        'status': 'En cours',
-        'startTime': FieldValue.serverTimestamp(),
-      });
-
-      print("➡️ Redirection vers /driver/live_tracking/$reservationId");
-
-      if (context.mounted) {
-        GoRouter.of(context).go('/driver/live_tracking/$reservationId');
-      }
-    } catch (e) {
-      print("❌ Erreur lors de la mise à jour ou navigation : $e");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Erreur lors du démarrage de la course."),
-          ),
-        );
-      }
-    }
-  },
-  style: ElevatedButton.styleFrom(
-    backgroundColor: AppColors.gold,
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(30),
-    ),
-    textStyle: const TextStyle(fontSize: 16),
-    elevation: 8,
-    shadowColor: AppColors.gold,
-  ),
-  child: const Text(
-    "Commencer la course",
-    style: TextStyle(
-      color: Colors.black,
-      fontWeight: FontWeight.bold,
-      fontFamily: 'PlayfairDisplay',
-    ),
-  ),
-),
-
-
-
-
-
-
+                        icon: const Icon(Icons.directions_car_filled_rounded, color: Colors.black),
+                        label: const Text(
+                          "Commencer la prise en charge",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            fontFamily: 'PlayfairDisplay',
+                            color: Colors.black,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          backgroundColor: AppColors.gold, // fond doré
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30),
+                            side: BorderSide(color: Colors.amber.shade100, width: 1),
+                          ),
+                          elevation: 4,
+                        ),
                       ),
-                    ),
+                      ],
 
 
+                    if (isCurrentDriver && status == 'Arrivé') ...[
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          border: Border.all(color: AppColors.gold.withOpacity(0.4)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          "⏳ En attente que le passager valide sa présence. Vous pourrez commencer la course dès sa confirmation.",
+                          style: TextStyle(
+                            color: AppColors.gold,
+                            fontSize: 14,
+                            fontFamily: 'Montserrat',
+                          ),
+                        ),
+                      ),
+                    ],
 
+                    if (isCurrentDriver && status == 'Prêt') ...[
+                      Center(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 1.0, end: 1.05),
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.easeInOut,
+                          builder: (context, scale, child) {
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 500),
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.gold.withOpacity(0.6),
+                                    blurRadius: 20 * (scale - 1),
+                                    spreadRadius: 1.5 * (scale - 1),
+                                  ),
+                                ],
+                                borderRadius: BorderRadius.circular(40),
+                              ),
+                              child: Transform.scale(
+                                scale: scale,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              await FirebaseFirestore.instance
+                                  .collection('reservations')
+                                  .doc(reservationId)
+                                  .update({
+                                'status': 'En cours',
+                                'startTime': FieldValue.serverTimestamp(),
+                              });
 
-
-
+                              if (context.mounted) {
+                                context.go('/driver/live_tracking/\$reservationId');
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.gold,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              textStyle: const TextStyle(fontSize: 16),
+                              elevation: 8,
+                              shadowColor: AppColors.gold,
+                            ),
+                            child: const Text(
+                              "Commencer la course",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'PlayfairDisplay',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               );

@@ -8,8 +8,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../themes/app_theme.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
-
-
 class LiveTrackingScreen extends StatefulWidget {
   final String reservationId;
 
@@ -26,6 +24,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   LatLng? _destination;
   BitmapDescriptor? _carIcon;
   StreamSubscription<Position>? _positionStream;
+  StreamSubscription<DocumentSnapshot>? _reservationListener;
   late AnimationController _haloController;
   late Animation<double> _haloAnimation;
 
@@ -33,18 +32,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   double _estimatedDuration = 0;
 
   List<LatLng> _polylineCoordinates = [];
-Set<Polyline> _polylines = {};
-final PolylinePoints _polylinePoints = PolylinePoints();
-final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
-
+  Set<Polyline> _polylines = {};
+  final PolylinePoints _polylinePoints = PolylinePoints();
+  final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
 
   @override
   void initState() {
     super.initState();
     _loadCarIcon();
     _startLocationUpdates();
-    _getRoutePolyline(); // 🔁 à chaque mouvement
     _loadReservationData();
+    _listenReservationStatus();
+
     _haloController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -52,58 +51,82 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
     _haloAnimation = Tween<double>(begin: 20, end: 40).animate(_haloController);
   }
 
-  Future<void> _getRoutePolyline() async {
-  if (_driverPosition == null || _destination == null) return;
+  void _listenReservationStatus() {
+    _reservationListener = FirebaseFirestore.instance
+        .collection('reservations')
+        .doc(widget.reservationId)
+        .snapshots()
+        .listen((snapshot) {
+      final data = snapshot.data();
+      if (data == null) return;
 
-  final result = await _polylinePoints.getRouteBetweenCoordinates(
-    _googleApiKey,
-    PointLatLng(_driverPosition!.latitude, _driverPosition!.longitude),
-    PointLatLng(_destination!.latitude, _destination!.longitude),
-    travelMode: TravelMode.driving,
-  );
-
-  if (result.points.isNotEmpty) {
-    setState(() {
-      _polylineCoordinates = result.points
-          .map((p) => LatLng(p.latitude, p.longitude))
-          .toList();
-      _polylines = {
-        Polyline(
-          polylineId: const PolylineId("route"),
-          color: AppColors.gold,
-          width: 5,
-          points: _polylineCoordinates,
-        ),
-      };
+      // Exemple : si on veut réagir à un changement de statut global
+      final status = data['status'];
+      if (status == 'Annulée' && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('La course a été annulée.')),
+        );
+        context.go('/driver-home');
+      }
     });
   }
-}
 
+  Future<void> _getRoutePolyline() async {
+    if (_driverPosition == null || _destination == null) return;
+
+    final result = await _polylinePoints.getRouteBetweenCoordinates(
+      _googleApiKey,
+      PointLatLng(_driverPosition!.latitude, _driverPosition!.longitude),
+      PointLatLng(_destination!.latitude, _destination!.longitude),
+      travelMode: TravelMode.driving,
+    );
+
+    if (result.points.isNotEmpty) {
+      setState(() {
+        _polylineCoordinates = result.points
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId("route"),
+            color: AppColors.gold,
+            width: 5,
+            points: _polylineCoordinates,
+          ),
+        };
+      });
+    }
+  }
 
   Future<void> _loadCarIcon() async {
     _carIcon = await BitmapDescriptor.fromAssetImage(
       const ImageConfiguration(size: Size(48, 48)),
-      'assets/icons/car_gold.png', // 👈 ajoute bien ce fichier
+      'assets/icons/car_gold.png',
     );
     setState(() {});
   }
 
   void _startLocationUpdates() {
     const settings = LocationSettings(accuracy: LocationAccuracy.high);
-    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
-        .listen((position) {
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: settings).listen((position) {
       final newPos = LatLng(position.latitude, position.longitude);
+      final hasMoved = _driverPosition == null ||
+          _driverPosition!.latitude != newPos.latitude ||
+          _driverPosition!.longitude != newPos.longitude;
+
       setState(() => _driverPosition = newPos);
 
       FirebaseFirestore.instance
           .collection('reservations')
           .doc(widget.reservationId)
           .update({
-        'driverLocation': {'lat': position.latitude, 'lng': position.longitude}
+        'driverLocation': {'lat': newPos.latitude, 'lng': newPos.longitude}
       });
 
       _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
       _updateDistanceAndDuration();
+      if (hasMoved) _getRoutePolyline();
     });
   }
 
@@ -129,12 +152,10 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
         .doc(widget.reservationId)
         .get();
     final data = doc.data();
-    if (data != null) {
+    if (data != null && data['dropoffLocation'] != null) {
       final d = data['dropoffLocation'];
-      if (d != null) {
-        setState(() => _destination = LatLng(d['lat'], d['lng']));
-        _getRoutePolyline(); // 👈 ici
-      }
+      setState(() => _destination = LatLng(d['lat'], d['lng']));
+      _getRoutePolyline();
     }
   }
 
@@ -154,6 +175,7 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
   @override
   void dispose() {
     _positionStream?.cancel();
+    _reservationListener?.cancel();
     _haloController.dispose();
     super.dispose();
   }
@@ -183,28 +205,24 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
                 Marker(
                   markerId: const MarkerId('driver'),
                   position: _driverPosition!,
-                  icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueYellow),
+                  icon: _carIcon ??
+                      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
                 ),
                 if (_destination != null)
                   Marker(
                     markerId: const MarkerId('destination'),
                     position: _destination!,
-                    icon: BitmapDescriptor.defaultMarkerWithHue(
-                        BitmapDescriptor.hueAzure),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
                   ),
               },
             ),
 
-          // 🔆 Animation halo doré autour de la voiture
           if (_driverPosition != null)
             AnimatedBuilder(
               animation: _haloAnimation,
               builder: (context, child) => Positioned(
-                top: MediaQuery.of(context).size.height / 2 -
-                    _haloAnimation.value / 2 - 80,
-                left: MediaQuery.of(context).size.width / 2 -
-                    _haloAnimation.value / 2,
+                top: MediaQuery.of(context).size.height / 2 - _haloAnimation.value / 2 - 80,
+                left: MediaQuery.of(context).size.width / 2 - _haloAnimation.value / 2,
                 child: Container(
                   width: _haloAnimation.value,
                   height: _haloAnimation.value,
@@ -216,7 +234,6 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
               ),
             ),
 
-          // ✅ Infos de trajet
           Positioned(
             bottom: 80,
             left: 20,
@@ -259,7 +276,6 @@ final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
             ),
           ),
 
-          // ✅ Bouton Terminer la course
           Positioned(
             bottom: 20,
             right: 20,

@@ -26,7 +26,9 @@ import '../screens/confirmation_screen.dart';
 import '../screens/booking_success_screen.dart';
 import '../screens/driver_search_screen.dart';
 import '../screens/live_tracking_screen.dart';
+import '../screens/live_tracking_passenger_screen.dart';
 import '../screens/driver_trip_detail_screen.dart';
+
 
 
 
@@ -164,6 +166,17 @@ class AppRoutes {
         reservationId: state.pathParameters['reservationId']!,
       ),
     ),
+
+   GoRoute(
+      path: '/tracking/:reservationId',
+      name: 'tracking',
+      builder: (context, state) {
+        final id = state.pathParameters['reservationId']!;
+        return LiveTrackingPassengerScreen(reservationId: id);
+      },
+    ),
+
+
 
     GoRoute(
       path: '/driver/trip/:reservationId',

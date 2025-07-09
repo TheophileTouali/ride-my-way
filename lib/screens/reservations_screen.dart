@@ -13,7 +13,9 @@ class ReservationsScreen extends StatefulWidget {
   State<ReservationsScreen> createState() => _ReservationsScreenState();
 }
 
+
 class _ReservationsScreenState extends State<ReservationsScreen> {
+  final Set<String> _redirectedReservationIds = {};
   String _filter = 'À venir';
 
   void _showPremiumFavoriteOverlay(String message) {
@@ -62,10 +64,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     );
 
     overlay.insert(overlayEntry);
-
-    Timer(const Duration(milliseconds: 2500), () {
-      overlayEntry.remove();
-    });
+    Timer(const Duration(milliseconds: 2500), () => overlayEntry.remove());
   }
 
   Future<void> _addToFavorites({
@@ -200,9 +199,33 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 }
 
                 final docs = snapshot.data!.docs;
-                if (docs.isEmpty) {
-                  return const Center(child: Text("Aucune réservation trouvée.", style: TextStyle(color: Colors.white70)));
-                }
+
+// ✅ Recherche de la course "En cours" la plus récente
+if (_redirectedReservationIds.isEmpty) {
+  final enCoursDocs = docs.where((doc) => doc['status'] == 'En cours').toList();
+
+  if (enCoursDocs.isNotEmpty) {
+    // Trie par date descendante (la plus récente en premier)
+    enCoursDocs.sort((a, b) {
+      final aTime = (a['timestamp'] as Timestamp).toDate();
+      final bTime = (b['timestamp'] as Timestamp).toDate();
+      return bTime.compareTo(aTime);
+    });
+
+    final latestDoc = enCoursDocs.first;
+    final id = latestDoc.id;
+
+    if (!_redirectedReservationIds.contains(id)) {
+      _redirectedReservationIds.add(id);
+      print("🚀 Redirection vers /tracking/$id");
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.go('/tracking/$id');
+      });
+    }
+  }
+}
+
+
 
                 final filtered = _filterReservations(docs);
                 if (filtered.isEmpty) {
@@ -394,6 +417,28 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
               ),
             ),
           ),
+          if (status == 'En cours') const SizedBox(height: 6),
+          if (status == 'En cours')
+            ElevatedButton.icon(
+              onPressed: () => context.go('/tracking/$docId'),
+              icon: const Icon(Icons.navigation, color: Colors.black),
+              label: const Text(
+                "Suivre le trajet",
+                style: TextStyle(
+                  fontFamily: 'PlayfairDisplay',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.black,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
         ],
       ),
     );

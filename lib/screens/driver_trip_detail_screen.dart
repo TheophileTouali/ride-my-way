@@ -232,18 +232,18 @@ class DriverTripDetailScreen extends StatelessWidget {
                         const SizedBox(height: 20),
                         ElevatedButton.icon(
                         onPressed: () async {
-                          await FirebaseFirestore.instance
-                              .collection('reservations')
-                              .doc(reservationId)
-                              .update({
-                            'status': 'En route',
-                            'startTime': FieldValue.serverTimestamp(),
-                          });
+                        await FirebaseFirestore.instance
+                            .collection('reservations')
+                            .doc(reservationId)
+                            .update({
+                          'status': 'En route',
+                          'startTime': FieldValue.serverTimestamp(),
+                        });
 
-                          if (context.mounted) {
-                            context.go('/driver/pickup_tracking/$reservationId');
-                          }
-                        },
+                        if (context.mounted) {
+                          context.go('/driver/pickup_tracking/$reservationId');
+                        }
+                      },
                         icon: const Icon(Icons.directions_car_filled_rounded, color: Colors.black),
                         label: const Text(
                           "Commencer la prise en charge",
@@ -287,66 +287,72 @@ class DriverTripDetailScreen extends StatelessWidget {
                       ),
                     ],
 
-                    if (isCurrentDriver && status == 'Prêt') ...[
-                      Center(
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 1.0, end: 1.05),
-                          duration: const Duration(milliseconds: 500),
-                          curve: Curves.easeInOut,
-                          builder: (context, scale, child) {
-                            return AnimatedContainer(
-                              duration: const Duration(milliseconds: 500),
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.gold.withOpacity(0.6),
-                                    blurRadius: 20 * (scale - 1),
-                                    spreadRadius: 1.5 * (scale - 1),
-                                  ),
-                                ],
-                                borderRadius: BorderRadius.circular(40),
-                              ),
-                              child: Transform.scale(
-                                scale: scale,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
-                                  .collection('reservations')
-                                  .doc(reservationId)
-                                  .update({
-                                'status': 'En cours',
-                                'startTime': FieldValue.serverTimestamp(),
-                              });
+                    if (isCurrentDriver && status == 'À bord') ...[
+                    const SizedBox(height: 20),
+                    Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 1.0, end: 1.05),
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeInOut,
+                        builder: (context, scale, child) {
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 500),
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.gold.withOpacity(0.6),
+                                  blurRadius: 20 * (scale - 1),
+                                  spreadRadius: 1.5 * (scale - 1),
+                                ),
+                              ],
+                              borderRadius: BorderRadius.circular(40),
+                            ),
+                            child: Transform.scale(
+                              scale: scale,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection('reservations')
+                                .doc(reservationId)
+                                .update({
+                              'status': 'En cours',
+                              'startTime': FieldValue.serverTimestamp(),
+                            });
 
-                              if (context.mounted) {
-                                context.go('/driver/live_tracking/\$reservationId');
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.gold,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                              textStyle: const TextStyle(fontSize: 16),
-                              elevation: 8,
-                              shadowColor: AppColors.gold,
+                            if (context.mounted) {
+                              context.go('/driver/live_tracking/$reservationId');
+                            }
+                          },
+                          icon: const Icon(Icons.play_arrow, color: Colors.black),
+                          label: const Text(
+                            "Démarrer la course",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              fontFamily: 'PlayfairDisplay',
+                              color: Colors.black,
                             ),
-                            child: const Text(
-                              "Commencer la course",
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'PlayfairDisplay',
-                              ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            backgroundColor: AppColors.gold,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              side: BorderSide(color: Colors.amber.shade100, width: 1),
                             ),
+                            elevation: 6,
                           ),
                         ),
                       ),
-                    ],
+                    ),
+                  ],
+
+
                   ],
                 ),
               );
@@ -400,6 +406,8 @@ class DriverTripDetailScreen extends StatelessWidget {
     switch (status) {
       case 'Confirmée':
         return 'Confirmée';
+      case 'À bord':
+      return 'Passager à bord';
       case 'En cours':
         return 'Course en cours';
       case 'Terminée':

@@ -159,6 +159,43 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
           context.go('/feedback/${widget.reservationId}');
         }
 
+        if (_status == 'En route' && mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppColors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text("Votre chauffeur est arrivé", style: TextStyle(color: AppColors.gold)),
+            content: const Text(
+              "Veuillez confirmer que vous êtes bien monté à bord. Le chauffeur pourra démarrer la course ensuite.",
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Plus tard", style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await FirebaseFirestore.instance
+                      .collection('reservations')
+                      .doc(widget.reservationId)
+                      .update({'status': 'À bord'});
+                },
+                child: const Text("✅ Je suis monté à bord"),
+              ),
+            ],
+          ),
+        );
+      }
+
+
+
         // Met à jour la destination si le statut change (ex: En route → En cours)
         _loadReservationData();
       }
@@ -171,6 +208,8 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
         return "🚕 Votre chauffeur est en route vers vous";
       case 'Arrivé':
         return "📍 Votre chauffeur est arrivé à votre point de départ";
+      case 'À bord':
+      return "✅ Vous êtes monté à bord. Le chauffeur peut maintenant démarrer la course.";
       case 'En cours':
         return "🛣️ Trajet en cours vers votre destination";
       case 'Terminée':

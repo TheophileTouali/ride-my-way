@@ -22,11 +22,21 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
   Map<String, dynamic>? userData;
   bool isLoading = true;
   String? imageUrl;
+  List<Map<String, dynamic>> driverFeedbacks = [];
+  double averageRating = 0;
+  int _satisfiedDrivers = 0;
+  int _totalDrivers = 0;
+
 
   @override
   void initState() {
     super.initState();
     fetchUserData();
+    fetchFeedbacksFromDrivers().then((data) {
+        setState(() {
+          driverFeedbacks = data;
+        });
+      });
   }
 
   Future<void> fetchUserData() async {
@@ -41,6 +51,67 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
       });
     }
   }
+
+    Future<List<Map<String, dynamic>>> fetchFeedbacksFromDrivers() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      print("❌ UID non trouvé !");
+      return [];
+    }
+
+    print("🔄 Chargement des feedbacks pour le passager : $uid");
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .where('passengerId', isEqualTo: uid)
+          .where('fromDriver', isEqualTo: true)
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      final feedbackList = snapshot.docs.map((doc) {
+        final data = doc.data();
+
+        final timestamp = data['timestamp'];
+        print("📝 Avis : ${data['rating']} étoiles – ${data['comment']}");
+        print("📅 Timestamp : $timestamp (${timestamp.runtimeType})");
+
+        return data;
+      }).toList();
+
+      if (feedbackList.isNotEmpty) {
+        final totalRatings = feedbackList.fold<double>(
+          0,
+          (sum, f) => sum + (f['rating'] ?? 0).toDouble(),
+        );
+        final moyenne = totalRatings / feedbackList.length;
+
+        final satisfied = feedbackList.where((f) => (f['rating'] ?? 0) >= 4).length;
+
+        setState(() {
+          averageRating = moyenne;
+          _satisfiedDrivers = satisfied;
+          _totalDrivers = feedbackList.length;
+        });
+
+        print("✅ Moyenne calculée : $moyenne sur ${feedbackList.length} avis");
+        print("✅ Chauffeurs satisfaits : $satisfied / ${feedbackList.length}");
+      } else {
+        print("ℹ️ Aucun avis trouvé pour ce passager.");
+      }
+
+      return feedbackList;
+    } catch (e) {
+      print("❌ Erreur lors du fetch des feedbacks : $e");
+      return [];
+    }
+  }
+
+
+
+
+
+
 
   Future<void> pickAndUploadImage() async {
     final picker = ImagePicker();
@@ -251,10 +322,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              _infoRow("Note globale", "⭐ 4.9 / 5"),
+                              _infoRow("Note globale", "⭐ ${averageRating.toStringAsFixed(1)} / 5"),
                               _infoRow("Distinction", "Voyageur d'Or"),
                               _infoRow("Respect des trajets", "98 %"),
-                              _infoRow("Chauffeurs satisfaits", "37 / 38"),
+                              _infoRow("Chauffeurs satisfaits", "$_satisfiedDrivers / $_totalDrivers"),
                             ]),
 
                    const SizedBox(height: 32),
@@ -331,41 +402,55 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
   }
 
     Widget _reviewSlider() {
-    final reviews = [
-      {"stars": "⭐️⭐️⭐️⭐️⭐️", "comment": "Toujours ponctuel et agréable.", "author": "Jean-Marc • 12 mai"},
-      {"stars": "⭐️⭐️⭐️⭐️", "comment": "Très respectueux et discret.", "author": "Fatou • 28 avril"},
-      {"stars": "⭐️⭐️⭐️⭐️⭐️", "comment": "Une expérience parfaite à chaque fois.", "author": "Hugo • 5 avril"},
-    ];
+      if (driverFeedbacks.isEmpty) {
+        return const Text("Aucun avis de chauffeur pour le moment.",
+            style: TextStyle(color: Colors.white38));
+      }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 12),
-          child: Text(
-            "📝 Avis des chauffeurs",
-            style: TextStyle(
-              color: AppColors.gold,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'PlayfairDisplay',
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              "📝 Avis des chauffeurs",
+              style: TextStyle(
+                color: AppColors.gold,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'PlayfairDisplay',
+              ),
             ),
           ),
-        ),
-        SizedBox(
-          height: 160,
-          child: PageView.builder(
-            itemCount: reviews.length,
-            controller: PageController(viewportFraction: 0.9),
-            itemBuilder: (context, index) {
-              final r = reviews[index];
-              return _reviewCard(r['stars']!, r['comment']!, r['author']!);
-            },
+          SizedBox(
+            height: 160,
+            child: PageView.builder(
+              itemCount: driverFeedbacks.length,
+              controller: PageController(viewportFraction: 0.9),
+              itemBuilder: (context, index) {
+                final review = driverFeedbacks[index];
+                final stars = "⭐️" * (review['rating'] ?? 0);
+                final comment = review['comment'] ?? '';
+                final timestamp = review['timestamp']?.toDate();
+                final dateStr = timestamp != null
+                    ? "${timestamp.day} ${_monthName(timestamp.month)}"
+                    : '';
+                return _reviewCard(stars, comment, "• $dateStr");
+              },
+            ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
+    }
+
+    String _monthName(int month) {
+      const mois = [
+        "", "janv", "févr", "mars", "avril", "mai", "juin",
+        "juil", "août", "sept", "oct", "nov", "déc"
+      ];
+      return mois[month];
+    }
+
 
     Widget _reviewCard(String stars, String comment, String author) {
     return Container(

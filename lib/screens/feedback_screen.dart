@@ -41,6 +41,14 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
           .doc(widget.reservationId)
           .get();
 
+      if (_driverData == null) {
+        _driverData = {
+          'firstName': 'Conducteur',
+          'lastName': '',
+          'photoUrl': null,
+        };
+      }
+
       if (resSnap.exists) {
         _reservationData = resSnap.data();
         final driverId = _reservationData!['driverId'];
@@ -291,6 +299,9 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
             backgroundImage: photoUrl != null
                 ? NetworkImage(photoUrl)
                 : const AssetImage('assets/images/avatar_placeholder.png') as ImageProvider,
+            onBackgroundImageError: (_, __) {
+              debugPrint("🧨 Erreur chargement image chauffeur : $photoUrl");
+            },
           ),
           const SizedBox(width: 16),
           Column(

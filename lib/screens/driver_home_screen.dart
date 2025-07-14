@@ -83,6 +83,34 @@ class Testimonial {
   });
 }
 
+  Future<Map<int, double>> fetchMonthlyRevenues() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception("Utilisateur non connecté");
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('reservations')
+        .where('driverId', isEqualTo: uid)
+        .where('status', isEqualTo: 'Terminée') // uniquement les trajets terminés
+        .get();
+
+    Map<int, double> revenues = {}; // clé = numéro du mois, valeur = total €
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final price = (data['price'] as num?)?.toDouble() ?? 0.0;
+      final timestamp = data['timestamp'] as Timestamp?;
+      if (timestamp == null) continue;
+
+      final date = timestamp.toDate();
+      final month = date.month; // 1 = Janvier, 2 = Février, etc.
+
+      revenues[month] = (revenues[month] ?? 0) + price;
+    }
+
+    return revenues;
+  }
+
+
 Future<List<Testimonial>> fetchDriverTestimonials() async {
   await Future.delayed(const Duration(milliseconds: 600));
   return [
@@ -116,6 +144,9 @@ class DriverHomeScreen extends StatefulWidget {
 
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isVisible = false;
+  double _driverRating = 0.0;
+  List<Map<String, dynamic>> _feedbacks = [];
+
 
   late Timer _refreshTimer;
   List<DocumentSnapshot> _nearbyReservations = [];
@@ -129,7 +160,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     super.initState();
     _loadVisibility();
     _startAutoRefresh();
+    _loadDriverStats(); // ⬅️ ajoute ceci
+    _loadRecentFeedbacks(); 
   }
+
+   Future<void> _loadRecentFeedbacks() async {
+    final feedbacks = await fetchRecentFeedbacks();
+    setState(() {
+      _feedbacks = feedbacks;
+    });
+  }
+
+  Future<void> _loadDriverStats() async {
+  final stats = await fetchDriverStats();
+  setState(() {
+    _driverRating = stats.note;
+  });
+}
 
   void _startAutoRefresh() {
       _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
@@ -164,6 +211,52 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _refreshTimer.cancel();
     super.dispose();
   }
+
+    Future<List<Map<String, dynamic>>> fetchRecentFeedbacks() async {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      print("📥 UID actuel : $uid");
+
+      if (uid == null) {
+        print("⚠️ Utilisateur non connecté, retour liste vide");
+        return [];
+      }
+
+      try {
+        print("🔎 Récupération des feedbacks (driverId = $uid)...");
+        final snapshot = await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .where('driverId', isEqualTo: uid)
+            .get();
+
+        print("✅ Avis récupérés : ${snapshot.docs.length}");
+
+        final feedbacks = snapshot.docs
+            .map((doc) => doc.data())
+            .where((data) => data['fromDriver'] == false)
+            .toList();
+
+        print("🎯 Avis filtrés (from passager) : ${feedbacks.length}");
+
+        // Tri par date décroissante
+        feedbacks.sort((a, b) =>
+            (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
+
+        final limited = feedbacks.take(5).toList();
+
+        for (final fb in limited) {
+          print("📄 Avis retenu : ${fb['comment']} | Note : ${fb['rating']}");
+        }
+
+        return limited;
+      } catch (e) {
+        print("❌ Erreur lors de la récupération des feedbacks : $e");
+        return [];
+      }
+    }
+
+
+
+
 
 
   Future<void> _loadVisibility() async {
@@ -707,12 +800,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         border: Border.all(color: Colors.white24),
                       ),
                       child: Row(
-                        children: const [
-                          Icon(Icons.star_rounded, color: Colors.amber, size: 20),
-                          SizedBox(width: 4),
+                        children: [
+                          const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                          const SizedBox(width: 4),
                           Text(
-                            "4.8",
-                            style: TextStyle(
+                            _driverRating.toStringAsFixed(1), // ✅ version dynamique
+                            style: const TextStyle(
                               color: Colors.white70,
                               fontWeight: FontWeight.w500,
                               fontSize: 16,
@@ -720,6 +813,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           ),
                         ],
                       ),
+
                     ),
                   ],
                 ),
@@ -980,9 +1074,58 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     final testimonials = snapshot.data!;
                     return _infoCard(
                       title: "Avis récents 🗣️",
-                      child: Column(
-                        children: testimonials.map((t) => _testimonialCard(t)).toList(),
-                      ),
+                      child:Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        ..._feedbacks.map((feedback) {
+                          final comment = feedback['comment'] ?? 'Pas de commentaire';
+                          final rating = (feedback['rating'] as num?)?.toDouble() ?? 0.0;
+                          final date = (feedback['timestamp'] as Timestamp?)?.toDate();
+                          final formattedDate = date != null
+                              ? '${date.day}/${date.month}/${date.year}'
+                              : '';
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.star, color: Colors.amber.shade400, size: 20),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      rating.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      formattedDate,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 12),
+                                    )
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  comment,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+
                     );
                   },
                 ),
@@ -1198,7 +1341,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   children: [
                     _statColumn(Icons.directions_car, "${stats.nbTrajets}", "Trajets"),
                     _statColumn(Icons.map_rounded, "${stats.totalKm} km", "Kilomètres"),
-                    _statColumn(Icons.star_rounded, "${stats.note}", "Note"),
+                    _statColumn(Icons.star_rounded, "${stats.note.toStringAsFixed(1)}", "Note"),
                   ],
                 ),
               );
@@ -1234,77 +1377,86 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
 
     Widget _buildRevenueChart() {
-      final revenueData = [320, 450, 270, 620, 500, 710, 560];
-      final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juillet'];
+    final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
 
-      return _infoCard(
-        title: "Mes revenus (mois) 💸",
-        child: SizedBox(
-          height: 200,
-          child: BarChart(
-            BarChartData(
-              barTouchData: BarTouchData(
-                enabled: true,
-                touchTooltipData: BarTouchTooltipData(
-                  tooltipBgColor: Colors.black87,
-                  getTooltipItem: (group, _, rod, __) {
-                    return BarTooltipItem(
-                      "${months[group.x]} : ${rod.toY.toInt()}€",
-                      const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600),
-                    );
-                  },
-                ),
-              ),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 32,
-                    getTitlesWidget: (value, _) => Text(
-                      "${value.toInt()}€",
-                      style: const TextStyle(color: Colors.white38, fontSize: 10),
-                    ),
+    return FutureBuilder<Map<int, double>>(
+      future: fetchMonthlyRevenues(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return _loadingCard("Chargement revenus...");
+
+        final revenues = snapshot.data!;
+        return _infoCard(
+          title: "Mes revenus (mois) 💸",
+          child: SizedBox(
+            height: 200,
+            child: BarChart(
+              BarChartData(
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipBgColor: Colors.black87,
+                    getTooltipItem: (group, _, rod, __) {
+                      return BarTooltipItem(
+                        "${months[group.x]} : ${rod.toY.toInt()}€",
+                        const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600),
+                      );
+                    },
                   ),
                 ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, _) => Text(
-                      months[value.toInt() % 6],
-                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ),
-                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-              borderData: FlBorderData(show: false),
-              gridData: FlGridData(show: false),
-              barGroups: List.generate(6, (index) {
-                return BarChartGroupData(
-                  x: index,
-                  barRods: [
-                    BarChartRodData(
-                      toY: revenueData[index].toDouble(),
-                      width: 18,
-                      color: AppColors.gold,
-                      borderRadius: BorderRadius.circular(6),
-                      backDrawRodData: BackgroundBarChartRodData(
-                        show: true,
-                        toY: 800,
-                        color: Colors.white12,
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 32,
+                      getTitlesWidget: (value, _) => Text(
+                        "${value.toInt()}€",
+                        style: const TextStyle(color: Colors.white38, fontSize: 10),
                       ),
                     ),
-                  ],
-                );
-              }),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, _) => Text(
+                        months[value.toInt()],
+                        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                gridData: FlGridData(show: false),
+                barGroups: List.generate(12, (index) {
+                  final revenue = revenues[index + 1] ?? 0.0; // Mois = index + 1
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: revenue,
+                        width: 18,
+                        color: AppColors.gold,
+                        borderRadius: BorderRadius.circular(6),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: 800,
+                          color: Colors.white12,
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+              swapAnimationDuration: const Duration(milliseconds: 600),
+              swapAnimationCurve: Curves.easeOutExpo,
             ),
-            swapAnimationDuration: const Duration(milliseconds: 600),
-            swapAnimationCurve: Curves.easeOutExpo,
           ),
-        ),
-      );
-    }
+        );
+      },
+    );
+  }
+
 
 
     Widget _infoCard({required String title, required Widget child}) {
@@ -1366,9 +1518,52 @@ class DriverStats {
 }
 
   Future<DriverStats> fetchDriverStats() async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    return DriverStats(nbTrajets: 14, totalKm: 320, note: 4.8);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception("Utilisateur non connecté");
+
+    // 1. Trajets terminés du conducteur
+    final reservationsSnapshot = await FirebaseFirestore.instance
+        .collection('reservations')
+        .where('driverId', isEqualTo: uid)
+        .where('status', whereIn: ['Confirmée', 'Terminée'])
+        .get();
+
+    final trajets = reservationsSnapshot.docs;
+    int totalKm = 0;
+
+    for (final doc in trajets) {
+      final data = doc.data();
+      totalKm += (data['distance'] as num?)?.round() ?? 0;
+    }
+
+    // 2. Feedbacks concernant ce conducteur
+    final feedbacksSnapshot = await FirebaseFirestore.instance
+        .collection('feedbacks')
+        .where('driverId', isEqualTo: uid)
+        .where('fromDriver', isEqualTo: false) // uniquement ceux venant de passagers
+        .get();
+
+    double totalRating = 0.0;
+    int nbRatings = 0;
+
+    for (final doc in feedbacksSnapshot.docs) {
+      final data = doc.data();
+      final rating = (data['rating'] as num?)?.toDouble();
+      if (rating != null) {
+        totalRating += rating;
+        nbRatings++;
+      }
+    }
+
+    return DriverStats(
+      nbTrajets: trajets.length,
+      totalKm: totalKm,
+      note: nbRatings > 0 ? (totalRating / nbRatings) : 0.0,
+    );
   }
+
+
+
 
  
  Widget _tripCard(BuildContext context, Trip trip) {

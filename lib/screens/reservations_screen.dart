@@ -125,31 +125,31 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     final now = DateTime.now();
 
     return reservations.map((doc) {
-      final ts = doc['timestamp'] as Timestamp;
-      final date = ts.toDate();
-      final status = (doc['status'] ?? '').toString();
+    final ts = doc['timestamp'] as Timestamp;
+    final date = ts.toDate();
+    final status = (doc['status'] ?? '').toString();
 
-      if (status != 'Annulée' && date.isBefore(now)) {
-        FirebaseFirestore.instance.collection('reservations').doc(doc.id).update({
-          'status': 'Terminée'
-        });
-        return null;
-      }
-      return doc;
-    }).whereType<QueryDocumentSnapshot>().where((doc) {
-      final ts = doc['timestamp'] as Timestamp;
-      final date = ts.toDate();
-      final status = (doc['status'] ?? '').toString();
-
-      if (_filter == 'Tous') return true;
-      if (_filter == 'À venir') return date.isAfter(now);
-      return status.toLowerCase() == _filter.trim().toLowerCase();
-    }).toList()
-      ..sort((a, b) {
-        final tsA = a['timestamp'] as Timestamp;
-        final tsB = b['timestamp'] as Timestamp;
-        return tsA.toDate().compareTo(tsB.toDate());
+    if (status != 'Annulée' && date.isBefore(now) && status != 'Terminée') {
+      FirebaseFirestore.instance.collection('reservations').doc(doc.id).update({
+        'status': 'Terminée'
       });
+    }
+
+    return doc;
+  }).whereType<QueryDocumentSnapshot>().where((doc) {
+    final ts = doc['timestamp'] as Timestamp;
+    final date = ts.toDate();
+    final status = (doc['status'] ?? '').toString();
+
+    if (_filter == 'Tous') return true;
+    if (_filter == 'À venir') return date.isAfter(now);
+    return status.toLowerCase() == _filter.trim().toLowerCase();
+  }).toList()
+  ..sort((a, b) {
+    final tsA = a['timestamp'] as Timestamp;
+    final tsB = b['timestamp'] as Timestamp;
+    return tsA.toDate().compareTo(tsB.toDate());
+  });
   }
 
   String _formatDate(Timestamp timestamp) {
@@ -381,7 +381,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (status != 'Annulée' && !isPaid)
+              if (status != 'Annulée' && status != 'Terminée' && !isPaid)
                 TextButton.icon(
                   onPressed: () => _cancelReservation(docId),
                   icon: const Icon(Icons.cancel, color: Colors.redAccent),

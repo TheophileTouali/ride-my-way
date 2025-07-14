@@ -167,7 +167,7 @@ class DriverTripDetailScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 20),
-                          if (status == 'En cours') ...[
+                          if (status == 'En cours' || status == 'Terminée') ...[
                             _infoRow(Icons.phone, "Tél : ${userData['phone'] ?? 'Non renseigné'}"),
                             const SizedBox(height: 12),
                             _infoRow(Icons.email, "Email : ${userData['email'] ?? 'Non renseigné'}"),
@@ -181,6 +181,7 @@ class DriverTripDetailScreen extends StatelessWidget {
                               ),
                             ),
                           ],
+
                         ],
                       ),
                     ),

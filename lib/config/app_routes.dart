@@ -30,6 +30,7 @@ import '../screens/live_tracking_passenger_screen.dart';
 import '../screens/driver_trip_detail_screen.dart';
 import '../screens/driver_pickup_tracking_screen.dart';
 import '../screens/feedback_screen.dart';
+import '../screens/feedback_driver_screen.dart';
 
 
 
@@ -211,9 +212,19 @@ class AppRoutes {
       path: '/feedback/:reservationId',
       builder: (context, state) {
         final reservationId = state.pathParameters['reservationId']!;
-        return FeedbackScreen(reservationId: reservationId);
+        return PassengerFeedbackScreen(reservationId: reservationId); // ✅ Corrigé
       },
     ),
+
+
+    GoRoute(
+        path: '/feedback-driver/:reservationId',
+        builder: (context, state) => DriverFeedbackScreen(
+          reservationId: state.pathParameters['reservationId']!, // ✅ Corrigé
+        ),
+      ),
+
+
 
 
     ],

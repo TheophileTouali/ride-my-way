@@ -164,13 +164,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     _mapController?.setMapStyle(style);
   }
 
-  Future<void> _endTrip() async {
-    await FirebaseFirestore.instance
-        .collection('reservations')
-        .doc(widget.reservationId)
-        .update({'status': 'Terminée', 'endTime': FieldValue.serverTimestamp()});
-    if (mounted) context.go('/driver-home');
-  }
+    Future<void> _endTrip() async {
+      await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(widget.reservationId)
+          .update({
+        'status': 'Terminée',
+        'endTime': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        // 🔁 Redirection conducteur vers feedback
+        context.go('/feedback-driver/${widget.reservationId}');
+      }
+    }
+
 
   @override
   void dispose() {

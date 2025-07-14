@@ -5,15 +5,15 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
 
-class PassengerFeedbackScreen extends StatefulWidget {
+class DriverFeedbackScreen extends StatefulWidget {
   final String reservationId;
-  const PassengerFeedbackScreen({super.key, required this.reservationId});
+  const DriverFeedbackScreen({super.key, required this.reservationId});
 
   @override
-  State<PassengerFeedbackScreen> createState() => _PassengerFeedbackScreenState();
+  State<DriverFeedbackScreen> createState() => _DriverFeedbackScreenState();
 }
 
-class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
+class _DriverFeedbackScreenState extends State<DriverFeedbackScreen>
     with SingleTickerProviderStateMixin {
   double _rating = 0;
   final _commentController = TextEditingController();
@@ -21,7 +21,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
   bool _recommend = true;
 
   Map<String, dynamic>? _reservationData;
-  Map<String, dynamic>? _driverData;
+  Map<String, dynamic>? _passengerData;
 
   late AnimationController _controller;
   late Animation<double> _fadeAnim;
@@ -29,7 +29,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     _loadReservationData();
   }
@@ -43,12 +44,14 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
 
       if (resSnap.exists) {
         _reservationData = resSnap.data();
-        final driverId = _reservationData!['driverId'];
-        if (driverId != null) {
-          final driverSnap =
-              await FirebaseFirestore.instance.collection('drivers').doc(driverId).get();
-          if (driverSnap.exists) {
-            _driverData = driverSnap.data();
+        final userId = _reservationData!['userId'];
+        if (userId != null) {
+          final userSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+          if (userSnap.exists) {
+            _passengerData = userSnap.data();
           }
         }
         setState(() {});
@@ -60,7 +63,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
   }
 
   Future<void> _submitFeedback() async {
-    if (_isSubmitting || _rating == 0 || _reservationData == null || _driverData == null) return;
+    if (_isSubmitting || _rating == 0 || _reservationData == null || _passengerData == null) return;
 
     setState(() => _isSubmitting = true);
 
@@ -68,7 +71,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
       'reservationId': widget.reservationId,
       'driverId': _reservationData!['driverId'],
       'passengerId': _reservationData!['userId'],
-      'fromDriver': false,
+      'fromDriver': true,
       'rating': _rating,
       'comment': _commentController.text.trim(),
       'recommend': _recommend,
@@ -80,37 +83,37 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Row(
+            content: Row(
             children: const [
-              Icon(Icons.check_circle_rounded, color: AppColors.gold),
-              SizedBox(width: 12),
-              Expanded(
+                Icon(Icons.check_circle_rounded, color: AppColors.gold),
+                SizedBox(width: 12),
+                Expanded(
                 child: Text(
-                  "Merci pour votre évaluation !",
-                  style: TextStyle(color: Colors.white),
+                    "Merci pour votre évaluation !",
+                    style: TextStyle(color: Colors.white),
                 ),
-              ),
+                ),
             ],
-          ),
-          backgroundColor: Colors.black.withOpacity(0.95),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
+            ),
+            backgroundColor: Colors.black.withOpacity(0.95),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: const BorderSide(color: AppColors.gold, width: 1),
-          ),
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          duration: const Duration(seconds: 3),
-          elevation: 12,
+            ),
+            margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            duration: const Duration(seconds: 3),
+            elevation: 12,
         ),
-      );
+        );
 
-      context.go('/home');
+      context.go('/driver-home');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_reservationData == null || _driverData == null) {
+    if (_reservationData == null || _passengerData == null) {
       return const Scaffold(
         backgroundColor: AppColors.black,
         body: Center(child: CircularProgressIndicator(color: AppColors.gold)),
@@ -125,9 +128,9 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         ? DateFormat.yMMMMd('fr_FR').add_Hm().format(timestamp.toDate())
         : 'Date inconnue';
 
-    final driverName =
-        "${_driverData!['firstName'] ?? ''} ${_driverData!['lastName'] ?? ''}".trim();
-    final driverPhoto = _driverData!['photoUrl'];
+    final passengerName =
+        "${_passengerData!['firstName'] ?? ''} ${_passengerData!['lastName'] ?? ''}".trim();
+    final passengerPhoto = _passengerData!['photoUrl'];
 
     return Scaffold(
       backgroundColor: AppColors.black,
@@ -136,8 +139,9 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          "🚗 Noter le chauffeur",
-          style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 20),
+          "🛎️ Noter le passager",
+          style: TextStyle(
+              color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 20),
         ),
       ),
       body: FadeTransition(
@@ -155,7 +159,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
                       )),
               const SizedBox(height: 16),
               Text(
-                "Merci pour ce trajet.\nVous pouvez maintenant évaluer votre chauffeur. Votre retour améliore notre communauté.",
+                "Merci pour ce trajet.\nVous pouvez maintenant évaluer votre passager. Votre retour améliore notre communauté.",
                 style: const TextStyle(color: Colors.white70, fontSize: 16),
                 textScaleFactor: 1.0,
               ),
@@ -179,7 +183,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
               _infoRow(Icons.calendar_today_rounded, "Date", date),
               _infoRow(Icons.euro_rounded, "Montant", "${price.toStringAsFixed(2)} €"),
               const SizedBox(height: 30),
-              _buildUserCard(driverName, driverPhoto),
+              _buildUserCard(passengerName, passengerPhoto),
               const SizedBox(height: 36),
               const Text(
                 "🌟 Attribuez une note",
@@ -303,7 +307,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
                       fontSize: 16),
                   textScaleFactor: 1.0),
               const SizedBox(height: 4),
-              const Text("Votre chauffeur", style: TextStyle(color: Colors.white60)),
+              const Text("Votre passager", style: TextStyle(color: Colors.white60)),
             ],
           )
         ],
@@ -318,7 +322,7 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         const Icon(Icons.thumb_up_alt_rounded, color: AppColors.gold),
         const SizedBox(width: 12),
         const Text(
-          "Recommander ce chauffeur",
+          "Recommander ce passager",
           style: TextStyle(color: Colors.white70, fontSize: 16),
           textScaleFactor: 1.0,
         ),

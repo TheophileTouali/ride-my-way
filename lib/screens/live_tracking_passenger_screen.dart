@@ -159,9 +159,10 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
           context.go('/feedback/${widget.reservationId}');
         }
 
-        if (_status == 'En route' && mounted) {
+        if (_status == 'Arrivé' && mounted) {
         showDialog(
           context: context,
+          barrierDismissible: false,
           builder: (context) => AlertDialog(
             backgroundColor: AppColors.black,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -193,6 +194,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
           ),
         );
       }
+
 
 
 

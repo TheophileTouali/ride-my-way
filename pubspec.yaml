@@ -78,6 +78,7 @@ flutter:
     - assets/sounds/success.mp3
     - assets/sounds/urgent_alert.mp3
     - assets/sounds/driver_found.mp3
+    - assets/sounds/confirmed.mp3
     - assets/map_style_dark.json
     - assets/icons/car_gold.png
 

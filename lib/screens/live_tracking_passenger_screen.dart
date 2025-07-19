@@ -1,3 +1,5 @@
+// VERSION OPTIMISÉE DE LiveTrackingPassengerScreen (confirmation avec son et animation ✅)
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,10 +9,10 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:geolocator/geolocator.dart';
 import '../themes/app_theme.dart';
 import 'package:go_router/go_router.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class LiveTrackingPassengerScreen extends StatefulWidget {
   final String reservationId;
-
   const LiveTrackingPassengerScreen({super.key, required this.reservationId});
 
   @override
@@ -24,12 +26,17 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   LatLng? _destination;
   BitmapDescriptor? _carIcon;
   Timer? _refreshTimer;
+  Timer? _reminderTimer;
   late AnimationController _haloController;
   late Animation<double> _haloAnimation;
 
   double _remainingDistance = 0;
   double _estimatedDuration = 0;
   String? _status;
+  bool _hasConfirmedBoarding = false;
+  bool _boardingDialogVisible = false;
+  bool _showCheckmark = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<LatLng> _polylineCoordinates = [];
   Set<Polyline> _polylines = {};
@@ -151,35 +158,58 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
         .listen((doc) {
       final data = doc.data();
       if (data != null) {
-        setState(() {
-          _status = data['status'];
-        });
+        setState(() => _status = data['status']);
 
         if (_status == 'Terminée' && mounted) {
           context.go('/feedback/${widget.reservationId}');
         }
 
-        if (_status == 'Arrivé' && mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppColors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text("Votre chauffeur est arrivé", style: TextStyle(color: AppColors.gold)),
-            content: const Text(
-              "Veuillez confirmer que vous êtes bien monté à bord. Le chauffeur pourra démarrer la course ensuite.",
-              style: TextStyle(color: Colors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text("Plus tard", style: TextStyle(color: Colors.grey)),
-              ),
-              ElevatedButton(
+        if (_status == 'À bord') {
+          _hasConfirmedBoarding = true;
+          _reminderTimer?.cancel();
+          _boardingDialogVisible = false;
+        }
+
+        if (_status == 'Arrivé' && !_hasConfirmedBoarding && !_boardingDialogVisible) {
+          _boardingDialogVisible = true;
+          _showBoardingDialog();
+          _reminderTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+            if (_hasConfirmedBoarding || _status == 'En cours') {
+              timer.cancel();
+            } else {
+              _showBoardingDialog();
+            }
+          });
+        }
+
+        _loadReservationData();
+      }
+    });
+  }
+
+  void _showBoardingDialog() {
+    if (!_hasConfirmedBoarding && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.black,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Votre chauffeur est arrivé", style: TextStyle(color: AppColors.gold)),
+          content: const Text(
+            "Veuillez confirmer que vous êtes bien monté à bord. Le chauffeur pourra démarrer la course ensuite.",
+            style: TextStyle(color: Colors.white70),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            if (!_hasConfirmedBoarding)
+              ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.gold,
                   foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  elevation: 6,
                 ),
                 onPressed: () async {
                   Navigator.of(context).pop();
@@ -187,21 +217,31 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                       .collection('reservations')
                       .doc(widget.reservationId)
                       .update({'status': 'À bord'});
+                  setState(() {
+                    _hasConfirmedBoarding = true;
+                    _boardingDialogVisible = false;
+                    _showCheckmark = true;
+                  });
+                  _reminderTimer?.cancel();
+                  _audioPlayer.play(AssetSource('sounds/confirmed.mp3'));
+                  Future.delayed(const Duration(seconds: 2), () {
+                    setState(() => _showCheckmark = false);
+                  });
                 },
-                child: const Text("✅ Je suis monté à bord"),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text(
+                  "Je suis monté à bord",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    fontFamily: 'PlayfairDisplay',
+                  ),
+                ),
               ),
-            ],
-          ),
-        );
-      }
-
-
-
-
-        // Met à jour la destination si le statut change (ex: En route → En cours)
-        _loadReservationData();
-      }
-    });
+          ],
+        ),
+      );
+    }
   }
 
   String get statusMessage {
@@ -211,7 +251,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
       case 'Arrivé':
         return "📍 Votre chauffeur est arrivé à votre point de départ";
       case 'À bord':
-      return "✅ Vous êtes monté à bord. Le chauffeur peut maintenant démarrer la course.";
+        return "✅ Vous êtes monté à bord. Le chauffeur peut maintenant démarrer la course.";
       case 'En cours':
         return "🛣️ Trajet en cours vers votre destination";
       case 'Terminée':
@@ -224,7 +264,9 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _reminderTimer?.cancel();
     _haloController.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -281,6 +323,15 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                     color: AppColors.gold.withOpacity(0.3),
                   ),
                 ),
+              ),
+            ),
+
+          if (_showCheckmark)
+            Center(
+              child: AnimatedOpacity(
+                opacity: _showCheckmark ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 600),
+                child: const Icon(Icons.check_circle, color: AppColors.gold, size: 90),
               ),
             ),
 

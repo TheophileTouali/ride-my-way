@@ -1,3 +1,5 @@
+// VERSION OPTIMISÉE DE LiveTrackingScreen (animation premium fin de trajet pour conducteur avec message personnalisé)
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,7 +12,6 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final String reservationId;
-
   const LiveTrackingScreen({super.key, required this.reservationId});
 
   @override
@@ -30,6 +31,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
   double _remainingDistance = 0;
   double _estimatedDuration = 0;
+  bool _showTripEndedMessage = false;
 
   List<LatLng> _polylineCoordinates = [];
   Set<Polyline> _polylines = {};
@@ -60,7 +62,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       final data = snapshot.data();
       if (data == null) return;
 
-      // Exemple : si on veut réagir à un changement de statut global
       final status = data['status'];
       if (status == 'Annulée' && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -108,8 +109,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
   void _startLocationUpdates() {
     const settings = LocationSettings(accuracy: LocationAccuracy.high);
-    _positionStream =
-        Geolocator.getPositionStream(locationSettings: settings).listen((position) {
+    _positionStream = Geolocator.getPositionStream(locationSettings: settings).listen((position) {
       final newPos = LatLng(position.latitude, position.longitude);
       final hasMoved = _driverPosition == null ||
           _driverPosition!.latitude != newPos.latitude ||
@@ -141,7 +141,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
       setState(() {
         _remainingDistance = distanceInMeters / 1000;
-        _estimatedDuration = (_remainingDistance / 0.5) * 1.2; // ≈30km/h
+        _estimatedDuration = (_remainingDistance / 0.5) * 1.2;
       });
     }
   }
@@ -164,21 +164,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     _mapController?.setMapStyle(style);
   }
 
-    Future<void> _endTrip() async {
-      await FirebaseFirestore.instance
-          .collection('reservations')
-          .doc(widget.reservationId)
-          .update({
-        'status': 'Terminée',
-        'endTime': FieldValue.serverTimestamp(),
-      });
+  Future<void> _endTrip() async {
+    await FirebaseFirestore.instance
+        .collection('reservations')
+        .doc(widget.reservationId)
+        .update({
+      'status': 'Terminée',
+      'endTime': FieldValue.serverTimestamp(),
+    });
 
-      if (mounted) {
-        // 🔁 Redirection conducteur vers feedback
-        context.go('/feedback-driver/${widget.reservationId}');
-      }
+    if (mounted) {
+      setState(() => _showTripEndedMessage = true);
+      await Future.delayed(const Duration(seconds: 3));
+      if (mounted) context.go('/feedback-driver/${widget.reservationId}');
     }
-
+  }
 
   @override
   void dispose() {
@@ -202,8 +202,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
           if (_driverPosition != null)
             GoogleMap(
               polylines: _polylines,
-              initialCameraPosition:
-                  CameraPosition(target: _driverPosition!, zoom: 15),
+              initialCameraPosition: CameraPosition(target: _driverPosition!, zoom: 15),
               myLocationEnabled: false,
               onMapCreated: (controller) {
                 _mapController = controller;
@@ -242,65 +241,98 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               ),
             ),
 
-          Positioned(
-            bottom: 80,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.gold.withOpacity(0.5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "🚘 Trajet en cours",
-                    style: TextStyle(
-                      color: AppColors.gold,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'PlayfairDisplay',
+          if (_showTripEndedMessage)
+            AnimatedOpacity(
+              opacity: 1.0,
+              duration: const Duration(milliseconds: 800),
+              child: Container(
+                color: AppColors.black,
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.emoji_events, color: AppColors.gold, size: 100),
+                    SizedBox(height: 20),
+                    Text(
+                      "Bravo pour votre conduite !",
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.gold,
+                        fontFamily: 'PlayfairDisplay',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "Suivez votre position en temps réel.",
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Distance restante : ${_remainingDistance.toStringAsFixed(1)} km",
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                  Text(
-                    "Durée estimée : ${_estimatedDuration.toStringAsFixed(0)} min",
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          Positioned(
-            bottom: 20,
-            right: 20,
-            child: FloatingActionButton.extended(
-              onPressed: _endTrip,
-              backgroundColor: AppColors.gold,
-              foregroundColor: Colors.black,
-              icon: const Icon(Icons.check),
-              label: const Text(
-                "Terminer la course",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'PlayfairDisplay',
+                    SizedBox(height: 8),
+                    Text(
+                      "On est arrivé à bon port grâce à vous !",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
+
+          if (!_showTripEndedMessage)
+            Positioned(
+              bottom: 80,
+              left: 20,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.gold.withOpacity(0.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "🚘 Trajet en cours",
+                      style: TextStyle(
+                        color: AppColors.gold,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'PlayfairDisplay',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Suivez votre position en temps réel.",
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Distance restante : ${_remainingDistance.toStringAsFixed(1)} km",
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    Text(
+                      "Durée estimée : ${_estimatedDuration.toStringAsFixed(0)} min",
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          if (!_showTripEndedMessage)
+            Positioned(
+              bottom: 20,
+              right: 20,
+              child: FloatingActionButton.extended(
+                onPressed: _endTrip,
+                backgroundColor: AppColors.gold,
+                foregroundColor: Colors.black,
+                icon: const Icon(Icons.check),
+                label: const Text(
+                  "Terminer la course",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'PlayfairDisplay',
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

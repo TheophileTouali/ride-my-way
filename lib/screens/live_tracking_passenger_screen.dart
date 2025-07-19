@@ -1,4 +1,4 @@
-// VERSION OPTIMISÉE DE LiveTrackingPassengerScreen (confirmation avec son et animation ✅)
+// VERSION OPTIMISÉE DE LiveTrackingPassengerScreen (confirmation avec son, animation ✅ et transition plein écran premium vers feedback)
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -36,6 +36,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   bool _hasConfirmedBoarding = false;
   bool _boardingDialogVisible = false;
   bool _showCheckmark = false;
+  bool _showTripEndedMessage = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<LatLng> _polylineCoordinates = [];
@@ -161,7 +162,10 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
         setState(() => _status = data['status']);
 
         if (_status == 'Terminée' && mounted) {
-          context.go('/feedback/${widget.reservationId}');
+          setState(() => _showTripEndedMessage = true);
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) context.go('/feedback/${widget.reservationId}');
+          });
         }
 
         if (_status == 'À bord') {
@@ -223,7 +227,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                     _showCheckmark = true;
                   });
                   _reminderTimer?.cancel();
-                  _audioPlayer.play(AssetSource('sounds/confirmed.mp3'));
+                  _audioPlayer.play(AssetSource('audio/confirmed.mp3'));
                   Future.delayed(const Duration(seconds: 2), () {
                     setState(() => _showCheckmark = false);
                   });
@@ -245,6 +249,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   }
 
   String get statusMessage {
+    if (_showTripEndedMessage) return "✅ Trajet terminé. Merci d’avoir voyagé avec nous !";
     switch (_status) {
       case 'En route':
         return "🚕 Votre chauffeur est en route vers vous";
@@ -255,7 +260,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
       case 'En cours':
         return "🛣️ Trajet en cours vers votre destination";
       case 'Terminée':
-        return "✅ Course terminée";
+        return "✅ Trajet terminé";
       default:
         return "⏳ En attente du chauffeur...";
     }
@@ -274,11 +279,6 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.black,
-      appBar: AppBar(
-        title: const Text("Suivi en direct"),
-        backgroundColor: AppColors.black,
-        foregroundColor: AppColors.gold,
-      ),
       body: Stack(
         children: [
           if (_driverPosition != null)
@@ -297,8 +297,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 Marker(
                   markerId: const MarkerId('driver'),
                   position: _driverPosition!,
-                  icon: _carIcon ??
-                      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
+                  icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
                 ),
                 if (_destination != null)
                   Marker(
@@ -334,6 +333,49 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 child: const Icon(Icons.check_circle, color: AppColors.gold, size: 90),
               ),
             ),
+
+          if (_showTripEndedMessage)
+            AnimatedOpacity(
+              opacity: 1.0,
+              duration: const Duration(milliseconds: 800),
+              child: Container(
+                color: AppColors.black,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.emoji_emotions_rounded, color: AppColors.gold, size: 110),
+                    SizedBox(height: 24),
+                    Text(
+                      "Merci pour ce merveilleux voyage 🥂",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.gold,
+                        fontFamily: 'PlayfairDisplay',
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      "Nous espérons que l’expérience a été à la hauteur de vos attentes. À très bientôt sur Ride My Way ✨",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                        height: 1.4,
+                        fontFamily: 'PlayfairDisplay',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+
+
+
 
           Positioned(
             bottom: 20,

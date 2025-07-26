@@ -5,9 +5,77 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart'; 
 import '../themes/app_theme.dart';
 import '../providers/driver_provider.dart';
+import '../models/driver_user.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import 'dart:io' as io show File;
+import 'package:flutter/foundation.dart'; // pour kIsWeb
 
 class DriverProfileScreen extends StatelessWidget {
   const DriverProfileScreen({super.key});
+
+Future<void> _uploadDocument(BuildContext context, String fieldKey, String label) async {
+  final userProvider = Provider.of<DriverProvider>(context, listen: false);
+  final user = userProvider.user;
+  if (user == null) return;
+
+  final picker = ImagePicker();
+  final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+  if (pickedFile != null) {
+    final ext = pickedFile.path.split('.').last;
+    final storageRef = FirebaseStorage.instance
+    .ref('drivers_data/${user.uid}/$fieldKey.$ext');
+
+    UploadTask uploadTask;
+
+    if (kIsWeb) {
+      // ✅ Flutter Web : lecture des bytes
+      final bytes = await pickedFile.readAsBytes();
+      uploadTask = storageRef.putData(bytes);
+    } else {
+      // ✅ Mobile : lecture depuis File
+      final file = io.File(pickedFile.path);
+      uploadTask = storageRef.putFile(file);
+    }
+
+    final snapshot = await uploadTask;
+    final url = await snapshot.ref.getDownloadURL();
+
+    await userProvider.updateDriverDocument(fieldKey, url);
+
+    // ignore: use_build_context_synchronously
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("$label ajouté avec succès", style: const TextStyle(color: AppColors.gold)),
+        backgroundColor: Colors.grey[900],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+}
+    bool _isProfileComplete(DriverUser user) {
+    final requiredKeys = [
+      'driverLicenseUrl',
+      'registrationUrl',
+      'vehicleInsuranceUrl',
+      'proInsuranceUrl',
+      'technicalInspectionUrl',
+      'maintenanceInvoiceUrl',
+      'ribUrl',
+      'idCardUrl',
+    ];
+
+    final documents = user.documents ?? {};
+
+    for (final key in requiredKeys) {
+      if (!(documents.containsKey(key) && documents[key] != null && documents[key].toString().isNotEmpty)) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,29 +191,54 @@ class DriverProfileScreen extends StatelessWidget {
                         if (user.birthdate?.isNotEmpty ?? false)
                           _infoLine(icon: Icons.cake_outlined, value: user.birthdate!, color: Colors.white54),
                         const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(30),
-                            color: Colors.green.withOpacity(0.08),
-                            border: Border.all(color: Colors.greenAccent),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.verified, size: 18, color: Colors.greenAccent),
-                              SizedBox(width: 6),
-                              Text(
-                                'Profil vérifié',
-                                style: TextStyle(
-                                  color: Colors.greenAccent,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                        _isProfileComplete(user)
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              color: Colors.green.withOpacity(0.08),
+                              border: Border.all(color: Colors.greenAccent),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.verified, size: 18, color: Colors.greenAccent),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Profil vérifié',
+                                  style: TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                          )
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              color: Colors.red.withOpacity(0.08),
+                              border: Border.all(color: Colors.redAccent),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.error_outline, size: 18, color: Colors.redAccent),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Profil incomplet',
+                                  style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+
                       ],
                     ),
                   ),
@@ -276,6 +369,7 @@ class DriverProfileScreen extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 // BLOC 3 — Documents premium
+                // BLOC 3 — Documents premium
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -303,11 +397,7 @@ class DriverProfileScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _docLine("Permis de conduire", user.driverLicenseUrl != null),
-                      const Divider(color: Colors.white10, height: 24),
-                      _docLine("Carte grise", user.registrationUrl != null),
-                      const Divider(color: Colors.white10, height: 24),
-                      _docLine("Assurance", user.insuranceUrl != null),
+                      ..._buildDocumentList(context, user), // ⬅️ nouvelle méthode dynamique ici
                     ],
                   ),
                 ),
@@ -390,6 +480,69 @@ class DriverProfileScreen extends StatelessWidget {
       border: Border.all(color: Colors.grey.shade800),
     );
   }
+
+    List<Widget> _buildDocumentList(BuildContext context, dynamic user) {
+    final documents = [
+      {"key": "driverLicenseUrl", "label": "Permis de conduire"},
+      {"key": "registrationUrl", "label": "Carte grise"},
+      {"key": "vehicleInsuranceUrl", "label": "Assurance du véhicule"},
+      {"key": "proInsuranceUrl", "label": "Assurance professionnelle"},
+      {"key": "technicalInspectionUrl", "label": "Contrôle technique"},
+      {"key": "maintenanceInvoiceUrl", "label": "Facture d'entretien"},
+      {"key": "ribUrl", "label": "RIB"},
+      {"key": "idCardUrl", "label": "Pièce d'identité"},
+    ];
+
+    print("📂 Documents utilisateur : ${user.documents}");
+    return documents.map((doc) {
+      final key = doc['key']!;
+      final label = doc['label']!;
+      final url = user.documents?[key]; // ✅ remplacement ici
+      final isAdded = url != null && url.toString().isNotEmpty;
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(
+              isAdded ? Icons.check_circle_rounded : Icons.cancel_rounded,
+              color: isAdded ? Colors.greenAccent : Colors.redAccent,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isAdded ? Colors.white70 : Colors.white38,
+                  fontSize: 14,
+                  fontWeight: isAdded ? FontWeight.w500 : FontWeight.normal,
+                ),
+              ),
+            ),
+            TextButton.icon(
+                onPressed: () => _uploadDocument(context, key, label),
+                icon: Icon(
+                  isAdded ? Icons.edit_rounded : Icons.upload_file_rounded,
+                  size: 18,
+                  color: AppColors.deepGold,
+                ),
+                label: Text(
+                  isAdded ? "Modifier" : "Ajouter",
+                  style: const TextStyle(color: AppColors.deepGold),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+
+
 
   Widget _docLine(String title, bool isAdded) {
   return Row(

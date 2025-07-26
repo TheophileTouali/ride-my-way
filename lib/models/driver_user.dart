@@ -61,7 +61,7 @@ class DriverUser extends Equatable {
       licensePlate: map['licensePlate'],
       driverLicenseNumber: map['driverLicenseNumber'],
       vehiclePhotoUrl: map['vehiclePhotoUrl'],
-      documents: map['documents'] != null ? Map<String, dynamic>.from(map['documents']) : null,
+       documents: (map['documents'] as Map<String, dynamic>?) ?? {}, // ✅ très important
     );
   }
 
@@ -84,6 +84,8 @@ class DriverUser extends Equatable {
       'documents': documents,
     };
   }
+
+  Map<String, dynamic> toJson() => toMap(); // ✅ Ajoute ceci
 
   @override
   List<Object?> get props => [

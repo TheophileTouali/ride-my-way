@@ -30,4 +30,43 @@ class DriverProvider with ChangeNotifier {
   }
 }
 
+Future<void> updateDriverDocument(String docKey, String url) async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  final docRef = FirebaseFirestore.instance.collection('drivers').doc(uid);
+
+  // 🔄 Mise à jour du champ spécifique dans "documents"
+  await docRef.set({
+    'documents': {
+      docKey: url,
+    }
+  }, SetOptions(merge: true));
+
+  // 🔁 Mise à jour en local du modèle utilisateur
+  final updatedDocs = Map<String, dynamic>.from(_user?.documents ?? {});
+      updatedDocs[docKey] = url;
+
+      _user = DriverUser(
+        uid: _user!.uid,
+        firstName: _user!.firstName,
+        lastName: _user!.lastName,
+        email: _user!.email,
+        phone: _user!.phone,
+        photoUrl: _user!.photoUrl,
+        address: _user!.address,
+        birthdate: _user!.birthdate,
+        vehicleType: _user!.vehicleType,
+        vehicleBrand: _user!.vehicleBrand,
+        vehicleModel: _user!.vehicleModel,
+        vehicleYear: _user!.vehicleYear,
+        licensePlate: _user!.licensePlate,
+        driverLicenseNumber: _user!.driverLicenseNumber,
+        vehiclePhotoUrl: _user!.vehiclePhotoUrl,
+        documents: updatedDocs,
+      );
+
+      notifyListeners();
+    }
+
 }

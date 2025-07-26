@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -113,27 +114,75 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
 
 
 
-  Future<void> pickAndUploadImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
+Future<void> pickAndUploadImage() async {
+  final picker = ImagePicker();
+  final picked = await picker.pickImage(source: ImageSource.gallery);
+
+  if (picked != null) {
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      print("📌 UID de l'utilisateur : $uid");
+
+      final file = File(picked.path);
+      print("🖼️ Chemin local de l'image sélectionnée : ${picked.path}");
+      print("📦 Taille du fichier : ${await file.length()} octets");
+
       final ref = FirebaseStorage.instance
           .ref()
-          .child('profile_photos/${FirebaseAuth.instance.currentUser!.uid}.jpg');
-      await ref.putFile(File(picked.path));
-      final url = await ref.getDownloadURL();
+          .child('users_data/$uid/profile.png');
+      print("🗂️ Chemin Firebase Storage : ${ref.fullPath}");
+
+      await ref.putFile(file);
+      print("✅ Image uploadée avec succès");
+
+      final rawUrl = await ref.getDownloadURL();
+
+      // ✅ Nettoyage complet de l’URL
+      final cleanUrl = rawUrl
+          .replaceAll('.firebasestorage.app', 'appspot.com')
+          .replaceAll('%0A', '')
+          .trim();
+
+      print("🔗 URL publique nettoyée : $cleanUrl");
 
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(FirebaseAuth.instance.currentUser!.uid)
-          .update({'photoUrl': url});
+          .doc(uid)
+          .update({'photoUrl': cleanUrl});
 
-      setState(() => imageUrl = url);
+      print("✅ Firestore mis à jour avec clean photoUrl");
+
+      setState(() => imageUrl = cleanUrl);
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("✅ Photo de profil mise à jour")),
       );
+    } catch (e) {
+      print("❌ Erreur pendant l'upload de l'image : $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Erreur lors de la mise à jour de la photo.")),
+      );
     }
+  } else {
+    print("ℹ️ Aucune image sélectionnée.");
   }
+}
+
+
+  void correctOldUrls() async {
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+  final url = doc.data()?['photoUrl'];
+  if (url != null && url.contains('.firebasestorage.app')) {
+    final corrected = url.replaceAll('.firebasestorage.app', 'appspot.com');
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      'photoUrl': corrected,
+    });
+    print("✅ URL corrigée : $corrected");
+  }
+}
+
+
 
   @override
   Widget build(BuildContext context) {

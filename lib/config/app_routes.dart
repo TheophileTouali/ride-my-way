@@ -31,6 +31,7 @@ import '../screens/driver_trip_detail_screen.dart';
 import '../screens/driver_pickup_tracking_screen.dart';
 import '../screens/feedback_screen.dart';
 import '../screens/feedback_driver_screen.dart';
+import '../screens/edit_profile_screen.dart';
 
 
 
@@ -215,6 +216,12 @@ class AppRoutes {
         return PassengerFeedbackScreen(reservationId: reservationId); // ✅ Corrigé
       },
     ),
+
+    GoRoute(
+      path: '/edit-profile',
+      builder: (context, state) => const EditProfileScreen(),
+    ),
+
 
 
     GoRoute(

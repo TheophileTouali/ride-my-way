@@ -597,13 +597,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
 
     Future<List<DocumentSnapshot>> _fetchNearbyPendingReservations() async {
-      List<DocumentSnapshot> nearby = [];
+      final List<DocumentSnapshot> nearby = [];
 
       try {
         final currentPosition = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
-        print('📍 Position actuelle du conducteur : Latitude: ${currentPosition.latitude}, Longitude: ${currentPosition.longitude}');
+
+        print('📍 Position actuelle : ${currentPosition.latitude}, ${currentPosition.longitude}');
 
         final querySnapshot = await FirebaseFirestore.instance
             .collection('reservations')
@@ -611,37 +612,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             .get();
 
         for (var doc in querySnapshot.docs) {
-          final from = doc['from'];
-          if (from == null || from == '') continue;
+          final fromLat = doc['fromLat'];
+          final fromLng = doc['fromLng'];
+          final from = doc['from'] ?? 'Adresse inconnue';
 
-          try {
-            final coords = await getCoordinatesFromAddress(from);
-            if (coords != null) {
-              final distance = Geolocator.distanceBetween(
-                currentPosition.latitude,
-                currentPosition.longitude,
-                coords.lat,
-                coords.lng,
-              ) / 1000;
+          if (fromLat == null || fromLng == null) {
+            print("⛔ Coordonnées manquantes pour $from → ignorée");
+            continue;
+          }
 
-              print("📦 Adresse: $from → Distance: ${distance.toStringAsFixed(1)} km");
+          final distance = Geolocator.distanceBetween(
+            currentPosition.latitude,
+            currentPosition.longitude,
+            fromLat,
+            fromLng,
+          ) / 1000;
 
-              if (distance <= 15.0) {
-                nearby.add(doc);
-              }
-            } else {
-              print("⛔ Adresse ignorée (geocoding échoué) : $from");
-            }
-          } catch (e) {
-            print("❌ Erreur de géocodage pour $from : $e");
+          print("📦 $from → ${distance.toStringAsFixed(1)} km");
+
+          if (distance <= 15.0) {
+            nearby.add(doc);
           }
         }
       } catch (e) {
-        print("❌ Erreur de géolocalisation : $e");
+        print("❌ Erreur lors de la récupération des réservations : $e");
       }
 
       return nearby;
     }
+
+
 
 
 

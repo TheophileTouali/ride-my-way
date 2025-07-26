@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
+import 'package:ride_my_way/utils/location_utils.dart'; // adapte le chemin exact
 
 class ConfirmationScreen extends StatefulWidget {
   final String from;
@@ -116,6 +117,16 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             ? DateTime.now().add(const Duration(minutes: 3))
             : _selectedDateTime!;
 
+        // ✅ Récupération des coordonnées de l'adresse de départ
+        final coords = await getCoordinatesFromAddress(widget.from);
+
+        if (coords == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Impossible de géolocaliser l'adresse de départ.")),
+          );
+          return;
+        }
+
         final reservationData = {
           'from': widget.from,
           'to': widget.to,
@@ -127,19 +138,22 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'status': 'En attente',
           'createdAt': FieldValue.serverTimestamp(),
           'expiredSearch': false,
+          // ✅ Coordonnées stockées directement
+          'fromLat': coords.lat,
+          'fromLng': coords.lng,
         };
 
         final docRef = await FirebaseFirestore.instance.collection('reservations').add(reservationData);
 
-        // ✅ Redirection vers la page de recherche
         context.go('/searching?reservationId=${docRef.id}');
       } catch (e) {
-        print("Erreur Firestore: $e");
+        print("❌ Erreur Firestore ou géocodage : $e");
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Erreur lors de la confirmation.")),
         );
       }
     }
+
 
 
 

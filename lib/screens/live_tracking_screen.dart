@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../themes/app_theme.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final String reservationId;
@@ -315,6 +317,49 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               ),
             ),
 
+            if (!_showTripEndedMessage && _destination != null)
+              Positioned(
+                bottom: 140,
+                left: 20,
+                right: 20,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => openInNavigationApp(
+                        _destination!.latitude,
+                        _destination!.longitude,
+                        useWaze: false,
+                      ),
+                      icon: const Icon(Icons.map, color: Colors.black),
+                      label: const Text("Google Maps"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.gold,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size(140, 48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => openInNavigationApp(
+                        _destination!.latitude,
+                        _destination!.longitude,
+                        useWaze: true,
+                      ),
+                      icon: const Icon(Icons.navigation, color: Colors.white),
+                      label: const Text("Waze"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(120, 48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+
           if (!_showTripEndedMessage)
             Positioned(
               bottom: 20,
@@ -336,5 +381,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
         ],
       ),
     );
+  }
+}
+
+Future<void> openInNavigationApp(double lat, double lng, {bool useWaze = false}) async {
+  final String googleMapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving';
+  final String wazeUrl = 'https://waze.com/ul?ll=$lat,$lng&navigate=yes';
+
+  final Uri uri = Uri.parse(useWaze ? wazeUrl : googleMapsUrl);
+
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(
+      uri,
+      mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+    );
+  } else {
+    throw 'Impossible d’ouvrir ${useWaze ? "Waze" : "Google Maps"}';
   }
 }

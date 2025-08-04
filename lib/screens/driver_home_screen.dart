@@ -21,6 +21,11 @@ import 'package:assets_audio_player/assets_audio_player.dart';
 import '../models/trip.dart';
 import 'package:lucide_icons/lucide_icons.dart'; 
 import 'package:ride_my_way/services/weather_service.dart';
+import 'package:ride_my_way/widgets/driver_map_widget.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ride_my_way/widgets/driver_map_widget.dart';
+
+
 
 
 
@@ -142,10 +147,16 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
+LatLng? _currentPosition;
+BitmapDescriptor? _customDriverIcon;
+
+
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isVisible = false;
   double _driverRating = 0.0;
   List<Map<String, dynamic>> _feedbacks = [];
+  LatLng? _currentPosition;
+  BitmapDescriptor? _customDriverIcon;
 
 
   late Timer _refreshTimer;
@@ -155,14 +166,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final assetsAudioPlayer = AssetsAudioPlayer(); 
 
 
-  @override
-  void initState() {
-    super.initState();
-    _loadVisibility();
-    _startAutoRefresh();
-    _loadDriverStats(); // ⬅️ ajoute ceci
-    _loadRecentFeedbacks(); 
-  }
+    @override
+    void initState() {
+      super.initState();
+      _loadVisibility();
+      _startAutoRefresh();
+      _loadDriverStats(); // ⬅️ ajoute ceci
+      _loadRecentFeedbacks(); 
+      _loadCustomIcon();
+      _getCurrentPosition();
+    }
+
+    Future<void> _loadCustomIcon() async {
+      final icon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/icons/car_gold.png', // adapte ce chemin
+      );
+      setState(() {
+        _customDriverIcon = icon;
+      });
+    }
+
+    Future<void> _getCurrentPosition() async {
+      final position = await Geolocator.getCurrentPosition();
+      setState(() {
+        _currentPosition = LatLng(position.latitude, position.longitude);
+      });
+    }
 
    Future<void> _loadRecentFeedbacks() async {
     final feedbacks = await fetchRecentFeedbacks();
@@ -1155,6 +1185,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       );
     }
+
 
           Widget _testimonialCard(Testimonial t) {
           return FadeInUp(

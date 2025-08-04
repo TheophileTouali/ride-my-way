@@ -57,11 +57,14 @@ dependencies:
   assets_audio_player: ^3.0.6+8
   flutter_polyline_points: ^1.0.0
   flutter_rating_bar: ^4.0.1
-  flutter_image_compress: ^1.1.0
+  flutter_image_compress: ^2.0.4
   google_maps_webservice: ^0.0.20-nullsafety.5
+  url_launcher: ^6.2.5
+  cloud_functions: ^4.7.5
 
   # Splash
   flutter_native_splash: ^2.4.4
+  flutter_stripe: ^11.5.0
 
 dev_dependencies:
   flutter_test:

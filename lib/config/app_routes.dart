@@ -32,6 +32,8 @@ import '../screens/driver_pickup_tracking_screen.dart';
 import '../screens/feedback_screen.dart';
 import '../screens/feedback_driver_screen.dart';
 import '../screens/edit_profile_screen.dart';
+import '../screens/payment_success_screen.dart';
+import '../screens/payment_cancel_screen.dart';
 
 
 
@@ -230,6 +232,15 @@ class AppRoutes {
           reservationId: state.pathParameters['reservationId']!, // ✅ Corrigé
         ),
       ),
+
+      GoRoute(
+          path: '/payment-success',
+          builder: (context, state) => const PaymentSuccessScreen(),
+        ),
+        GoRoute(
+          path: '/payment-cancel',
+          builder: (context, state) => const PaymentCancelScreen(),
+        ),
 
 
 

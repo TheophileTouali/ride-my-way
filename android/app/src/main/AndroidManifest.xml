@@ -1,19 +1,36 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.ride_my_way">
 
     <!-- 🔐 Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- ✅ Intent Queries -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
 
     <application
         android:label="ride_my_way"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        
-        <!-- ✅ Cette ligne est bien à l’intérieur de <application> -->
-        <uses-library android:name="org.apache.http.legacy" android:required="false"/>
-        <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-        <uses-permission android:name="android.permission.CAMERA" />
 
+        <!-- ✅ Bibliothèque Apache HTTP -->
+        <uses-library android:name="org.apache.http.legacy" android:required="false"/>
+
+        <!-- ✅ Clé API Google Maps -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI"/>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
 
         <activity
             android:name=".MainActivity"
@@ -24,32 +41,15 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            
+
             <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              android:name="com.google.android.geo.API_KEY"
-               android:value="AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI"/>
-            />
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-
-            <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="TON_API_KEY_ICI"/>
-
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
     </application>
-
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
 </manifest>

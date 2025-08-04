@@ -3,7 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
-import 'package:ride_my_way/utils/location_utils.dart'; // adapte le chemin exact
+import 'package:ride_my_way/utils/location_utils.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../services/payment_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart'; // ✅ Pour kIsWeb
+import 'package:url_launcher/url_launcher.dart'; // ✅ Pour launchUrl & LaunchMode
+
+
 
 class ConfirmationScreen extends StatefulWidget {
   final String from;
@@ -101,10 +109,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     }
   }
 
-
     Future<void> _confirmTrip() async {
       final user = FirebaseAuth.instance.currentUser;
-
       if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Utilisateur non connecté")),
@@ -117,42 +123,112 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             ? DateTime.now().add(const Duration(minutes: 3))
             : _selectedDateTime!;
 
-        // ✅ Récupération des coordonnées de l'adresse de départ
         final coords = await getCoordinatesFromAddress(widget.from);
-
         if (coords == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Impossible de géolocaliser l'adresse de départ.")),
+            const SnackBar(content: Text("Impossible de géolocaliser l'adresse.")),
           );
           return;
         }
 
-        final reservationData = {
-          'from': widget.from,
-          'to': widget.to,
-          'vehicle': widget.vehicle,
-          'price': widget.price,
-          'distance': widget.distance,
-          'userId': user.uid,
-          'timestamp': Timestamp.fromDate(departureTime),
-          'status': 'En attente',
-          'createdAt': FieldValue.serverTimestamp(),
-          'expiredSearch': false,
-          // ✅ Coordonnées stockées directement
-          'fromLat': coords.lat,
-          'fromLng': coords.lng,
-        };
+        final currentBaseUrl = Uri.base.origin;
+        print("🔎 Base URL: $currentBaseUrl");
+        print("🔎 Plateforme détectée: ${kIsWeb ? 'web' : 'mobile'}");
 
-        final docRef = await FirebaseFirestore.instance.collection('reservations').add(reservationData);
+        final callable = FirebaseFunctions.instance.httpsCallable('createPaymentIntent');
+        final payload = {
+        'amount': widget.price,
+        'currency': 'eur',
+        'from': widget.from,
+        'to': widget.to,
+        'vehicle': widget.vehicle,
+        'distance': widget.distance,
+        'baseUrl': currentBaseUrl,
+      };
 
-        context.go('/searching?reservationId=${docRef.id}');
-      } catch (e) {
-        print("❌ Erreur Firestore ou géocodage : $e");
+
+        print("📤 Données envoyées à Cloud Function: $payload");
+
+        final result = await callable.call(payload);
+        print("📥 Réponse Cloud Function: ${result.data}");
+
+        if (kIsWeb) {
+          final checkoutUrl = result.data['checkoutUrl'];
+          print("🌐 Checkout URL reçue: $checkoutUrl");
+
+          if (checkoutUrl != null && checkoutUrl.isNotEmpty) {
+            final uri = Uri.parse(checkoutUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+              return;
+            } else {
+              print("❌ Impossible d'ouvrir l'URL Stripe");
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Impossible d'ouvrir Stripe Checkout")),
+              );
+              return;
+            }
+          } else {
+            print("❌ URL Stripe Checkout non fournie !");
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("URL Stripe Checkout non fournie.")),
+            );
+            return;
+          }
+        } else {
+          print("📱 Paiement mobile → ouverture PaymentSheet");
+          await PaymentService.processPayment(
+            stripeResponse: result.data as Map<String, dynamic>,
+          );
+
+          final reservationData = {
+            'from': widget.from,
+            'to': widget.to,
+            'vehicle': widget.vehicle,
+            'price': widget.price,
+            'distance': widget.distance,
+            'userId': user.uid,
+            'timestamp': Timestamp.fromDate(departureTime),
+            'status': 'En attente',
+            'paymentStatus': 'authorized',
+            'paymentIntentId': result.data['paymentIntentId'],
+            'createdAt': FieldValue.serverTimestamp(),
+            'expiredSearch': false,
+            'fromLat': coords.lat,
+            'fromLng': coords.lng,
+          };
+
+          print("📝 Données enregistrées Firestore: $reservationData");
+
+          final docRef = await FirebaseFirestore.instance
+              .collection('reservations')
+              .add(reservationData);
+
+          print("✅ Réservation enregistrée avec ID: ${docRef.id}");
+          context.go('/searching?reservationId=${docRef.id}');
+        }
+      } on StripeException catch (e) {
+        print("❌ Paiement annulé ou erreur Stripe: $e");
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Erreur lors de la confirmation.")),
+          const SnackBar(content: Text("Paiement annulé ou échoué.")),
+        );
+      } catch (e) {
+        print("❌ Erreur paiement ou Firestore : $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Paiement annulé ou échoué.")),
         );
       }
     }
+
+
+
+    
+
+
+
+
+
+
 
 
 

@@ -9,7 +9,7 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:geolocator/geolocator.dart';
 import '../themes/app_theme.dart';
 import 'package:go_router/go_router.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 
 class LiveTrackingPassengerScreen extends StatefulWidget {
   final String reservationId;
@@ -227,7 +227,16 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                     _showCheckmark = true;
                   });
                   _reminderTimer?.cancel();
-                  _audioPlayer.play(AssetSource('audio/confirmed.mp3'));
+                  final AudioPlayer _audioPlayer = AudioPlayer();
+
+                  Future<void> playConfirmedSound() async {
+                    try {
+                      await _audioPlayer.setAsset('assets/sounds/confirmed.mp3');
+                      await _audioPlayer.play();
+                    } catch (e) {
+                      debugPrint("Erreur lors de la lecture du son confirmé : $e");
+                    }
+                  }
                   Future.delayed(const Duration(seconds: 2), () {
                     setState(() => _showCheckmark = false);
                   });

@@ -1,53 +1,47 @@
+// android/app/build.gradle.kts
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services") // ✅ requis pour Firebase
+    id("com.google.gms.google-services") // si tu as google-services.json
 }
 
-
 android {
-    namespace = "com.example.ride_my_way"
-    compileSdk = flutter.compileSdkVersion
-     ndkVersion = "27.0.1207973"
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
+    namespace = "com.example.ride_my_way"      // 👈 OBLIGATOIRE
+    compileSdk = 35
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.ride_my_way"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 23
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so flutter run --release works.
-            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug") // à remplacer par ta release plus tard
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
 }
 
-flutter {
-    source = "../.."
-}
 dependencies {
-    // Plateforme BoM Firebase : versions synchronisées
-    implementation(platform("com.google.firebase:firebase-bom:33.15.0"))
+    implementation("androidx.multidex:multidex:2.0.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
 
-    // Exemple avec Firebase Auth (tu peux ajouter Analytics, Firestore, etc.)
-    implementation("com.google.firebase:firebase-auth")
-    // implementation("com.google.firebase:firebase-analytics") // facultatif
+    // (tes deps Firebase/Stripe etc.)
 }

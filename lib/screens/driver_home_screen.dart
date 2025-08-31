@@ -15,9 +15,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart';
 import 'package:animate_do/animate_do.dart'; // pour animation du bouton
-import 'package:assets_audio_player/assets_audio_player.dart';
+import 'package:just_audio/just_audio.dart';
 import '../models/trip.dart';
 import 'package:lucide_icons/lucide_icons.dart'; 
 import 'package:ride_my_way/services/weather_service.dart';
@@ -159,11 +158,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   BitmapDescriptor? _customDriverIcon;
 
 
-  late Timer _refreshTimer;
-  List<DocumentSnapshot> _nearbyReservations = [];
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool _hasNewNearbyCourse = false;
-  final assetsAudioPlayer = AssetsAudioPlayer(); 
+late Timer _refreshTimer;
+List<DocumentSnapshot> _nearbyReservations = [];
+final AudioPlayer _audioPlayer = AudioPlayer();
+bool _hasNewNearbyCourse = false;
 
 
     @override
@@ -209,28 +207,37 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 }
 
   void _startAutoRefresh() {
-      _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-        final newData = await _fetchNearbyPendingReservations();
+  _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+    final newData = await _fetchNearbyPendingReservations();
 
-        if (newData.isNotEmpty && newData.length != _nearbyReservations.length) {
-          setState(() {
-            _hasNewNearbyCourse = true;
-            _nearbyReservations = newData;
-          });
+    if (newData.isNotEmpty && newData.length != _nearbyReservations.length) {
+      setState(() {
+        _hasNewNearbyCourse = true;
+        _nearbyReservations = newData;
+      });
 
-          // 🔊 ✅ SON D’URGENCE
-          AssetsAudioPlayer.newPlayer().open(
-            Audio("assets/sounds/urgent_alert.mp3"),
-            showNotification: false,
-          );
-        } else {
-          setState(() {
-            _hasNewNearbyCourse = false;
-            _nearbyReservations = newData;
-          });
-        }
+      // ✅ Déplace la fonction en dehors ou l'exécute directement
+      final urgentPlayer = AudioPlayer();
+      try {
+        await urgentPlayer.setAsset('assets/sounds/urgent_alert.mp3');
+        await urgentPlayer.play();
+      } catch (e) {
+        debugPrint("Erreur lecture son d’urgence : $e");
+      } finally {
+        Future.delayed(const Duration(seconds: 2), () {
+          urgentPlayer.dispose();
+        });
+      }
+
+    } else {
+      setState(() {
+        _hasNewNearbyCourse = false;
+        _nearbyReservations = newData;
       });
     }
+  });
+}
+
 
 
   
@@ -320,8 +327,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
 
       void showNearbyCoursesDialog(BuildContext context) {
-        final player = AudioPlayer();
-        final alertedTripIds = <String>{};
+  final alertedTripIds = <String>{};
+
+  // ✅ Optionnel : jouer un son quand la popup s'ouvre
+  final alertPlayer = AudioPlayer();
+  alertPlayer.setAsset('assets/sounds/driver_found.mp3').then((_) {
+    alertPlayer.play();
+    Future.delayed(const Duration(seconds: 2), () {
+      alertPlayer.dispose(); // libère après lecture
+    });
+  }).catchError((e) {
+    debugPrint("Erreur lecture son popup courses proches : $e");
+  });
       showDialog(
         context: context,
         barrierDismissible: true,
@@ -461,11 +478,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                             if (context.mounted) Navigator.of(context).pop(); // ferme loader
                             if (context.mounted) Navigator.of(context).pop(); // ferme popup
-                            AssetsAudioPlayer.newPlayer().open(
-                              Audio("assets/sounds/success.mp3"),
-                              showNotification: false,
-                            );
+                            final successPlayer = AudioPlayer();
 
+try {
+  await successPlayer.setAsset('assets/sounds/success.mp3');
+  await successPlayer.play();
+} catch (e) {
+  debugPrint("Erreur lecture son succès : $e");
+} finally {
+  Future.delayed(const Duration(seconds: 2), () {
+    successPlayer.dispose(); // ✅ Libère après lecture
+  });
+}
 
                             setState(() {
                               _hasNewNearbyCourse = false;
@@ -1416,74 +1440,86 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (!snapshot.hasData) return _loadingCard("Chargement revenus...");
 
         final revenues = snapshot.data!;
-        return _infoCard(
-          title: "Mes revenus (mois) 💸",
-          child: SizedBox(
-            height: 200,
-            child: BarChart(
-              BarChartData(
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    tooltipBgColor: Colors.black87,
-                    getTooltipItem: (group, _, rod, __) {
-                      return BarTooltipItem(
-                        "${months[group.x]} : ${rod.toY.toInt()}€",
-                        const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600),
-                      );
-                    },
-                  ),
+return _infoCard(
+  title: "Mes revenus (mois) 💸",
+  child: SizedBox(
+    height: 200,
+    child: BarChart(
+      BarChartData(
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            tooltipPadding: const EdgeInsets.all(8),
+            tooltipMargin: 8,
+            getTooltipItem: (group, _, rod, __) {
+              return BarTooltipItem(
+                "${months[group.x]} : ${rod.toY.toInt()}€",
+                const TextStyle(
+                  color: AppColors.gold,
+                  fontWeight: FontWeight.w600,
                 ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (value, _) => Text(
-                        "${value.toInt()}€",
-                        style: const TextStyle(color: Colors.white38, fontSize: 10),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, _) => Text(
-                        months[value.toInt()],
-                        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 32,
+              getTitlesWidget: (value, _) => Text(
+                "${value.toInt()}€",
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 10,
                 ),
-                borderData: FlBorderData(show: false),
-                gridData: FlGridData(show: false),
-                barGroups: List.generate(12, (index) {
-                  final revenue = revenues[index + 1] ?? 0.0; // Mois = index + 1
-                  return BarChartGroupData(
-                    x: index,
-                    barRods: [
-                      BarChartRodData(
-                        toY: revenue,
-                        width: 18,
-                        color: AppColors.gold,
-                        borderRadius: BorderRadius.circular(6),
-                        backDrawRodData: BackgroundBarChartRodData(
-                          show: true,
-                          toY: 800,
-                          color: Colors.white12,
-                        ),
-                      ),
-                    ],
-                  );
-                }),
               ),
-              swapAnimationDuration: const Duration(milliseconds: 600),
-              swapAnimationCurve: Curves.easeOutExpo,
             ),
           ),
-        );
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, _) => Text(
+                months[value.toInt()],
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(show: false),
+        barGroups: List.generate(12, (index) {
+          final revenue = revenues[index + 1] ?? 0.0;
+          return BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: revenue,
+                width: 18,
+                color: AppColors.gold,
+                borderRadius: BorderRadius.circular(6),
+                backDrawRodData: BackgroundBarChartRodData(
+                  show: true,
+                  toY: 800,
+                  color: Colors.white12,
+                ),
+              ),
+            ],
+          );
+        }),
+      ),
+      swapAnimationDuration: const Duration(milliseconds: 600),
+      swapAnimationCurve: Curves.easeOutExpo,
+    ),
+  ),
+);
+
       },
     );
   }

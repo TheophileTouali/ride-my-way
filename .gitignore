@@ -52,3 +52,11 @@ app.*.map.json
 .env
 *.lock
 *.tmp
+# Firebase / secrets / locales
+functions/.env
+.env
+google-services.json.bak
+empty_plugin/
+
+# Flutter SDK local (si présent)
+flutter/

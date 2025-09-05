@@ -1,78 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.ride_my_way">
+<activity
+    android:name=".MainActivity"
+    android:exported="true"
+    android:launchMode="singleTask"
+    android:theme="@style/LaunchTheme"
+    android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+    android:hardwareAccelerated="true"
+    android:windowSoftInputMode="adjustResize">
 
-    <!-- Permissions -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Android 13+ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- Compat Android 12 et inf. -->
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Thème appli appliqué après le 1er frame -->
+    <meta-data
+        android:name="io.flutter.embedding.android.NormalTheme"
+        android:resource="@style/NormalTheme" />
 
-    <!-- (Optionnel) Exemples de queries ; garde si tu en as besoin -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
-        </intent>
-    </queries>
+    <!-- Lancement de l'app -->
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent-filter>
 
-    <application
-        android:name="${applicationName}"
-        android:label="ride_my_way"
-        android:icon="@mipmap/ic_launcher"
-        android:theme="@style/NormalTheme"
-        android:enableOnBackInvokedCallback="true"
-        android:usesCleartextTraffic="true">
-        <!-- Recommandé : restreindre le HTTP clair à des hôtes de dev via networkSecurityConfig
-             et supprimer usesCleartextTraffic si pas nécessaire en prod. -->
-
-        <uses-library
-            android:name="org.apache.http.legacy"
-            android:required="false" />
-
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI" />
-
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
-
-            <!-- Thème appli appliqué après le 1er frame -->
-            <meta-data
-                android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
-
-            <!-- Lancement de l'app -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-            <!-- flutter_stripe : redirection 3DS/PaymentSheet (doit matcher setReturnUrlSchemeOnAndroid('flutterstripe')) -->
-            <intent-filter android:label="stripe-payment-return">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="flutterstripe" android:host="payment-return" />
-            </intent-filter>
-        </activity>
-
-        <!-- NOTE : Pas besoin de com.reactnativestripesdk.RedirectUriReceiver pour flutter_stripe -->
-    </application>
-</manifest>
+    <!-- ✅ flutter_stripe : deep link retour 3DS / PaymentSheet.
+         Doit matcher Stripe.urlScheme = 'flutterstripe' (dans main.dart) -->
+    <intent-filter android:label="stripe-payment-return">
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="flutterstripe" />
+    </intent-filter>
+</activity>

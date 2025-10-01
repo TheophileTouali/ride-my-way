@@ -2,6 +2,7 @@ name: ride_my_way
 description: Application Ride My Way
 publish_to: "none"
 version: 1.0.0+1
+
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
@@ -50,7 +51,7 @@ dependencies:
 
   # Graphiques & animations
   fl_chart: ^1.0.0
-  lottie: ^3.0.0 # ⬅️ Downgrade compatible
+  lottie: ^3.0.0
   animated_background: ^2.0.0
   flutter_animate: ^4.2.0
   animate_do: ^4.2.0
@@ -59,8 +60,7 @@ dependencies:
   url_launcher: ^6.2.5
   just_audio: ^0.10.4
 
-  # Splash
-  #flutter_native_splash: 2.3.10 # ⬅️ Downgrade compatible
+  # Paiement
   flutter_stripe: ^11.5.0
 
 dev_dependencies:
@@ -90,15 +90,3 @@ flutter:
         - asset: assets/fonts/PlayfairDisplay-VariableFont_wght.ttf
         - asset: assets/fonts/PlayfairDisplay-Italic-VariableFont_wght.ttf
           style: italic
-
-#flutter_native_splash:
-#color: "#121212"
-#image: assets/images/splash_icon.png
-#branding: assets/images/logo.png
-#branding_mode: bottom
-#android: true
-#ios: true
-
-dependency_overrides:
-  assets_audio_player_web:
-    path: ./empty_plugin

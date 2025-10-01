@@ -1,41 +1,59 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PaymentService {
-  static bool get isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  static bool get _isMobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+       defaultTargetPlatform == TargetPlatform.iOS);
 
-  static Future<bool> processPayment({
+  /// Ouvre la PaymentSheet (mobile) ou Stripe Checkout (web).
+  /// - En cas d'annulation, Stripe lève une `StripeException` avec `code == FailureCode.canceled`.
+  /// - En cas d'erreur (clé/secret manquant, URL invalide, etc.), on lève une Exception.
+  static Future<void> processPayment({
     required Map<String, dynamic> stripeResponse,
+    ThemeMode themeMode = ThemeMode.dark,
+    String merchantDisplayName = 'Ride My Way',
   }) async {
-    try {
-      if (isMobile && stripeResponse['clientSecret'] != null) {
-        await Stripe.instance.initPaymentSheet(
-          paymentSheetParameters: SetupPaymentSheetParameters(
-            paymentIntentClientSecret: stripeResponse['clientSecret'],
-            merchantDisplayName: 'Ride My Way',
-            style: ThemeMode.dark,
-          ),
-        );
-        await Stripe.instance.presentPaymentSheet();
-        return true;
-      } else if (kIsWeb && stripeResponse['checkoutUrl'] != null) {
-        final url = stripeResponse['checkoutUrl'];
-        if (!await launchUrl(Uri.parse(url), webOnlyWindowName: '_self')) {
-          throw Exception('Impossible d’ouvrir la page de paiement.');
-        }
-        return true;
-      } else {
-        throw UnsupportedError("Paiement non implémenté pour cette plateforme.");
+    if (_isMobile) {
+      final clientSecret = stripeResponse['clientSecret'] as String?;
+      if (clientSecret == null || clientSecret.isEmpty) {
+        throw Exception('Client secret Stripe manquant.');
       }
-    } on StripeException catch (e) {
-      debugPrint('Erreur paiement Stripe: ${e.error.localizedMessage}');
-      return false;
-    } catch (e) {
-      debugPrint('Erreur inattendue paiement: $e');
-      return false;
+
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: clientSecret,
+          merchantDisplayName: merchantDisplayName,
+          allowsDelayedPaymentMethods: true,
+          style: themeMode,
+        ),
+      );
+
+      // ⚠️ Ne pas catcher ici : laisse remonter StripeException (canceled / failed)
+      await Stripe.instance.presentPaymentSheet();
+      return;
     }
+
+    if (kIsWeb) {
+      final checkoutUrl = stripeResponse['checkoutUrl'] as String?;
+      if (checkoutUrl == null || checkoutUrl.isEmpty) {
+        throw Exception('URL Stripe Checkout manquante.');
+      }
+
+      final ok = await launchUrl(
+        Uri.parse(checkoutUrl),
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_self',
+      );
+      if (!ok) {
+        throw Exception('Impossible d’ouvrir Stripe Checkout.');
+      }
+      return;
+    }
+
+    throw UnsupportedError('Plateforme non supportée.');
   }
 }

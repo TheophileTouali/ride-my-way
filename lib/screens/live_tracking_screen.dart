@@ -11,6 +11,18 @@ import '../themes/app_theme.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+
+// 👉 ces constantes sont globales, accessibles partout dans ce fichier
+const String _VERIFY_BASE =
+    'https://verifypaymentintent-eq3zpvqefq-ew.a.run.app'; // GET ?pi=...
+const String _CAPTURE_BASE =
+    'https://capturepaymentintent-eq3zpvqefq-ew.a.run.app'; // GET ?pi=...
 
 class LiveTrackingScreen extends StatefulWidget {
   final String reservationId;
@@ -166,21 +178,110 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     _mapController?.setMapStyle(style);
   }
 
-  Future<void> _endTrip() async {
-    await FirebaseFirestore.instance
-        .collection('reservations')
-        .doc(widget.reservationId)
-        .update({
-      'status': 'Terminée',
-      'endTime': FieldValue.serverTimestamp(),
-    });
 
-    if (mounted) {
-      setState(() => _showTripEndedMessage = true);
-      await Future.delayed(const Duration(seconds: 3));
-      if (mounted) context.go('/feedback-driver/${widget.reservationId}');
+Future<void> _endTrip() async {
+  final docRef = FirebaseFirestore.instance
+      .collection('reservations')
+      .doc(widget.reservationId);
+
+  // 1) Marquer la course terminée
+  await docRef.update({
+    'status': 'Terminée',
+    'endTime': FieldValue.serverTimestamp(),
+  });
+
+  // 2) Récupérer le PaymentIntent ID
+  final snap = await docRef.get();
+  final String? pi = snap.data()?['paymentIntentId'];
+
+  if (pi == null || pi.isEmpty) {
+    debugPrint('⚠️ Aucun paymentIntentId sur la réservation.');
+  } else {
+    // 🔒 Sécurité anti double capture
+    final currentPaymentStatus = snap.data()?['paymentStatus'] ?? '';
+    if (currentPaymentStatus == 'succeeded') {
+      debugPrint('ℹ️ Paiement déjà capturé en base (Firestore).');
+    } else {
+      await docRef.update({'paymentStatus': 'capture_pending'});
+
+      try {
+        // 3a) Vérifier l’état actuel du PI (utile si déjà capturé via dashboard ou lien direct)
+        final verifyUri = Uri.parse('$_VERIFY_BASE?pi=$pi');
+        final verifyResp =
+            await http.get(verifyUri).timeout(const Duration(seconds: 20));
+
+        if (verifyResp.statusCode == 200) {
+          final v = json.decode(verifyResp.body) as Map<String, dynamic>;
+          final currentStatus = (v['status'] as String?) ?? '';
+
+          await docRef.update({
+            'stripe': {
+              'paymentIntentId': pi,
+              'lastCheckedAt': FieldValue.serverTimestamp(),
+            }
+          });
+
+          if (currentStatus == 'succeeded') {
+            // Déjà capturé (ex: lien direct)
+            await docRef.update({
+              'paymentStatus': 'succeeded',
+              'amountReceived': v['amount'],
+              'currency': v['currency'],
+              'capturedAt': FieldValue.serverTimestamp(),
+            });
+            debugPrint('ℹ️ PI déjà capturé côté Stripe ($pi).');
+          } else if (currentStatus == 'requires_capture') {
+            // 3b) Capturer maintenant
+            final capUri = Uri.parse('$_CAPTURE_BASE?pi=$pi');
+            final capResp =
+                await http.get(capUri).timeout(const Duration(seconds: 20));
+
+            if (capResp.statusCode == 200) {
+              final c = json.decode(capResp.body) as Map<String, dynamic>;
+              await docRef.update({
+                'paymentStatus': c['status'], // attendu: 'succeeded'
+                'amountReceived': c['amount'],
+                'currency': c['currency'],
+                'capturedAt': FieldValue.serverTimestamp(),
+              });
+              debugPrint('✅ Paiement capturé: $pi (${c['status']}).');
+            } else {
+              debugPrint('❌ Erreur capture Stripe: ${capResp.body}');
+              await docRef.update({
+                'paymentStatus': 'capture_error',
+                'captureError': capResp.body,
+                'captureErrorAt': FieldValue.serverTimestamp(),
+              });
+            }
+          } else {
+            // autre statut inattendu
+            await docRef.update({
+              'paymentStatus': currentStatus,
+              'paymentStatusCheckedAt': FieldValue.serverTimestamp(),
+            });
+            debugPrint('⚠️ Statut PI inattendu: $currentStatus (pi=$pi).');
+          }
+        } else {
+          debugPrint('❌ Vérification PI a échoué: ${verifyResp.body}');
+        }
+      } catch (e) {
+        debugPrint('❌ Exception capture: $e');
+        await docRef.update({
+          'paymentStatus': 'capture_exception',
+          'captureException': e.toString(),
+          'captureErrorAt': FieldValue.serverTimestamp(),
+        });
+      }
     }
   }
+
+  // 4) UI de fin + redirection
+  if (mounted) {
+    setState(() => _showTripEndedMessage = true);
+    await Future.delayed(const Duration(seconds: 3));
+    if (mounted) context.go('/feedback-driver/${widget.reservationId}');
+  }
+}
 
   @override
   void dispose() {

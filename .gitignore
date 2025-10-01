@@ -60,3 +60,10 @@ empty_plugin/
 
 # Flutter SDK local (si présent)
 flutter/
+# ne pas versionner un SDK Flutter local !
+flutter/
+# autres fichiers sensibles/parasites
+functions/.env
+.env
+google-services.json.bak
+empty_plugin/

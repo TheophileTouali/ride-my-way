@@ -1,14 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter_stripe/flutter_stripe.dart'; // StripeException
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/payment_service.dart';
 import '../themes/app_theme.dart';
 import 'package:ride_my_way/utils/location_utils.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import '../services/payment_service.dart';
-import 'package:flutter/foundation.dart'; // ✅ kIsWeb
-import 'package:url_launcher/url_launcher.dart'; // ✅ launchUrl & LaunchMode
 
 class ConfirmationScreen extends StatefulWidget {
   final String from;
@@ -33,12 +34,12 @@ class ConfirmationScreen extends StatefulWidget {
 class _ConfirmationScreenState extends State<ConfirmationScreen> {
   DateTime? _selectedDateTime;
   bool _isNowSelected = true;
+  bool _loading = false;
 
-  String formatDateTime(DateTime dt) {
-    return "${dt.day}/${dt.month}/${dt.year} à ${dt.hour}h${dt.minute.toString().padLeft(2, '0')}";
-  }
+  String formatDateTime(DateTime dt) =>
+      "${dt.day}/${dt.month}/${dt.year} à ${dt.hour}h${dt.minute.toString().padLeft(2, '0')}";
 
-  void _selectAnotherTime() async {
+  Future<void> _selectAnotherTime() async {
     final now = DateTime.now();
     final pickedDate = await showDatePicker(
       context: context,
@@ -55,71 +56,66 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           ),
           dialogBackgroundColor: const Color(0xFF0D0D0D),
           textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.gold,
-            ),
+            style: TextButton.styleFrom(foregroundColor: AppColors.gold),
           ),
         ),
         child: child!,
       ),
     );
 
-    if (pickedDate != null) {
-      final pickedTime = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.now(),
-        builder: (context, child) => Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: AppColors.gold,
-              onPrimary: Colors.black,
-              surface: Color(0xFF1A1A1A),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF0D0D0D),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.gold,
-              ),
-            ),
+    if (pickedDate == null) return;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.gold,
+            onPrimary: Colors.black,
+            surface: Color(0xFF1A1A1A),
+            onSurface: Colors.white,
           ),
-          child: child!,
+          dialogBackgroundColor: const Color(0xFF0D0D0D),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(foregroundColor: AppColors.gold),
+          ),
         ),
+        child: child!,
+      ),
+    );
+
+    if (pickedTime == null) return;
+
+    setState(() {
+      _selectedDateTime = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
       );
-
-      if (pickedTime != null) {
-        final selected = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
-          pickedTime.hour,
-          pickedTime.minute,
-        );
-
-        setState(() {
-          _selectedDateTime = selected;
-          _isNowSelected = false;
-        });
-      }
-    }
+      _isNowSelected = false;
+    });
   }
 
   Future<void> _confirmTrip() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Utilisateur non connecté")),
+        const SnackBar(content: Text("Utilisateur non connecté.")),
       );
       return;
     }
 
-    try {
-      // ✅ heure de départ prévue
-      final nowPlus3 = DateTime.now().add(const Duration(minutes: 3));
-      final departureTime =
-          _isNowSelected ? nowPlus3 : (_selectedDateTime ?? nowPlus3);
+    if (_loading) return;
+    setState(() => _loading = true);
 
-      // ✅ géocode le départ (utilisé côté mobile pour lister aux conducteurs)
+    final nowPlus3 = DateTime.now().add(const Duration(minutes: 3));
+    final departureTime = _isNowSelected ? nowPlus3 : (_selectedDateTime ?? nowPlus3);
+
+    try {
+      // 1) Géocodage départ (obligatoire pour la recherche conducteur)
       final coords = await getCoordinatesFromAddress(widget.from);
       if (coords == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -128,69 +124,55 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         return;
       }
 
-      final currentBaseUrl = Uri.base.origin;
-      debugPrint("🔎 Base URL: $currentBaseUrl");
-      debugPrint("🔎 Plateforme détectée: ${kIsWeb ? 'web' : 'mobile'}");
-
-      // ✅ Montant en CENTIMES (entier) pour Stripe
+      // 2) Crée le PaymentIntent (centimes)
       final amountCents = (widget.price * 100).round();
-
-      // ✅ cible explicitement la région europe-west1
       final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
       final callable = functions.httpsCallable('createPaymentIntent');
 
-      // ✅ N’envoie baseUrl + timestamp que sur web
       final payload = <String, dynamic>{
-        'amount': amountCents, // int (cents)
+        'amount': amountCents,
         'currency': 'eur',
         'from': widget.from,
         'to': widget.to,
         'vehicle': widget.vehicle,
         'distance': widget.distance,
-        if (kIsWeb) ...{
-          'baseUrl': currentBaseUrl,
-          'timestamp': departureTime.toIso8601String(), // ✅ clé du fix “course terminée”
-        },
+        if (kIsWeb)
+          ...{
+            'baseUrl': Uri.base.origin,
+            'timestamp': departureTime.toIso8601String(),
+          }
       };
 
-      debugPrint("📤 Données envoyées à Cloud Function: $payload");
-
       final result = await callable.call(payload);
-      debugPrint("📥 Réponse Cloud Function: ${result.data}");
+      final data = Map<String, dynamic>.from(result.data as Map);
 
+      // 3) Paiement
       if (kIsWeb) {
-        // 🌐 Stripe Checkout (la création Firestore se fera dans PaymentSuccessScreen)
-        final checkoutUrl = (result.data as Map)['checkoutUrl'] as String?;
-        debugPrint("🌐 Checkout URL reçue: $checkoutUrl");
-
-        if (checkoutUrl != null && checkoutUrl.isNotEmpty) {
-          final uri = Uri.parse(checkoutUrl);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-            return;
-          } else {
-            debugPrint("❌ Impossible d'ouvrir l'URL Stripe");
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Impossible d'ouvrir Stripe Checkout")),
-            );
-            return;
-          }
-        } else {
-          debugPrint("❌ URL Stripe Checkout non fournie !");
+        // --- WEB : Stripe Checkout ---
+        final checkoutUrl = data['checkoutUrl'] as String?;
+        if (checkoutUrl == null || checkoutUrl.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("URL Stripe Checkout non fournie.")),
           );
           return;
         }
-      } else {
-        // 📱 Paiement mobile → PaymentSheet
-        debugPrint("📱 Paiement mobile → ouverture PaymentSheet");
-        await PaymentService.processPayment(
-          stripeResponse: result.data as Map<String, dynamic>,
+        final ok = await launchUrl(
+          Uri.parse(checkoutUrl),
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_self',
         );
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Impossible d'ouvrir Stripe Checkout.")),
+          );
+        }
+        return; // la création Firestore se fait sur l’écran de succès web
+      } else {
+        // --- MOBILE : PaymentSheet ---
+        await PaymentService.processPayment(stripeResponse: data);
 
-        // ✅ Sauvegarde Firestore après succès PaymentSheet (même schéma que web)
-        final reservationData = {
+        // 4) Enregistre la réservation SEULEMENT si PaymentSheet validée
+        final reservation = {
           'from': widget.from,
           'to': widget.to,
           'vehicle': widget.vehicle,
@@ -200,7 +182,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'timestamp': Timestamp.fromDate(departureTime),
           'status': 'En attente',
           'paymentStatus': 'authorized',
-          'paymentIntentId': (result.data as Map)['paymentIntentId'],
+          'paymentIntentId': data['paymentIntentId'],
           'createdAt': FieldValue.serverTimestamp(),
           'expiredSearch': false,
           'fromLat': coords.lat,
@@ -208,206 +190,40 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'platform': 'mobile',
         };
 
-        debugPrint("📝 Données enregistrées Firestore: $reservationData");
-
         final docRef = await FirebaseFirestore.instance
             .collection('reservations')
-            .add(reservationData);
+            .add(reservation);
 
-        debugPrint("✅ Réservation enregistrée avec ID: ${docRef.id}");
         context.go('/searching?reservationId=${docRef.id}');
       }
-    } on StripeException catch (e) {
-      final msg = e.error.localizedMessage ?? e.toString();
-      debugPrint("❌ StripeException: $msg");
+    }
+
+    // --- Erreurs Cloud Functions (auth, montant invalide, etc.) ---
+    on FirebaseFunctionsException catch (e) {
+      final msg = e.message ?? e.code;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            msg.contains('Canceled') ? "Paiement annulé." : "Paiement annulé ou échoué.",
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint("❌ Erreur paiement ou Firestore : $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Paiement annulé ou échoué.")),
+        SnackBar(content: Text('Erreur serveur paiement : $msg')),
       );
     }
-  }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Text(
-            "$label : ",
-            style: const TextStyle(
-              color: Colors.white70,
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 16,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                fontFamily: 'PlayfairDisplay',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    // --- Erreurs Stripe : on détecte l'annulation sans l'enum (compatible toutes versions) ---
+    on StripeException catch (e) {
+      final codeStr = e.error.code.toString().toLowerCase(); // ex: "failurecode.canceled"
+      final isCanceled = codeStr.contains('canceled') || codeStr.contains('cancelled');
+      final msg = e.error.message ?? (isCanceled ? 'Paiement annulé.' : 'Paiement refusé.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isCanceled ? 'Paiement annulé par l’utilisateur.' : 'Paiement refusé : $msg')),
+      );
+    }
 
-  Widget _buildNowBlock() {
-    if (!_isNowSelected) return const SizedBox.shrink();
-
-    final nowPlus3 = DateTime.now().add(const Duration(minutes: 3));
-    return Container(
-      margin: const EdgeInsets.only(top: 24),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.gold.withOpacity(0.15)),
-      ),
-      child: Row(
-        children: [
-          const Text(
-            "Vous partez maintenant : ",
-            style: TextStyle(
-              color: Colors.white70,
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 16,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              formatDateTime(nowPlus3),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                fontFamily: 'PlayfairDisplay',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDateSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Planifier votre départ",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontFamily: 'PlayfairDisplay',
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.gold.withOpacity(0.15)),
-          ),
-          child: Row(
-            children: [
-              TextButton(
-                onPressed: () async {
-                  final now = DateTime.now();
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: now,
-                    firstDate: now,
-                    lastDate: now.add(const Duration(days: 365)),
-                    builder: (context, child) => Theme(
-                      data: ThemeData.dark().copyWith(
-                        colorScheme: const ColorScheme.dark(
-                          primary: AppColors.gold,
-                          onPrimary: Colors.black,
-                          surface: Color(0xFF1A1A1A),
-                          onSurface: Colors.white,
-                        ),
-                        dialogBackgroundColor: const Color(0xFF0D0D0D),
-                        textButtonTheme: TextButtonThemeData(
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.gold,
-                          ),
-                        ),
-                      ),
-                      child: child!,
-                    ),
-                  );
-
-                  if (pickedDate != null) {
-                    final pickedTime = await showTimePicker(
-                      context: context,
-                      initialTime: TimeOfDay.now(),
-                      builder: (context, child) => Theme(
-                        data: ThemeData.dark().copyWith(
-                          colorScheme: const ColorScheme.dark(
-                            primary: AppColors.gold,
-                            onPrimary: Colors.black,
-                            surface: Color(0xFF1A1A1A),
-                            onSurface: Colors.white,
-                          ),
-                          dialogBackgroundColor: const Color(0xFF0D0D0D),
-                          textButtonTheme: TextButtonThemeData(
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.gold,
-                            ),
-                          ),
-                        ),
-                        child: child!,
-                      ),
-                    );
-
-                    if (pickedTime != null) {
-                      final selected = DateTime(
-                        pickedDate.year,
-                        pickedDate.month,
-                        pickedDate.day,
-                        pickedTime.hour,
-                        pickedTime.minute,
-                      );
-
-                      setState(() {
-                        _selectedDateTime = selected;
-                        _isNowSelected = false;
-                      });
-                    }
-                  }
-                },
-                child: const Text(
-                  "Planifier un autre moment",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'PlayfairDisplay',
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              const Icon(Icons.calendar_today, color: AppColors.gold),
-            ],
-          ),
-        ),
-      ],
-    );
+    // --- Autres erreurs (réseau, parsing, etc.) ---
+    catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur inattendue : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -424,13 +240,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.gold, size: 20),
           tooltip: 'Retour',
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/results');
-            }
-          },
+          onPressed: () => context.canPop() ? context.pop() : context.go('/results'),
         ),
         title: const Text(
           "Confirmation de votre trajet sur mesure",
@@ -443,39 +253,35 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.star_rounded, color: AppColors.gold, size: 24),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ShaderMask(
-                    shaderCallback: (Rect bounds) {
-                      return const LinearGradient(
-                        colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-                      ).createShader(bounds);
-                    },
-                    child: const Text(
-                      "Résumé de votre trajet, conçu pour l'excellence",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'PlayfairDisplay',
-                        color: Colors.white, // requis pour shader
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+            Row(children: [
+              const Icon(Icons.star_rounded, color: AppColors.gold, size: 24),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                  ).createShader(bounds),
+                  child: const Text(
+                    "Résumé de votre trajet, conçu pour l'excellence",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PlayfairDisplay',
+                      color: Colors.white,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ]),
             const SizedBox(height: 20),
 
-            // Résumé du trajet
+            // Résumé
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -544,23 +350,47 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
             const SizedBox(height: 20),
 
-            // Planification
-            const SizedBox(height: 20),
-            const Text("Planifier votre départ", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
+            const Text(
+              "Planifier votre départ",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontFamily: 'PlayfairDisplay',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 6),
-            const Text("Vous préférez plus tard ? Choisissez le moment idéal.", style: TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'PlayfairDisplay', fontStyle: FontStyle.italic)),
+            const Text(
+              "Vous préférez plus tard ? Choisissez le moment idéal.",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontFamily: 'PlayfairDisplay',
+                fontStyle: FontStyle.italic,
+              ),
+            ),
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF1A1A1A),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.gold.withOpacity(0.2)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), offset: Offset(0, 2), blurRadius: 6)],
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.3), offset: const Offset(0, 2), blurRadius: 6),
+                ],
               ),
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
                 leading: const Icon(Icons.calendar_today_rounded, color: AppColors.gold),
-                title: const Text("Planifier un autre moment", style: TextStyle(color: AppColors.gold, fontSize: 16, fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.w600)),
+                title: const Text(
+                  "Planifier un autre moment",
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 16,
+                    fontFamily: 'PlayfairDisplay',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 onTap: _selectAnotherTime,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 tileColor: Colors.transparent,
@@ -569,15 +399,18 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
             const Spacer(),
 
-            // Bouton confirmation
+            // Bouton
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _confirmTrip,
-                icon: const Icon(Icons.check_circle, color: Colors.black),
-                label: const Text(
-                  "Confirmer ce trajet",
-                  style: TextStyle(
+                onPressed: _loading ? null : _confirmTrip,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                    : const Icon(Icons.check_circle, color: Colors.black),
+                label: Text(
+                  _loading ? "Traitement..." : "Confirmer ce trajet",
+                  style: const TextStyle(
                     fontFamily: 'PlayfairDisplay',
                     fontWeight: FontWeight.bold,
                     fontSize: 16,

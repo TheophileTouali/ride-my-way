@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_stripe/flutter_stripe.dart';
 
 import 'firebase_options.dart';
@@ -12,41 +12,35 @@ import 'providers/driver_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // ✅ Stripe : uniquement pour Android/iOS (sur Web tu passes par Checkout)
+  // ✅ Stripe : initialiser UNIQUEMENT sur Android/iOS (sur Web on passe par Checkout)
   if (!kIsWeb) {
     try {
-      // ⚠️ remplace par ta clé publishable Stripe
-      Stripe.publishableKey =
-          'pk_test_51Rp4UvRroJq1dBtwofYynv6pjMhTKEetwIKzYonPh46U1ND4fyFii0fL5NzfoJ7AOjvqoDPe5eV75qoQ5BrTvUnP00YaG7r56f';
+      // ⚠️ Mets ta publishable key (même environnement que ta secret côté Functions)
+      // Pro-tip: passe-la via --dart-define=STRIPE_PK=pk_test_xxx en CI/dev
+      Stripe.publishableKey = const String.fromEnvironment(
+        'STRIPE_PK',
+        defaultValue: 'pk_test_51Rp4UvRroJq1dBtwofYynv6pjMhTKEetwIKzYonPh46U1ND4fyFii0fL5NzfoJ7AOjvqoDPe5eV75qoQ5BrTvUnP00YaG7r56f', // <-- remplace
+      );
 
-      // (Optionnel) requis pour Apple Pay sur iOS
+      // (Optionnel) Apple Pay
       Stripe.merchantIdentifier = 'merchant.com.example.ride_my_way';
 
-      // ✅ Nouveau flux (remplace setReturnUrlSchemeOnAndroid)
-      // doit matcher ton intent-filter dans AndroidManifest.xml
+      // ✅ Schéma de retour pour 3DS/banque (doit matcher le Manifest/Info.plist)
       Stripe.urlScheme = 'flutterstripe';
 
       await Stripe.instance.applySettings();
     } catch (e, st) {
-      // Ne bloque pas le lancement de l'app si Stripe a un souci
-      debugPrint('⚠️ Stripe init failed: $e\n$st');
+      // On ne bloque pas le boot de l'app ; on loggue
+      // (si cette init échoue, la PaymentSheet échouera ensuite)
+      // Tu verras le message exact en console.
+      // ignore: avoid_print
+      print('⚠️ Stripe init failed: $e\n$st');
     }
   }
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()),
-        ChangeNotifierProvider(create: (_) => DriverProvider()..initializeUser()),
-      ],
-      child: const RideMyWayApp(),
-    ),
-  );
+  runApp(const RideMyWayApp());
 }
 
 class RideMyWayApp extends StatelessWidget {
@@ -54,23 +48,26 @@ class RideMyWayApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      debugShowCheckedModeBanner: false,
-      title: 'Ride My Way',
-      theme: ThemeData(
-        fontFamily: 'PlayfairDisplay',
-        scaffoldBackgroundColor: Colors.black,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => DriverProvider()..initializeUser()),
+      ],
+      child: MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        title: 'Ride My Way',
+        theme: ThemeData(
+          fontFamily: 'PlayfairDisplay',
+          scaffoldBackgroundColor: Colors.black,
+        ),
+        routerConfig: AppRoutes.router,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('fr', 'FR'), Locale('en', 'US')],
       ),
-      routerConfig: AppRoutes.router,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('fr', 'FR'),
-        Locale('en', 'US'),
-      ],
     );
   }
 }

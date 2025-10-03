@@ -11,6 +11,9 @@ import '../services/payment_service.dart';
 import '../themes/app_theme.dart';
 import 'package:ride_my_way/utils/location_utils.dart';
 
+// ⏱️ Buffer global (minutes) pour garder la course visible/urgente
+const int _NOW_BUFFER_MIN = 15;
+
 class ConfirmationScreen extends StatefulWidget {
   final String from;
   final String to;
@@ -111,11 +114,22 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     if (_loading) return;
     setState(() => _loading = true);
 
-    final nowPlus3 = DateTime.now().add(const Duration(minutes: 3));
-    final departureTime = _isNowSelected ? nowPlus3 : (_selectedDateTime ?? nowPlus3);
+    final nowPlusBuf = DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
+    // valeur initiale selon “partir maintenant” ou “planifier”
+    DateTime departureTime = _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
+
+    // 🔒 Clamp : on ne laisse jamais partir avant now + buffer
+    if (departureTime.isBefore(nowPlusBuf)) {
+      departureTime = nowPlusBuf;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Heure ajustée à +$_NOW_BUFFER_MIN min pour garantir la prise en charge.")),
+        );
+      }
+    }
 
     try {
-      // 1) Géocodage départ (obligatoire pour la recherche conducteur)
+      // 1) Géocodage
       final coords = await getCoordinatesFromAddress(widget.from);
       if (coords == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -124,7 +138,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         return;
       }
 
-      // 2) Crée le PaymentIntent (centimes)
+      // 2) PaymentIntent
       final amountCents = (widget.price * 100).round();
       final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
       final callable = functions.httpsCallable('createPaymentIntent');
@@ -136,10 +150,11 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         'to': widget.to,
         'vehicle': widget.vehicle,
         'distance': widget.distance,
+        'planned': !_isNowSelected, // 👈 utile pour stats/filtrage côté serveur
         if (kIsWeb)
           ...{
             'baseUrl': Uri.base.origin,
-            'timestamp': departureTime.toIso8601String(),
+            'timestamp': departureTime.toIso8601String(), // 👈 envoyé à Checkout
           }
       };
 
@@ -148,7 +163,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
       // 3) Paiement
       if (kIsWeb) {
-        // --- WEB : Stripe Checkout ---
         final checkoutUrl = data['checkoutUrl'] as String?;
         if (checkoutUrl == null || checkoutUrl.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -166,12 +180,12 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             const SnackBar(content: Text("Impossible d'ouvrir Stripe Checkout.")),
           );
         }
-        return; // la création Firestore se fait sur l’écran de succès web
+        return; // création Firestore faite sur l’écran succès web
       } else {
         // --- MOBILE : PaymentSheet ---
         await PaymentService.processPayment(stripeResponse: data);
 
-        // 4) Enregistre la réservation SEULEMENT si PaymentSheet validée
+        // 4) Réservation (après validation PaymentSheet)
         final reservation = {
           'from': widget.from,
           'to': widget.to,
@@ -179,7 +193,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'price': widget.price,
           'distance': widget.distance,
           'userId': user.uid,
-          'timestamp': Timestamp.fromDate(departureTime),
+          'timestamp': Timestamp.fromDate(departureTime), // 👈 buffer/clamp appliqué
           'status': 'En attente',
           'paymentStatus': 'authorized',
           'paymentIntentId': data['paymentIntentId'],
@@ -196,28 +210,19 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
         context.go('/searching?reservationId=${docRef.id}');
       }
-    }
-
-    // --- Erreurs Cloud Functions (auth, montant invalide, etc.) ---
-    on FirebaseFunctionsException catch (e) {
+    } on FirebaseFunctionsException catch (e) {
       final msg = e.message ?? e.code;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur serveur paiement : $msg')),
       );
-    }
-
-    // --- Erreurs Stripe : on détecte l'annulation sans l'enum (compatible toutes versions) ---
-    on StripeException catch (e) {
-      final codeStr = e.error.code.toString().toLowerCase(); // ex: "failurecode.canceled"
+    } on StripeException catch (e) {
+      final codeStr = e.error.code.toString().toLowerCase();
       final isCanceled = codeStr.contains('canceled') || codeStr.contains('cancelled');
       final msg = e.error.message ?? (isCanceled ? 'Paiement annulé.' : 'Paiement refusé.');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(isCanceled ? 'Paiement annulé par l’utilisateur.' : 'Paiement refusé : $msg')),
       );
-    }
-
-    // --- Autres erreurs (réseau, parsing, etc.) ---
-    catch (e) {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur inattendue : $e')),
       );
@@ -228,8 +233,9 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final nowPlus3 = DateTime.now().add(const Duration(minutes: 3));
-    final departureTime = _isNowSelected ? nowPlus3 : (_selectedDateTime ?? nowPlus3);
+    final nowPlusBuf = DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
+    final departureTime = _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
+    final label = _isNowSelected ? "Vous partez maintenant" : "Départ planifié";
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -314,7 +320,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
             const SizedBox(height: 20),
 
-            // Départ immédiat
+            // Départ immédiat / planifié
             Container(
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
               decoration: BoxDecoration(
@@ -335,7 +341,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      "Vous partez maintenant : ${_formatTimestamp(Timestamp.fromDate(departureTime))}",
+                      "$label : ${_formatTimestamp(Timestamp.fromDate(departureTime))}",
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,

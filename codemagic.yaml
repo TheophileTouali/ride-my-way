@@ -1,0 +1,14 @@
+workflows:
+  android_debug_apk:
+    name: Android • Debug APK (tests rapides)
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Get deps
+        script: flutter pub get
+      - name: Build debug APK
+        script: flutter build apk --debug
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk

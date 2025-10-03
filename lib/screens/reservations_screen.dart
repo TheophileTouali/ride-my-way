@@ -1,10 +1,12 @@
+import 'dart:async';
+
+import 'package:animate_do/animate_do.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:animate_do/animate_do.dart';
+
 import '../themes/app_theme.dart';
-import 'dart:async';
 
 class ReservationsScreen extends StatefulWidget {
   const ReservationsScreen({super.key});
@@ -12,7 +14,6 @@ class ReservationsScreen extends StatefulWidget {
   @override
   State<ReservationsScreen> createState() => _ReservationsScreenState();
 }
-
 
 class _ReservationsScreenState extends State<ReservationsScreen> {
   final Set<String> _redirectedReservationIds = {};
@@ -98,16 +99,23 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
 
       _showPremiumFavoriteOverlay("Trajet ajouté à vos favoris");
     } catch (e) {
+      // ignore: avoid_print
       print("Erreur lors de l'ajout aux favoris : $e");
     }
   }
 
   Future<void> _cancelReservation(String docId) async {
-    await FirebaseFirestore.instance.collection('reservations').doc(docId).update({
-      'status': 'Annulée',
-    });
+    await FirebaseFirestore.instance
+        .collection('reservations')
+        .doc(docId)
+        .update({'status': 'Annulée'});
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Réservation annulée'), backgroundColor: Colors.redAccent),
+      const SnackBar(
+        content: Text('Réservation annulée'),
+        backgroundColor: Colors.redAccent,
+      ),
     );
   }
 
@@ -121,35 +129,42 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
         .snapshots();
   }
 
-  List<QueryDocumentSnapshot> _filterReservations(List<QueryDocumentSnapshot> reservations) {
+  List<QueryDocumentSnapshot> _filterReservations(
+    List<QueryDocumentSnapshot> reservations,
+  ) {
     final now = DateTime.now();
 
-    return reservations.map((doc) {
-    final ts = doc['timestamp'] as Timestamp;
-    final date = ts.toDate();
-    final status = (doc['status'] ?? '').toString();
+    return reservations
+        .map((doc) {
+          final ts = doc['timestamp'] as Timestamp;
+          final date = ts.toDate();
+          final status = (doc['status'] ?? '').toString();
 
-    if (status != 'Annulée' && date.isBefore(now) && status != 'Terminée') {
-      FirebaseFirestore.instance.collection('reservations').doc(doc.id).update({
-        'status': 'Terminée'
+          // Si la date est passée et que ce n'est pas annulé/terminé => on termine.
+          if (status != 'Annulée' && date.isBefore(now) && status != 'Terminée') {
+            FirebaseFirestore.instance
+                .collection('reservations')
+                .doc(doc.id)
+                .update({'status': 'Terminée'});
+          }
+          return doc;
+        })
+        .whereType<QueryDocumentSnapshot>()
+        .where((doc) {
+          final ts = doc['timestamp'] as Timestamp;
+          final date = ts.toDate();
+          final status = (doc['status'] ?? '').toString();
+
+          if (_filter == 'Tous') return true;
+          if (_filter == 'À venir') return date.isAfter(now);
+          return status.toLowerCase() == _filter.trim().toLowerCase();
+        })
+        .toList()
+      ..sort((a, b) {
+        final tsA = a['timestamp'] as Timestamp;
+        final tsB = b['timestamp'] as Timestamp;
+        return tsA.toDate().compareTo(tsB.toDate());
       });
-    }
-
-    return doc;
-  }).whereType<QueryDocumentSnapshot>().where((doc) {
-    final ts = doc['timestamp'] as Timestamp;
-    final date = ts.toDate();
-    final status = (doc['status'] ?? '').toString();
-
-    if (_filter == 'Tous') return true;
-    if (_filter == 'À venir') return date.isAfter(now);
-    return status.toLowerCase() == _filter.trim().toLowerCase();
-  }).toList()
-  ..sort((a, b) {
-    final tsA = a['timestamp'] as Timestamp;
-    final tsB = b['timestamp'] as Timestamp;
-    return tsA.toDate().compareTo(tsB.toDate());
-  });
   }
 
   String _formatDate(Timestamp timestamp) {
@@ -157,7 +172,11 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     return "${date.day}/${date.month}/${date.year} à ${date.hour}h${date.minute.toString().padLeft(2, '0')}";
   }
 
-  String _getFieldOrDefault(QueryDocumentSnapshot doc, String key, String fallback) {
+  String _getFieldOrDefault(
+    QueryDocumentSnapshot doc,
+    String key,
+    String fallback,
+  ) {
     return doc.data().toString().contains(key) ? doc[key].toString() : fallback;
   }
 
@@ -191,75 +210,80 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
               stream: _reservationsStream(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+                  return const Center(
+                    child: CircularProgressIndicator(color: AppColors.gold),
+                  );
                 }
 
                 if (!snapshot.hasData) {
-                  return const Center(child: Text("Chargement des réservations...", style: TextStyle(color: Colors.white70)));
+                  return const Center(
+                    child: Text(
+                      "Chargement des réservations...",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  );
                 }
 
                 final docs = snapshot.data!.docs;
 
-      // ✅ Recherche de la course "En cours" la plus récente
-      if (_redirectedReservationIds.isEmpty) {
-        // 1. Redirection si "En cours"
-        final enCoursDocs = docs.where((doc) => doc['status'] == 'En cours').toList();
+                // Redirection automatique vers la course active/en route
+                if (_redirectedReservationIds.isEmpty) {
+                  // 1) "En cours"
+                  final enCoursDocs =
+                      docs.where((doc) => doc['status'] == 'En cours').toList();
+                  if (enCoursDocs.isNotEmpty) {
+                    enCoursDocs.sort((a, b) {
+                      final aTime = (a['timestamp'] as Timestamp).toDate();
+                      final bTime = (b['timestamp'] as Timestamp).toDate();
+                      return bTime.compareTo(aTime);
+                    });
+                    final latestDoc = enCoursDocs.first;
+                    final id = latestDoc.id;
 
-        if (enCoursDocs.isNotEmpty) {
-          enCoursDocs.sort((a, b) {
-            final aTime = (a['timestamp'] as Timestamp).toDate();
-            final bTime = (b['timestamp'] as Timestamp).toDate();
-            return bTime.compareTo(aTime);
-          });
+                    _redirectedReservationIds.add(id);
+                    // ignore: avoid_print
+                    print("🚀 Redirection vers /tracking/$id");
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) context.go('/tracking/$id');
+                    });
+                    return const SizedBox.shrink();
+                  }
 
-          final latestDoc = enCoursDocs.first;
-          final id = latestDoc.id;
+                  // 2) "En route"
+                  final enRouteDocs =
+                      docs.where((doc) => doc['status'] == 'En route').toList();
+                  if (enRouteDocs.isNotEmpty) {
+                    enRouteDocs.sort((a, b) {
+                      final aTime = (a['timestamp'] as Timestamp).toDate();
+                      final bTime = (b['timestamp'] as Timestamp).toDate();
+                      return bTime.compareTo(aTime);
+                    });
+                    final latestDoc = enRouteDocs.first;
+                    final id = latestDoc.id;
 
-          _redirectedReservationIds.add(id);
-          print("🚀 Redirection vers /tracking/$id");
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.go('/tracking/$id');
-          });
-
-          return const SizedBox.shrink(); // ✅ correction ici
-        }
-
-        // 2. Sinon, redirection si "En route"
-        final enRouteDocs = docs.where((doc) => doc['status'] == 'En route').toList();
-
-        if (enRouteDocs.isNotEmpty) {
-          enRouteDocs.sort((a, b) {
-            final aTime = (a['timestamp'] as Timestamp).toDate();
-            final bTime = (b['timestamp'] as Timestamp).toDate();
-            return bTime.compareTo(aTime);
-          });
-
-          final latestDoc = enRouteDocs.first;
-          final id = latestDoc.id;
-
-          _redirectedReservationIds.add(id);
-          print("🛰️ Redirection vers /tracking/$id (En route)");
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.go('/tracking/$id');
-          });
-
-          return const SizedBox.shrink(); // ✅ ici aussi (optionnel)
-        }
-      }
-
-
-
-
-
-
+                    _redirectedReservationIds.add(id);
+                    // ignore: avoid_print
+                    print("🛰️ Redirection vers /tracking/$id (En route)");
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) context.go('/tracking/$id');
+                    });
+                    return const SizedBox.shrink();
+                  }
+                }
 
                 final filtered = _filterReservations(docs);
                 if (filtered.isEmpty) {
-                  return const Center(child: Text("Aucune réservation pour ce filtre.", style: TextStyle(color: Colors.white70)));
+                  return const Center(
+                    child: Text(
+                      "Aucune réservation pour ce filtre.",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  );
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final doc = filtered[index];
@@ -272,10 +296,13 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                             from: doc['from'] ?? '',
                             to: doc['to'] ?? '',
                             date: _formatDate(doc['timestamp'] as Timestamp),
-                            status: _getFieldOrDefault(doc, 'status', 'En attente'),
+                            status:
+                                _getFieldOrDefault(doc, 'status', 'En attente'),
                             price: _getFieldOrDefault(doc, 'price', 'À définir'),
-                            vehicle: _getFieldOrDefault(doc, 'vehicle', 'Non assigné'),
-                            driver: _getFieldOrDefault(doc, 'driverName', 'Non assigné'),
+                            vehicle: _getFieldOrDefault(
+                                doc, 'vehicle', 'Non assigné'),
+                            driver: _getFieldOrDefault(
+                                doc, 'driverName', 'Non assigné'),
                             docSnapshot: doc,
                           ),
                           const SizedBox(height: 8),
@@ -293,7 +320,14 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
   }
 
   Widget _buildFilterChips() {
-    final statuses = ['À venir', 'Confirmée', 'En attente', 'Annulée', 'Terminée', 'Tous'];
+    final statuses = [
+      'À venir',
+      'Confirmée',
+      'En attente',
+      'Annulée',
+      'Terminée',
+      'Tous'
+    ];
     return SizedBox(
       height: 40,
       child: ListView(
@@ -319,6 +353,35 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     );
   }
 
+  // --- UI helpers -----------------------------------------------------------
+
+  // Petit badge arrondi
+  Widget _pill(
+    String text, {
+    Color bg = const Color(0xFF2A2A2A),
+    Color fg = Colors.white70,
+    IconData? icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: TextStyle(color: fg, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _reservationCard({
     required String docId,
     required String from,
@@ -338,9 +401,13 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       _ => Colors.white60,
     };
 
-    final bool isConfirmed = status == 'Confirmée';
-    final bool isPaid = docSnapshot.data().toString().contains('paymentStatus') &&
-        docSnapshot['paymentStatus'] == 'payé';
+    // Statut de paiement (aligné Stripe)
+    // authorized => préautorisé ; succeeded => capturé/payé
+    final paymentStatus = (docSnapshot.data().toString().contains('paymentStatus'))
+        ? (docSnapshot['paymentStatus'] as String? ?? '')
+        : '';
+    final bool isAuthorized = paymentStatus == 'authorized';
+    final bool isCaptured = paymentStatus == 'succeeded';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -373,52 +440,61 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           Text("Départ : $date", style: const TextStyle(color: Colors.white70)),
           const SizedBox(height: 6),
           Text("Prix : $price", style: const TextStyle(color: Colors.white70)),
-          Text("Véhicule : $vehicle", style: const TextStyle(color: Colors.white70)),
-          Text("Conducteur : $driver", style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 6),
-          Text("Statut : $status", style: TextStyle(color: statusColor)),
-          const SizedBox(height: 8),
+          Text("Véhicule : $vehicle",
+              style: const TextStyle(color: Colors.white70)),
+          Text("Conducteur : $driver",
+              style: const TextStyle(color: Colors.white70)),
+
+          const SizedBox(height: 10),
+
+          // Statut + badge paiement
+          Row(
+            children: [
+              Text("Statut : $status", style: TextStyle(color: statusColor)),
+              const SizedBox(width: 10),
+              if (isCaptured)
+                _pill(
+                  "Payé",
+                  bg: Colors.green.withOpacity(0.15),
+                  fg: Colors.greenAccent,
+                  icon: Icons.verified_rounded,
+                )
+              else if (isAuthorized)
+                _pill(
+                  "Préautorisé",
+                  bg: Colors.blueGrey.shade800,
+                  fg: Colors.white70,
+                  icon: Icons.lock_clock_rounded,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (status != 'Annulée' && status != 'Terminée' && !isPaid)
+              // Annuler : seulement si non terminée/annulée
+              if (status != 'Annulée' && status != 'Terminée')
                 TextButton.icon(
                   onPressed: () => _cancelReservation(docId),
                   icon: const Icon(Icons.cancel, color: Colors.redAccent),
-                  label: const Text("Annuler", style: TextStyle(color: Colors.redAccent)),
-                ),
-              if (isConfirmed && !isPaid)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    FirebaseFirestore.instance
-                        .collection('reservations')
-                        .doc(docId)
-                        .update({'paymentStatus': 'payé'});
-                    _showPremiumFavoriteOverlay("Paiement confirmé");
-                  },
-                  icon: const Icon(Icons.payment, color: Colors.black),
                   label: const Text(
-                    "Payer maintenant",
-                    style: TextStyle(
-                      fontFamily: 'PlayfairDisplay',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Colors.black,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    "Annuler",
+                    style: TextStyle(color: Colors.redAccent),
                   ),
                 ),
-              if (isPaid)
-                const Icon(Icons.verified_rounded, color: Colors.greenAccent, size: 28),
+
+              // (Le bouton "Payer maintenant" a été SUPPRIMÉ – capture automatique côté serveur)
+              if (isCaptured)
+                const Icon(Icons.verified_rounded,
+                    color: Colors.greenAccent, size: 28),
             ],
           ),
+
           const SizedBox(height: 6),
+
+          // Favori
           ElevatedButton.icon(
             onPressed: () => _addToFavorites(
               from: from,
@@ -437,14 +513,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.gold,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
           ),
-          if (status == 'En cours') const SizedBox(height: 6),
-          // Nouveau bouton pour le passager : "Je monte"
+
+          if (status == 'Arrivé') const SizedBox(height: 6),
           if (status == 'Arrivé')
             ElevatedButton.icon(
               onPressed: () async {
@@ -452,7 +529,6 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                     .collection('reservations')
                     .doc(docId)
                     .update({'status': 'En cours'});
-
                 _showPremiumFavoriteOverlay("Trajet démarré !");
               },
               icon: const Icon(Icons.directions_car, color: Colors.black),
@@ -467,13 +543,15 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.gold,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
 
+          if (status == 'En cours') const SizedBox(height: 6),
           if (status == 'En cours')
             ElevatedButton.icon(
               onPressed: () => context.go('/tracking/$docId'),
@@ -489,7 +567,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.gold,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),

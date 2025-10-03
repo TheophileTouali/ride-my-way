@@ -67,3 +67,8 @@ functions/.env
 .env
 google-services.json.bak
 empty_plugin/
+android_old/
+build/
+.dart_tool/
+.gradle/
+.idea/

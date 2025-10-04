@@ -1,23 +1,42 @@
 workflows:
-  debug-apk:
-    name: Debug APK
+  android_debug:
+    name: Android Debug
+    instance_type: mac_mini_m2 # ou linux_x2 si tu préfères Linux
     environment:
       flutter: stable
       java: 17
       vars:
         ANDROID_SDK_ROOT: /usr/local/share/android-sdk
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - $ANDROID_SDK_ROOT
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
     scripts:
       - name: Install Android SDK 36 + Build-Tools 36
         script: |
           yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
             "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Flutter packages
+
+      - name: Flutter pub get
         script: |
           flutter --version
           flutter pub get
-      - name: Build debug APK
+
+      - name: Build debug APK (Flutter) + fallback Gradle + copie APK
         script: |
-          flutter build apk --debug --verbose
+          # Build Flutter (peut échouer à copier l'APK selon l'arborescence)
+          flutter build apk --debug --dart-define=STRIPE_PK=$STRIPE_PK || true
+          # Fallback: build via Gradle si besoin
+          (cd android && ./gradlew :app:assembleDebug -x lint)
+          # Copie à l'emplacement attendu par Flutter
+          mkdir -p build/app/outputs/flutter-apk
+          cp -f android/app/build/outputs/apk/debug/app-debug.apk build/app/outputs/flutter-apk/app-debug.apk || true
+          # Affiche les APK trouvés
+          find android/app/build/outputs -type f -name "*.apk" -print
+          find build -type f -name "*.apk" -print
+
     artifacts:
       - build/**/outputs/**/*.apk
-      - build/**/outputs/**/*.aab
+      - android/app/build/outputs/**/*.apk

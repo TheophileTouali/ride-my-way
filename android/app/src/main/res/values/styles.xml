@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Splash au démarrage -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">@drawable/launch_background</item>
-    </style>
+  <!-- Splash -->
+  <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <item name="android:windowBackground">@drawable/launch_background</item>
+  </style>
 
-    <!-- ⚠️ Thème utilisé par l'activité Flutter (Stripe le vérifie) -->
-    <style name="NormalTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- arrière-plan neutre derrière Flutter -->
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowNoTitle">true</item>
-        <!-- (optionnel) barre de statut/transparence -->
-        <item name="android:statusBarColor">@android:color/transparent</item>
-    </style>
+  <!-- ⚠️ Thème MaterialComponents requis par Stripe -->
+  <style name="NormalTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+  </style>
 
 </resources>

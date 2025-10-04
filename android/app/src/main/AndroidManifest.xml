@@ -2,7 +2,8 @@
   <application
       android:name="${applicationName}"
       android:label="ride_my_way"
-      android:icon="@mipmap/ic_launcher">
+      android:icon="@mipmap/ic_launcher"
+      android:theme="@style/NormalTheme">  <!-- ✅ thème Material effectif -->
 
     <activity
         android:name=".MainActivity"
@@ -13,7 +14,7 @@
         android:hardwareAccelerated="true"
         android:windowSoftInputMode="adjustResize">
 
-      <!-- Lancement de l’app -->
+      <!-- LAUNCHER -->
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
@@ -27,7 +28,6 @@
         <data android:scheme="flutterstripe" />
       </intent-filter>
 
-      <!-- Thème utilisé une fois Flutter initialisé -->
       <meta-data
           android:name="io.flutter.embedding.android.NormalTheme"
           android:resource="@style/NormalTheme" />

@@ -1,14 +1,23 @@
 workflows:
-  android_debug_apk:
-    name: Android • Debug APK (tests rapides)
-    max_build_duration: 60
+  debug-apk:
+    name: Debug APK
     environment:
       flutter: stable
       java: 17
+      vars:
+        ANDROID_SDK_ROOT: /usr/local/share/android-sdk
     scripts:
-      - name: Get deps
-        script: flutter pub get
+      - name: Install Android SDK 36 + Build-Tools 36
+        script: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Flutter packages
+        script: |
+          flutter --version
+          flutter pub get
       - name: Build debug APK
-        script: flutter build apk --debug
+        script: |
+          flutter build apk --debug --verbose
     artifacts:
-      - build/app/outputs/flutter-apk/app-debug.apk
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/*.aab

@@ -131,7 +131,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                                     ).createShader(bounds);
                                   },
                                   child: const Text(
-                                    "Trouvez le véhicule parfait pour un trajet sans compromis",
+                                    "Trouvez le véhicule parfait !",
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,

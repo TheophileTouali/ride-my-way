@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
@@ -14,27 +15,27 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // ✅ Stripe : initialiser UNIQUEMENT sur Android/iOS (sur Web on passe par Checkout)
+  // Stripe : initialiser uniquement sur Android/iOS (sur Web, passer par Checkout/redirections)
   if (!kIsWeb) {
     try {
-      // ⚠️ Mets ta publishable key (même environnement que ta secret côté Functions)
-      // Pro-tip: passe-la via --dart-define=STRIPE_PK=pk_test_xxx en CI/dev
+      // ⚠️ Ta publishable key (ok)
       Stripe.publishableKey = const String.fromEnvironment(
         'STRIPE_PK',
-        defaultValue: 'pk_test_51Rp4UvRroJq1dBtwofYynv6pjMhTKEetwIKzYonPh46U1ND4fyFii0fL5NzfoJ7AOjvqoDPe5eV75qoQ5BrTvUnP00YaG7r56f', // <-- remplace
+        defaultValue:
+            'pk_test_51Rp4UvRroJq1dBtwofYynv6pjMhTKEetwIKzYonPh46U1ND4fyFii0fL5NzfoJ7AOjvqoDPe5eV75qoQ5BrTvUnP00YaG7r56f',
       );
 
-      // (Optionnel) Apple Pay
-      Stripe.merchantIdentifier = 'merchant.com.example.ride_my_way';
+      // Apple Pay uniquement sur iOS
+      if (Platform.isIOS) {
+        Stripe.merchantIdentifier = 'merchant.com.example.ride_my_way';
+      }
 
-      // ✅ Schéma de retour pour 3DS/banque (doit matcher le Manifest/Info.plist)
+      // Schéma de retour 3DS (doit matcher Manifest/Info.plist)
       Stripe.urlScheme = 'flutterstripe';
 
       await Stripe.instance.applySettings();
     } catch (e, st) {
-      // On ne bloque pas le boot de l'app ; on loggue
-      // (si cette init échoue, la PaymentSheet échouera ensuite)
-      // Tu verras le message exact en console.
+      // Ne bloque pas le boot de l'app
       // ignore: avoid_print
       print('⚠️ Stripe init failed: $e\n$st');
     }

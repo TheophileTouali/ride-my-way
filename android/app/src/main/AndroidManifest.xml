@@ -3,6 +3,7 @@
       android:name="${applicationName}"
       android:label="ride_my_way"
       android:icon="@mipmap/ic_launcher">
+
     <activity
         android:name=".MainActivity"
         android:exported="true"
@@ -11,11 +12,22 @@
         android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
         android:hardwareAccelerated="true"
         android:windowSoftInputMode="adjustResize">
+
+      <!-- Lancement de l’app -->
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
 
+      <!-- ✅ Stripe 3DS / retour banque -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="flutterstripe" />
+      </intent-filter>
+
+      <!-- Thème utilisé une fois Flutter initialisé -->
       <meta-data
           android:name="io.flutter.embedding.android.NormalTheme"
           android:resource="@style/NormalTheme" />

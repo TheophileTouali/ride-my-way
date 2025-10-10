@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -9,7 +10,7 @@ import '../themes/app_theme.dart';
 import '../providers/driver_provider.dart';
 import '../models/driver_user.dart';
 
-// 👇 Couleur d’accent conducteur (turquoise premium)
+// 👇 Couleur d’accent conducteur (or premium)
 const Color kDriverAccent = Color(0xFF8C6A2C);
 
 class DriverLoginScreen extends StatefulWidget {
@@ -60,7 +61,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     final password = passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showPremiumError("Merci de renseigner votre email et votre mot de passe.");
+      _showPremiumError(
+          "Merci de renseigner votre email et votre mot de passe.");
       return;
     }
 
@@ -76,7 +78,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
       if (refreshedUser != null) {
         if (!refreshedUser.emailVerified) {
-          _showPremiumError("Veuillez confirmer votre adresse e-mail avant de vous connecter.");
+          _showPremiumError(
+              "Veuillez confirmer votre adresse e-mail avant de vous connecter.");
           return;
         }
 
@@ -90,16 +93,69 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           return;
         }
 
-        final data = doc.data()!;
-        final role = data['role'];
+        final driverData = doc.data()!;
+        final role = driverData['role'];
         if (role != 'driver') {
-          _showPremiumError("Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
+          _showPremiumError(
+              "Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
           await FirebaseAuth.instance.signOut();
           return;
         }
 
-        final driver = DriverUser.fromMap(data, uid: doc.id);
+        // 🔒 Vérification de session unique (corrigée)
+        final driverRef = FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(refreshedUser.uid);
+
+        const sessionGrace = Duration(minutes: 10);
+        final now = DateTime.now();
+
+        final allowed =
+            await FirebaseFirestore.instance.runTransaction<bool>((tx) async {
+          final snap = await tx.get(driverRef);
+          final data = snap.data() ?? {};
+
+          final isLoggedIn = (data['isLoggedIn'] as bool?) ?? false;
+          final lastActiveTs = data['lastActive'] as Timestamp?;
+          final lastActive = lastActiveTs?.toDate();
+
+          final hasRecentSession = isLoggedIn &&
+              lastActive != null &&
+              now.difference(lastActive) < sessionGrace;
+
+          if (hasRecentSession) {
+            return false; // session déjà active
+          }
+
+          final sessionId = now.millisecondsSinceEpoch.toString();
+          tx.set(
+            driverRef,
+            {
+              'isLoggedIn': true,
+              'lastActive': FieldValue.serverTimestamp(),
+              'sessionId': sessionId,
+            },
+            SetOptions(merge: true),
+          );
+
+          return true;
+        });
+
+        if (!allowed) {
+          _showPremiumError(
+            "Ce compte chauffeur est déjà connecté sur un autre appareil.\n"
+            "Réessaie dans quelques minutes ou déconnecte l’autre session.",
+          );
+          try {
+            await FirebaseAuth.instance.signOut();
+          } catch (_) {}
+          return;
+        }
+
+        // ✅ Stockage du conducteur en mémoire locale (Provider)
+        final driver = DriverUser.fromMap(driverData, uid: doc.id);
         Provider.of<DriverProvider>(context, listen: false).setUser(driver);
+
         context.go('/driver-home');
       }
     } on FirebaseAuthException catch (e) {
@@ -107,15 +163,23 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
         'user-not-found' => "Aucun compte trouvé avec cet e-mail.",
         'wrong-password' => "Le mot de passe saisi est incorrect.",
         'invalid-email' => "Adresse e-mail invalide.",
-        'too-many-requests' => "Trop de tentatives : veuillez patienter un instant.",
-        'invalid-credential' => "Les identifiants fournis sont invalides ou ont expiré.",
+        'too-many-requests' =>
+          "Trop de tentatives : veuillez patienter un instant.",
+        'invalid-credential' =>
+          "Les identifiants fournis sont invalides ou ont expiré.",
         _ => "Une erreur inconnue est survenue. Veuillez réessayer.",
       };
       _showPremiumError(message);
+    } on PlatformException catch (e) {
+      _showPremiumError(
+          "Erreur système (${e.code}). Veuillez réessayer plus tard.");
+    } on FirebaseException catch (e) {
+      _showPremiumError("Erreur Firebase (${e.code}). Veuillez réessayer.");
     } catch (e, stack) {
-      debugPrint("🔥 Erreur inattendue : $e");
+      debugPrint("🔥 Type: ${e.runtimeType} | Erreur: $e");
       debugPrintStack(stackTrace: stack);
-      _showPremiumError("Une erreur inattendue s’est produite. Veuillez réessayer.");
+      _showPremiumError(
+          "Une erreur inattendue s’est produite. Veuillez réessayer.");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -145,16 +209,19 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   // --- Badge "Espace Conducteur" ---
                   Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: kDriverAccent.withOpacity(.12),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: kDriverAccent.withOpacity(.5), width: 1),
+                        border: Border.all(
+                            color: kDriverAccent.withOpacity(.5), width: 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Icon(Icons.local_taxi_rounded, size: 16, color: kDriverAccent),
+                          Icon(Icons.local_taxi_rounded,
+                              size: 16, color: kDriverAccent),
                           SizedBox(width: 8),
                           Text(
                             "Espace Conducteur",
@@ -208,10 +275,13 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                           color: Colors.grey[500],
                         ),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),
@@ -228,7 +298,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         padding: EdgeInsets.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: const Text("Mot de passe oublié ?", style: TextStyle(fontSize: 14)),
+                      child: const Text("Mot de passe oublié ?",
+                          style: TextStyle(fontSize: 14)),
                     ),
                   ),
 
@@ -240,7 +311,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                       backgroundColor: kDriverAccent,
                       foregroundColor: AppColors.black,
                       minimumSize: const Size.fromHeight(56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(40)),
                       textStyle: const TextStyle(
                         fontFamily: 'PlayfairDisplay',
                         fontSize: 18,
@@ -249,7 +321,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                     ),
                     onPressed: _isLoading ? null : _handleLogin,
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: AppColors.black)
+                        ? const CircularProgressIndicator(
+                            color: AppColors.black)
                         : const Text('Connexion'),
                   ),
 
@@ -278,16 +351,18 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
                   const SizedBox(height: 12),
 
-                  // --- Lien inverse : Passager (en or) ---
+                  // --- Lien inverse : Passager ---
                   Center(
                     child: TextButton.icon(
                       onPressed: () => context.go('/login'),
-                      icon: const Icon(Icons.vpn_key_rounded, size: 16, color: AppColors.gold),
+                      icon: const Icon(Icons.vpn_key_rounded,
+                          size: 16, color: AppColors.gold),
                       label: const Text("Se connecter en tant que passager"),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.gold,
                         textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 12),
                       ),
                     ),
                   ),

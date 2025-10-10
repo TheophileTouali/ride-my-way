@@ -1000,11 +1000,60 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.logout, color: AppColors.gold),
+              tooltip: 'Déconnexion',
               onPressed: () async {
                 try {
+                  // 🔹 1. Libère la session du conducteur dans Firestore
+                  await FirebaseFirestore.instance
+                      .collection('drivers')
+                      .doc(FirebaseAuth.instance.currentUser?.uid)
+                      .update({
+                    'isLoggedIn': false,
+                    'lastActive': Timestamp.now(),
+                  });
+
+                  // 🔹 2. Déconnexion Firebase Auth
                   await FirebaseAuth.instance.signOut();
-                } catch (_) {}
-                if (context.mounted) context.go('/login-driver');
+
+                  // 🔹 3. Message visuel premium
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: Colors.grey.shade900,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        content: const Row(
+                          children: [
+                            Icon(Icons.logout, color: AppColors.gold),
+                            SizedBox(width: 12),
+                            Text(
+                              'Déconnexion réussie. À bientôt 👋',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    // 🔹 4. Redirection fluide vers la page de login conducteur
+                    await Future.delayed(const Duration(milliseconds: 600));
+                    context.go('/login-driver');
+                  }
+                } catch (e) {
+                  debugPrint('Erreur déconnexion: $e');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: Colors.red.shade800,
+                        content: const Text(
+                          'Erreur lors de la déconnexion. Réessaie.',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    );
+                  }
+                }
               },
             ),
           ],

@@ -1,56 +1,55 @@
 // lib/screens/driver_home_screen.dart
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../themes/app_theme.dart';
-import '../providers/driver_provider.dart';
-import 'package:animate_do/animate_do.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:animate_do/animate_do.dart'; // pour animation du bouton
-import 'package:just_audio/just_audio.dart';
-import '../models/trip.dart';
-import 'package:lucide_icons/lucide_icons.dart';
-import 'package:ride_my_way/services/weather_service.dart';
-import 'package:ride_my_way/widgets/driver_map_widget.dart';
+
+import 'package:animate_do/animate_do.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ride_my_way/widgets/driver_map_widget.dart';
+import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+
+import '../models/trip.dart';
+import '../providers/driver_provider.dart';
+import '../themes/app_theme.dart';
+import 'package:ride_my_way/services/weather_service.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilitaires
+// ─────────────────────────────────────────────────────────────────────────────
 
 Future<({double lat, double lng})?> getCoordinatesFromAddress(
     String address) async {
-  const apiKey =
-      'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI'; // remplace par ta vraie clé
+  const apiKey = 'REPLACE_ME_WITH_YOUR_API_KEY'; // 🔐 Remplace par ta vraie clé
   final url = Uri.parse(
     'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$apiKey',
   );
 
   try {
     final response = await http.get(url);
-
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       if (data['status'] == 'OK') {
         final result = data['results'][0];
         final location = result['geometry']['location'];
-        return (lat: location['lat'] as double, lng: location['lng'] as double);
+        return (
+          lat: (location['lat'] as num).toDouble(),
+          lng: (location['lng'] as num).toDouble()
+        );
       } else {
-        print("⚠️ Geocoding API status: ${data['status']}");
+        debugPrint("⚠️ Geocoding API status: ${data['status']}");
       }
     } else {
-      print("❌ HTTP error: ${response.statusCode}");
+      debugPrint("❌ HTTP error: ${response.statusCode}");
     }
   } catch (e) {
-    print("❌ Exception Geocoding: $e");
+    debugPrint("❌ Exception Geocoding: $e");
   }
-
   return null;
 }
 
@@ -63,11 +62,14 @@ Future<WeatherInfo> getWeatherFromPosition() async {
       throw Exception("La permission de localisation est requise.");
     }
   }
-
   final position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high);
   return await fetchWeather(position.latitude, position.longitude);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modèles simples / mocks
+// ─────────────────────────────────────────────────────────────────────────────
 
 class Testimonial {
   final String passengerName;
@@ -90,11 +92,10 @@ Future<Map<int, double>> fetchMonthlyRevenues() async {
   final snapshot = await FirebaseFirestore.instance
       .collection('reservations')
       .where('driverId', isEqualTo: uid)
-      .where('status', isEqualTo: 'Terminée') // uniquement les trajets terminés
+      .where('status', isEqualTo: 'Terminée')
       .get();
 
-  Map<int, double> revenues = {}; // clé = numéro du mois, valeur = total €
-
+  final Map<int, double> revenues = {};
   for (final doc in snapshot.docs) {
     final data = doc.data();
     final price = (data['price'] as num?)?.toDouble() ?? 0.0;
@@ -102,11 +103,9 @@ Future<Map<int, double>> fetchMonthlyRevenues() async {
     if (timestamp == null) continue;
 
     final date = timestamp.toDate();
-    final month = date.month; // 1 = Janvier, 2 = Février, etc.
-
-    revenues[month] = (revenues[month] ?? 0) + price;
+    final month = date.month; // 1..12
+    revenues[month] = (revenues[month] ?? 0.0) + price;
   }
-
   return revenues;
 }
 
@@ -134,6 +133,10 @@ Future<List<Testimonial>> fetchDriverTestimonials() async {
   ];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Écran principal
+// ─────────────────────────────────────────────────────────────────────────────
+
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
 
@@ -141,37 +144,47 @@ class DriverHomeScreen extends StatefulWidget {
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
 }
 
-LatLng? _currentPosition;
-BitmapDescriptor? _customDriverIcon;
-
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isVisible = false;
   double _driverRating = 0.0;
   List<Map<String, dynamic>> _feedbacks = [];
+
   LatLng? _currentPosition;
   BitmapDescriptor? _customDriverIcon;
 
   late Timer _refreshTimer;
   List<DocumentSnapshot> _nearbyReservations = [];
-  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _hasNewNearbyCourse = false;
+
+  // Avis (maquette premium)
+  int? _starFilter; // null = Tous, sinon 5..1
+  final Set<int> _expandedReviews = {}; // indices ouverts "Voir plus"
 
   @override
   void initState() {
     super.initState();
     _loadVisibility();
     _startAutoRefresh();
-    _loadDriverStats(); // ⬅️ ajoute ceci
+    _loadDriverStats();
     _loadRecentFeedbacks();
     _loadCustomIcon();
     _getCurrentPosition();
   }
 
+  @override
+  void dispose() {
+    _refreshTimer.cancel();
+    super.dispose();
+  }
+
+  // ── Inits ────────────────────────────────────────────────────────────────
+
   Future<void> _loadCustomIcon() async {
     final icon = await BitmapDescriptor.fromAssetImage(
       const ImageConfiguration(size: Size(48, 48)),
-      'assets/icons/car_gold.png', // adapte ce chemin
+      'assets/icons/car_gold.png',
     );
+    if (!mounted) return;
     setState(() {
       _customDriverIcon = icon;
     });
@@ -179,6 +192,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Future<void> _getCurrentPosition() async {
     final position = await Geolocator.getCurrentPosition();
+    if (!mounted) return;
     setState(() {
       _currentPosition = LatLng(position.latitude, position.longitude);
     });
@@ -186,6 +200,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Future<void> _loadRecentFeedbacks() async {
     final feedbacks = await fetchRecentFeedbacks();
+    if (!mounted) return;
     setState(() {
       _feedbacks = feedbacks;
     });
@@ -193,9 +208,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Future<void> _loadDriverStats() async {
     final stats = await fetchDriverStats();
+    if (!mounted) return;
     setState(() {
       _driverRating = stats.note;
     });
+  }
+
+  Future<void> _loadVisibility() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final doc =
+        await FirebaseFirestore.instance.collection('drivers').doc(uid).get();
+    if (!mounted) return;
+    if (doc.exists && doc.data()!.containsKey('isVisible')) {
+      setState(() {
+        _isVisible = doc['isVisible'] as bool? ?? false;
+      });
+    }
   }
 
   void _startAutoRefresh() {
@@ -208,7 +237,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           _nearbyReservations = newData;
         });
 
-        // ✅ Déplace la fonction en dehors ou l'exécute directement
+        // Ping sonore court
         final urgentPlayer = AudioPlayer();
         try {
           await urgentPlayer.setAsset('assets/sounds/urgent_alert.mp3');
@@ -216,9 +245,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         } catch (e) {
           debugPrint("Erreur lecture son d’urgence : $e");
         } finally {
-          Future.delayed(const Duration(seconds: 2), () {
-            urgentPlayer.dispose();
-          });
+          Future.delayed(const Duration(seconds: 2), urgentPlayer.dispose);
         }
       } else {
         setState(() {
@@ -229,71 +256,37 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _refreshTimer.cancel();
-    super.dispose();
-  }
+  // ── Firestore fetchers ───────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchRecentFeedbacks() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    print("📥 UID actuel : $uid");
-
-    if (uid == null) {
-      print("⚠️ Utilisateur non connecté, retour liste vide");
-      return [];
-    }
+    if (uid == null) return [];
 
     try {
-      print("🔎 Récupération des feedbacks (driverId = $uid)...");
       final snapshot = await FirebaseFirestore.instance
           .collection('feedbacks')
           .where('driverId', isEqualTo: uid)
           .get();
-
-      print("✅ Avis récupérés : ${snapshot.docs.length}");
 
       final feedbacks = snapshot.docs
           .map((doc) => doc.data())
           .where((data) => data['fromDriver'] == false)
           .toList();
 
-      print("🎯 Avis filtrés (from passager) : ${feedbacks.length}");
-
       // Tri par date décroissante
       feedbacks.sort((a, b) =>
           (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
 
-      final limited = feedbacks.take(5).toList();
-
-      for (final fb in limited) {
-        print("📄 Avis retenu : ${fb['comment']} | Note : ${fb['rating']}");
-      }
-
-      return limited;
+      return feedbacks.take(5).toList();
     } catch (e) {
-      print("❌ Erreur lors de la récupération des feedbacks : $e");
+      debugPrint("❌ Erreur lors de la récupération des feedbacks : $e");
       return [];
-    }
-  }
-
-  Future<void> _loadVisibility() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final doc =
-        await FirebaseFirestore.instance.collection('drivers').doc(uid).get();
-    if (doc.exists && doc.data()!.containsKey('isVisible')) {
-      setState(() {
-        _isVisible = doc['isVisible'];
-      });
     }
   }
 
   Widget _buildNearbyButton() {
     return ElevatedButton.icon(
-      onPressed: () {
-        showNearbyCoursesDialog(context);
-      },
+      onPressed: () => showNearbyCoursesDialog(context),
       icon: const Icon(Icons.map, color: Colors.black),
       label: const Text("Voir les courses proches"),
       style: ElevatedButton.styleFrom(
@@ -307,22 +300,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void showNearbyCoursesDialog(BuildContext context) {
-    final alertedTripIds = <String>{};
-
-    // ✅ Optionnel : jouer un son quand la popup s'ouvre
-    final alertPlayer = AudioPlayer();
-    alertPlayer.setAsset('assets/sounds/driver_found.mp3').then((_) {
-      alertPlayer.play();
-      Future.delayed(const Duration(seconds: 2), () {
-        alertPlayer.dispose(); // libère après lecture
-      });
-    }).catchError((e) {
-      debugPrint("Erreur lecture son popup courses proches : $e");
-    });
     showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.6), // Fonce le fond
+      barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) {
         return Dialog(
           shape:
@@ -334,44 +315,42 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Titre + bouton fermer
+                // Titre + fermer
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: Text(
                         "Courses proches...",
-                        maxLines: 2,
-                        softWrap: true,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.gold,
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                           height: 1.2,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
 
-                // Contenu dynamique via FutureBuilder
+                // Contenu
                 FutureBuilder<List<DocumentSnapshot>>(
                   future: _fetchNearbyPendingReservations(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
                           child:
-                              CircularProgressIndicator(color: AppColors.gold));
+                              CircularProgressIndicator(color: AppColors.gold),
+                        ),
+                      );
                     }
 
                     final reservations = snapshot.data!;
@@ -387,24 +366,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         itemCount: reservations.length,
                         itemBuilder: (context, index) {
                           final doc = reservations[index];
-                          final from = doc['from'] ?? '';
-                          final to = doc['to'] ?? '';
-                          final price =
-                              (doc['price'] as num?)?.toStringAsFixed(2) ??
-                                  'N/A';
-                          final date = (doc['timestamp'] as Timestamp).toDate();
-                          final distance = (doc['distance'] as double?)
-                                  ?.toStringAsFixed(1) ??
-                              '?';
-                          final duration = date.difference(DateTime.now());
-                          final timeUntil = duration.inMinutes < 60
-                              ? 'dans ${duration.inMinutes} min'
-                              : 'dans ${duration.inHours}h';
+                          final data = doc.data() as Map<String, dynamic>;
+                          final from = data['from'] ?? '';
+                          final to = data['to'] ?? '';
+                          final priceNum = (data['price'] as num?)?.toDouble();
+                          final price = priceNum != null
+                              ? priceNum.toStringAsFixed(2)
+                              : 'N/A';
+                          final date =
+                              (data['timestamp'] as Timestamp).toDate();
+                          final distanceNum =
+                              (data['distance'] as num?)?.toDouble();
+                          final distance = distanceNum != null
+                              ? distanceNum.toStringAsFixed(1)
+                              : '?';
 
+                          final duration = date.difference(DateTime.now());
                           final isUrgent = duration.inMinutes <= 5;
 
                           return FadeInUp(
-                            duration: const Duration(milliseconds: 400),
+                            duration: const Duration(milliseconds: 300),
                             child: Container(
                               margin: const EdgeInsets.only(bottom: 14),
                               padding: const EdgeInsets.all(14),
@@ -412,7 +393,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                 color: Colors.grey.shade900,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                    color: AppColors.gold.withOpacity(0.3)),
+                                  color: AppColors.gold.withOpacity(0.3),
+                                ),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,335 +435,42 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                         ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.schedule,
-                                              color: Colors.white54, size: 16),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              "Départ : ${_formatDate(date)}",
-                                              style: const TextStyle(
-                                                  color: Colors.white70),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              softWrap: false,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                            left:
-                                                22), // aligne avec l’icône au-dessus
-                                        child: Text(
-                                          "Temps restant : ${_timeUntil(date)}",
-                                          style: const TextStyle(
-                                              color: Colors.white54,
-                                              fontStyle: FontStyle.italic),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                  const SizedBox(height: 8),
                                   Text("Distance : $distance km",
                                       style: const TextStyle(
                                           color: Colors.white70)),
                                   Text("Prix : $price €",
                                       style: const TextStyle(
                                           color: Colors.white70)),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(height: 12),
                                   ElevatedButton.icon(
                                     onPressed: () async {
                                       try {
-                                        showDialog(
-                                          context: context,
-                                          barrierDismissible: false,
-                                          builder: (_) => const Center(
-                                              child: CircularProgressIndicator(
-                                                  color: AppColors.gold)),
-                                        );
-
-                                        // 🔐 Sécurité : timeout au cas où ça bloque
-                                        await _acceptReservation(doc.id)
-                                            .timeout(
-                                          const Duration(seconds: 5),
-                                          onTimeout: () {
-                                            throw Exception(
-                                                "⏳ Timeout lors de l'acceptation de la course");
-                                          },
-                                        );
-
-                                        if (context.mounted)
-                                          Navigator.of(context)
-                                              .pop(); // ferme loader
-                                        if (context.mounted)
-                                          Navigator.of(context)
-                                              .pop(); // ferme popup
-                                        final successPlayer = AudioPlayer();
-
-                                        try {
-                                          await successPlayer.setAsset(
-                                              'assets/sounds/success.mp3');
-                                          await successPlayer.play();
-                                        } catch (e) {
-                                          debugPrint(
-                                              "Erreur lecture son succès : $e");
-                                        } finally {
-                                          Future.delayed(
-                                              const Duration(seconds: 2), () {
-                                            successPlayer
-                                                .dispose(); // ✅ Libère après lecture
-                                          });
-                                        }
-
-                                        setState(() {
-                                          _hasNewNearbyCourse = false;
-                                          _nearbyReservations.removeWhere(
-                                              (r) => r.id == doc.id);
-                                        });
-
-                                        if (context.mounted) {
-                                          showDialog(
-                                            context: context,
-                                            barrierDismissible: true,
-                                            builder: (context) => Center(
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: FadeIn(
-                                                  // 👈 Animation changée ici
-                                                  duration: const Duration(
-                                                      milliseconds: 500),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            24),
-                                                    margin: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 24),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          Colors.grey.shade900,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              24),
-                                                      border: Border.all(
-                                                          color: AppColors.gold
-                                                              .withOpacity(
-                                                                  0.5)),
-                                                    ),
-                                                    child: Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        const Icon(
-                                                            Icons
-                                                                .check_circle_rounded,
-                                                            size: 64,
-                                                            color:
-                                                                AppColors.gold),
-                                                        const SizedBox(
-                                                            height: 16),
-                                                        const Text(
-                                                          "Course acceptée avec succès 🎉",
-                                                          style: TextStyle(
-                                                            fontSize: 18,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color:
-                                                                AppColors.gold,
-                                                            fontFamily:
-                                                                'PlayfairDisplay',
-                                                          ),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 12),
-                                                        const Text(
-                                                          "Vous pouvez maintenant consulter les détails dans vos trajets.",
-                                                          style: TextStyle(
-                                                              color: Colors
-                                                                  .white70),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 24),
-                                                        ElevatedButton.icon(
-                                                          onPressed: () =>
-                                                              Navigator.of(
-                                                                      context)
-                                                                  .pop(),
-                                                          icon: const Icon(
-                                                              Icons.check,
-                                                              color:
-                                                                  Colors.black),
-                                                          label: const Text(
-                                                              "Fermer",
-                                                              style: TextStyle(
-                                                                  color: Colors
-                                                                      .black)),
-                                                          style: ElevatedButton
-                                                              .styleFrom(
-                                                            backgroundColor:
-                                                                AppColors.gold,
-                                                            shape: RoundedRectangleBorder(
-                                                                borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            30)),
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        24,
-                                                                    vertical:
-                                                                        12),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        }
+                                        await _acceptReservation(doc.id);
+                                        if (mounted)
+                                          Navigator.of(context).pop();
                                       } catch (e) {
-                                        if (context.mounted)
-                                          Navigator.of(context)
-                                              .pop(); // ferme loader
-                                        print(
-                                            "❌ ERREUR acceptReservation : $e");
-                                        if (context.mounted) {
-                                          showDialog(
-                                            context: context,
-                                            barrierDismissible: true,
-                                            builder: (context) => Center(
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: FadeIn(
-                                                  duration: const Duration(
-                                                      milliseconds: 400),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            24),
-                                                    margin: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 24),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          Colors.grey.shade900,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              24),
-                                                      border: Border.all(
-                                                          color: Colors
-                                                              .redAccent
-                                                              .withOpacity(
-                                                                  0.5)),
-                                                    ),
-                                                    child: Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        const Icon(
-                                                            Icons
-                                                                .error_outline_rounded,
-                                                            size: 64,
-                                                            color: Colors
-                                                                .redAccent),
-                                                        const SizedBox(
-                                                            height: 16),
-                                                        const Text(
-                                                          "Erreur lors de l'acceptation ❌",
-                                                          style: TextStyle(
-                                                            fontSize: 18,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors
-                                                                .redAccent,
-                                                            fontFamily:
-                                                                'PlayfairDisplay',
-                                                          ),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 12),
-                                                        const Text(
-                                                          "Une erreur est survenue. Veuillez réessayer ou vérifier votre connexion.",
-                                                          style: TextStyle(
-                                                              color: Colors
-                                                                  .white70),
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                        ),
-                                                        const SizedBox(
-                                                            height: 24),
-                                                        ElevatedButton.icon(
-                                                          onPressed: () =>
-                                                              Navigator.of(
-                                                                      context)
-                                                                  .pop(),
-                                                          icon: const Icon(
-                                                              Icons.close,
-                                                              color:
-                                                                  Colors.black),
-                                                          label: const Text(
-                                                              "Fermer",
-                                                              style: TextStyle(
-                                                                  color: Colors
-                                                                      .black)),
-                                                          style: ElevatedButton
-                                                              .styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .redAccent,
-                                                            shape: RoundedRectangleBorder(
-                                                                borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            30)),
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        24,
-                                                                    vertical:
-                                                                        12),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        }
+                                        debugPrint(
+                                            "❌ Erreur acceptReservation : $e");
                                       }
                                     },
                                     icon: const Icon(Icons.check_circle_outline,
                                         color: Colors.black),
-                                    label: const Text("Accepter cette course",
-                                        style: TextStyle(color: Colors.black)),
+                                    label: Text(
+                                      isUrgent
+                                          ? "ACCEPTER IMMÉDIATEMENT"
+                                          : "Accepter cette course",
+                                      style:
+                                          const TextStyle(color: Colors.black),
+                                    ),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.gold,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 12),
+                                      backgroundColor: isUrgent
+                                          ? Colors.redAccent
+                                          : AppColors.gold,
                                       shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(30)),
-                                      textStyle: const TextStyle(
-                                          fontWeight: FontWeight.w600),
+                                        borderRadius: BorderRadius.circular(30),
+                                      ),
+                                      minimumSize: const Size.fromHeight(44),
                                     ),
                                   ),
                                 ],
@@ -806,11 +495,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
     try {
       final currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      print(
-          '📍 Position actuelle : ${currentPosition.latitude}, ${currentPosition.longitude}');
+          desiredAccuracy: LocationAccuracy.high);
 
       final querySnapshot = await FirebaseFirestore.instance
           .collection('reservations')
@@ -818,31 +503,30 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           .get();
 
       for (var doc in querySnapshot.docs) {
-        final fromLat = doc['fromLat'];
-        final fromLng = doc['fromLng'];
-        final from = doc['from'] ?? 'Adresse inconnue';
+        final data = doc.data() as Map<String, dynamic>;
+        final fromLat = data['fromLat'] as num?;
+        final fromLng = data['fromLng'] as num?;
+        final from = data['from'] ?? 'Adresse inconnue';
 
         if (fromLat == null || fromLng == null) {
-          print("⛔ Coordonnées manquantes pour $from → ignorée");
+          debugPrint("⛔ Coordonnées manquantes pour $from → ignorée");
           continue;
         }
 
-        final distance = Geolocator.distanceBetween(
+        final distanceKm = Geolocator.distanceBetween(
               currentPosition.latitude,
               currentPosition.longitude,
-              fromLat,
-              fromLng,
+              fromLat.toDouble(),
+              fromLng.toDouble(),
             ) /
-            1000;
+            1000.0;
 
-        print("📦 $from → ${distance.toStringAsFixed(1)} km");
-
-        if (distance <= 15.0) {
+        if (distanceKm <= 15.0) {
           nearby.add(doc);
         }
       }
     } catch (e) {
-      print("❌ Erreur lors de la récupération des réservations : $e");
+      debugPrint("❌ Erreur lors de la récupération des réservations : $e");
     }
 
     return nearby;
@@ -877,18 +561,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       'vehicle': vehicle,
     });
 
-    print("✅ Course $docId acceptée par $driverName ($uid)");
+    debugPrint("✅ Course $docId acceptée par $driverName ($uid)");
   }
 
   Future<void> _toggleVisibility(bool value) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    await FirebaseFirestore.instance.collection('drivers').doc(uid).update({
-      'isVisible': value,
-    });
-    setState(() {
-      _isVisible = value;
-    });
+    await FirebaseFirestore.instance
+        .collection('drivers')
+        .doc(uid)
+        .update({'isVisible': value});
+    if (!mounted) return;
+    setState(() => _isVisible = value);
   }
 
   Future<List<Trip>> fetchDriverTrips() async {
@@ -900,21 +584,171 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           .get();
 
       return snapshot.docs.map((doc) {
-        final data = doc.data();
+        final data = doc.data() as Map<String, dynamic>;
         return Trip(
           id: doc.id,
           from: data['from'] ?? '',
           to: data['to'] ?? '',
-          departureTime: (data['timestamp'] as Timestamp).toDate(), // ✅ ICI !
-          price: (data['price'] as num).toDouble(),
+          departureTime: (data['timestamp'] as Timestamp).toDate(),
+          price: (data['price'] as num?)?.toDouble() ?? 0.0,
           status: data['status'] ?? '',
         );
       }).toList();
     } catch (e) {
-      print("❌ ERREUR fetchDriverTrips: $e");
+      debugPrint("❌ ERREUR fetchDriverTrips: $e");
       return [];
     }
   }
+
+  // ── Helpers Avis (maquette) ──────────────────────────────────────────────
+
+  List<Map<String, dynamic>> _getFilteredFeedbacks() {
+    if (_starFilter == null) return _feedbacks;
+    return _feedbacks.where((fb) {
+      final r = (fb['rating'] as num?)?.round() ?? 0;
+      return r == _starFilter;
+    }).toList();
+  }
+
+  Widget _reviewFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.gold : const Color(0xFF111111),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.gold : Colors.white24,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.black : Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _ratingDistribution(List<Map<String, dynamic>> feedbacks) {
+    final counts = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0};
+    for (final fb in feedbacks) {
+      final r = (fb['rating'] as num?)?.round() ?? 0;
+      if (counts.containsKey(r)) counts[r] = counts[r]! + 1;
+    }
+    final total = feedbacks.isEmpty ? 1 : feedbacks.length;
+    final order = [5, 4, 3, 2, 1];
+
+    return Column(
+      children: order.map((star) {
+        final count = counts[star]!;
+        final ratio = count / total;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 14,
+                child: Text("$star",
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 12)),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: ratio,
+                      child: Container(
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppColors.gold,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 24,
+                child: Text(
+                  count.toString(),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _nameAvatar(String name) {
+    final parts = name.trim().split(RegExp(r"\s+"));
+    String initials = parts.isEmpty
+        ? "?"
+        : (parts.length == 1
+            ? parts.first[0]
+            : "${parts.first[0]}${parts.last[0]}");
+    initials = initials.toUpperCase();
+
+    return CircleAvatar(
+      radius: 18,
+      backgroundColor: AppColors.gold,
+      child: Text(
+        initials,
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  String _formatFrenchDate(DateTime d) {
+    const months = [
+      "janv.",
+      "févr.",
+      "mars",
+      "avr.",
+      "mai",
+      "juin",
+      "juil.",
+      "août",
+      "sept.",
+      "oct.",
+      "nov.",
+      "déc."
+    ];
+    return "${d.day} ${months[d.month - 1]} ${d.year}";
+  }
+
+  String _truncate(String text, int maxLen, {bool keepExpanded = false}) {
+    if (keepExpanded || text.length <= maxLen) return text;
+    return text.substring(0, maxLen).trimRight() + "…";
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -925,13 +759,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.black,
         elevation: 0,
-        automaticallyImplyLeading: false, // on gère le leading nous-mêmes
+        automaticallyImplyLeading: false,
         leading: IconButton(
           tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
               color: AppColors.gold),
           onPressed: () async {
-            // optionnel : confimer
             final confirm = await showDialog<bool>(
               context: context,
               builder: (_) => AlertDialog(
@@ -958,13 +791,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             if (confirm != true) return;
 
-            // déconnexion + retour login conducteur
             try {
               await FirebaseAuth.instance.signOut();
             } catch (_) {}
-            if (context.mounted)
-              context
-                  .go('/login-driver'); // ou '/login' si tu veux l’autre écran
+            if (context.mounted) context.go('/login-driver');
           },
         ),
         titleSpacing: 8,
@@ -1003,7 +833,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               tooltip: 'Déconnexion',
               onPressed: () async {
                 try {
-                  // 🔹 1. Libère la session du conducteur dans Firestore
                   await FirebaseFirestore.instance
                       .collection('drivers')
                       .doc(FirebaseAuth.instance.currentUser?.uid)
@@ -1012,10 +841,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     'lastActive': Timestamp.now(),
                   });
 
-                  // 🔹 2. Déconnexion Firebase Auth
                   await FirebaseAuth.instance.signOut();
 
-                  // 🔹 3. Message visuel premium
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1027,16 +854,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           children: [
                             Icon(Icons.logout, color: AppColors.gold),
                             SizedBox(width: 12),
-                            Text(
-                              'Déconnexion réussie. À bientôt 👋',
-                              style: TextStyle(color: Colors.white70),
-                            ),
+                            Text('Déconnexion réussie. À bientôt 👋',
+                                style: TextStyle(color: Colors.white70)),
                           ],
                         ),
                       ),
                     );
 
-                    // 🔹 4. Redirection fluide vers la page de login conducteur
                     await Future.delayed(const Duration(milliseconds: 600));
                     context.go('/login-driver');
                   }
@@ -1047,9 +871,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       SnackBar(
                         backgroundColor: Colors.red.shade800,
                         content: const Text(
-                          'Erreur lors de la déconnexion. Réessaie.',
-                          style: TextStyle(color: Colors.white),
-                        ),
+                            'Erreur lors de la déconnexion. Réessaie.',
+                            style: TextStyle(color: Colors.white)),
                       ),
                     );
                   }
@@ -1064,6 +887,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1073,10 +897,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     const Text(
                       "Bienvenue",
                       style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                      ),
+                          color: Colors.white54,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400),
                     ),
                     Text(
                       "${user?.firstName ?? 'Conducteur'} 👋",
@@ -1103,12 +926,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           color: Colors.amber, size: 20),
                       const SizedBox(width: 4),
                       Text(
-                        _driverRating.toStringAsFixed(1), // ✅ version dynamique
+                        _driverRating.toStringAsFixed(1),
                         style: const TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 16,
-                        ),
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16),
                       ),
                     ],
                   ),
@@ -1116,18 +938,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               ],
             ),
 
-            // METEO
+            // Météo
             const SizedBox(height: 32),
             _buildWeatherCard(),
 
-            // 🔥 Nouvelle section : Courses proches à accepter
+            // Courses proches
             const SizedBox(height: 24),
             ...(_hasNewNearbyCourse
                 ? [
-                    Pulse(
-                      infinite: true,
-                      child: _buildNearbyButton(),
-                    ),
+                    Pulse(infinite: true, child: _buildNearbyButton()),
                   ]
                 : _nearbyReservations.isEmpty
                     ? [
@@ -1138,23 +957,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           title: "Courses proches à accepter 🛰️",
                           child: Column(
                             children: _nearbyReservations.map((doc) {
-                              final from = doc['from'] ?? '';
-                              final to = doc['to'] ?? '';
-                              final price =
-                                  doc['price']?.toStringAsFixed(2) ?? 'N/A';
-                              final distance = (doc['distance'] as double?)
-                                      ?.toStringAsFixed(1) ??
-                                  '?';
+                              final data = doc.data() as Map<String, dynamic>;
+                              final from = data['from'] ?? '';
+                              final to = data['to'] ?? '';
+                              final priceNum =
+                                  (data['price'] as num?)?.toDouble();
+                              final price = priceNum != null
+                                  ? priceNum.toStringAsFixed(2)
+                                  : 'N/A';
+                              final distance =
+                                  (data['distance'] as num?)?.toDouble();
+                              final distanceStr = distance != null
+                                  ? distance.toStringAsFixed(1)
+                                  : '?';
                               final date =
-                                  (doc['timestamp'] as Timestamp).toDate();
+                                  (data['timestamp'] as Timestamp).toDate();
+
                               final now = DateTime.now();
                               final diff = date.difference(now);
                               final timeBefore = diff.inMinutes < 60
                                   ? "dans ${diff.inMinutes} min"
                                   : "dans ${diff.inHours} h";
-
-                              final isUrgent = diff.inMinutes <=
-                                  5; // ✅ ajoute cette ligne ici
+                              final isUrgent = diff.inMinutes <= 5;
 
                               return FadeInUp(
                                 duration: const Duration(milliseconds: 400),
@@ -1191,14 +1015,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                         ],
                                       ),
                                       const SizedBox(height: 6),
-                                      Text(
-                                        "$from ➜ $to",
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                                      Text("$from ➜ $to",
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 12),
                                       Row(
                                         children: [
@@ -1206,10 +1027,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
                                           Text(
-                                            "Départ : ${date.toLocal().toString().split('.')[0]} ($timeBefore)",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
+                                              "Départ : ${date.toLocal().toString().split('.').first} ($timeBefore)",
+                                              style: const TextStyle(
+                                                  color: Colors.white70)),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
@@ -1218,11 +1038,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           const Icon(Icons.straighten,
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
-                                          Text(
-                                            "Distance : $distance km",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
+                                          Text("Distance : $distanceStr km",
+                                              style: const TextStyle(
+                                                  color: Colors.white70)),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
@@ -1231,11 +1049,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           const Icon(Icons.attach_money,
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
-                                          Text(
-                                            "Prix : $price €",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
+                                          Text("Prix : $price €",
+                                              style: const TextStyle(
+                                                  color: Colors.white70)),
                                         ],
                                       ),
                                       const SizedBox(height: 16),
@@ -1244,9 +1060,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           onPressed: () async {
                                             try {
                                               await _acceptReservation(doc.id);
-                                              // Ajoute ici ta logique après acceptation (fermeture, son, toast, etc.)
                                             } catch (e) {
-                                              print(
+                                              debugPrint(
                                                   "❌ Erreur acceptReservation : $e");
                                             }
                                           },
@@ -1267,9 +1082,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                             minimumSize:
                                                 const Size.fromHeight(48),
                                             shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(30),
-                                            ),
+                                                borderRadius:
+                                                    BorderRadius.circular(30)),
                                             textStyle: const TextStyle(
                                                 fontWeight: FontWeight.w600),
                                           ),
@@ -1286,8 +1100,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             const SizedBox(height: 24),
 
-            // 🔁 Trajets classés par statut
-
+            // Trajets classés par statut
             DefaultTabController(
               length: 3,
               child: Column(
@@ -1304,9 +1117,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // ✅ Bloc responsive avec chargement Firestore
-                  Container(
+                  SizedBox(
                     height: MediaQuery.of(context).size.height * 0.45,
                     child: FutureBuilder<List<Trip>>(
                       future: fetchDriverTrips(),
@@ -1314,17 +1125,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
                           return const Center(
-                            child: CircularProgressIndicator(
-                                color: AppColors.gold),
-                          );
+                              child: CircularProgressIndicator(
+                                  color: AppColors.gold));
                         }
 
                         if (!snapshot.hasData || snapshot.data!.isEmpty) {
                           return const Center(
-                            child: Text(
-                              "Aucun trajet trouvé.",
-                              style: TextStyle(color: Colors.white54),
-                            ),
+                            child: Text("Aucun trajet trouvé.",
+                                style: TextStyle(color: Colors.white54)),
                           );
                         }
 
@@ -1352,10 +1160,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                             if (filtered.isEmpty) {
                               return Center(
-                                child: Text(
-                                  "Aucun trajet $status.",
-                                  style: const TextStyle(color: Colors.white54),
-                                ),
+                                child: Text("Aucun trajet $status.",
+                                    style:
+                                        const TextStyle(color: Colors.white54)),
                               );
                             }
 
@@ -1371,11 +1178,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       },
                     ),
                   ),
-
-                  const SizedBox(height: 24), // ✅ Espace final
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
+
             const SizedBox(height: 24),
             _buildStatsSection(),
             const SizedBox(height: 24),
@@ -1383,7 +1190,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             const SizedBox(height: 24),
 
-            // 🔁 Avis passagers
+            // Avis passagers
             FutureBuilder<List<Testimonial>>(
               future: fetchDriverTestimonials(),
               builder: (context, snapshot) {
@@ -1391,72 +1198,167 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   return const Center(
                       child: CircularProgressIndicator(color: AppColors.gold));
                 }
-                final testimonials = snapshot.data!;
-                return _infoCard(
-                  title: "Avis récents 🗣️",
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 8),
-                      ..._feedbacks.map((feedback) {
-                        final comment =
-                            feedback['comment'] ?? 'Pas de commentaire';
-                        final rating =
-                            (feedback['rating'] as num?)?.toDouble() ?? 0.0;
-                        final date =
-                            (feedback['timestamp'] as Timestamp?)?.toDate();
-                        final formattedDate = date != null
-                            ? '${date.day}/${date.month}/${date.year}'
-                            : '';
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white10,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 24),
+                    _infoCard(
+                      title: "Avis récents — Ce que disent vos passagers",
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Filtres
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.star,
-                                      color: Colors.amber.shade400, size: 20),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    rating.toStringAsFixed(1),
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    formattedDate,
-                                    style: const TextStyle(
-                                        color: Colors.white38, fontSize: 12),
-                                  )
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                comment,
-                                style: const TextStyle(color: Colors.white),
-                              ),
+                              _reviewFilterChip(
+                                  label: "Tous",
+                                  selected: _starFilter == null,
+                                  onTap: () =>
+                                      setState(() => _starFilter = null)),
+                              _reviewFilterChip(
+                                  label: "5 étoiles",
+                                  selected: _starFilter == 5,
+                                  onTap: () => setState(() => _starFilter = 5)),
+                              _reviewFilterChip(
+                                  label: "4 étoiles",
+                                  selected: _starFilter == 4,
+                                  onTap: () => setState(() => _starFilter = 4)),
+                              _reviewFilterChip(
+                                  label: "3 étoiles",
+                                  selected: _starFilter == 3,
+                                  onTap: () => setState(() => _starFilter = 3)),
+                              _reviewFilterChip(
+                                  label: "2 étoiles",
+                                  selected: _starFilter == 2,
+                                  onTap: () => setState(() => _starFilter = 2)),
+                              _reviewFilterChip(
+                                  label: "1 étoile",
+                                  selected: _starFilter == 1,
+                                  onTap: () => setState(() => _starFilter = 1)),
                             ],
                           ),
-                        );
-                      }).toList(),
-                    ],
-                  ),
+                          const SizedBox(height: 12),
+
+                          // Répartition
+                          _ratingDistribution(_feedbacks),
+                          const SizedBox(height: 12),
+
+                          // Liste des avis
+                          ..._getFilteredFeedbacks()
+                              .asMap()
+                              .entries
+                              .map((entry) {
+                            final i = entry.key;
+                            final fb = entry.value;
+                            final rating =
+                                (fb['rating'] as num?)?.toDouble() ?? 0.0;
+                            final date =
+                                (fb['timestamp'] as Timestamp?)?.toDate();
+                            final commentRaw =
+                                (fb['comment'] as String?)?.trim() ?? "—";
+
+                            final isExpanded = _expandedReviews.contains(i);
+                            final comment = _truncate(commentRaw, 170,
+                                keepExpanded: isExpanded);
+
+                            return Container(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF141414),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: AppColors.gold.withOpacity(0.15)),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.25),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 6)),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      _nameAvatar("Passager"),
+                                      const SizedBox(width: 12),
+                                      const Expanded(
+                                        child: Text(
+                                          "Passager",
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 15),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Text(
+                                          date != null
+                                              ? _formatFrenchDate(date)
+                                              : "",
+                                          style: const TextStyle(
+                                              color: Colors.white38,
+                                              fontSize: 12)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Text(rating.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 16)),
+                                      const SizedBox(width: 6),
+                                      _stars(rating),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(comment,
+                                      style: const TextStyle(
+                                          color: Colors.white70, height: 1.4)),
+                                  if (commentRaw.length > 170)
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            if (isExpanded) {
+                                              _expandedReviews.remove(i);
+                                            } else {
+                                              _expandedReviews.add(i);
+                                            }
+                                          });
+                                        },
+                                        child: Text(
+                                          isExpanded
+                                              ? "Voir moins"
+                                              : "Voir plus",
+                                          style: const TextStyle(
+                                              color: AppColors.gold,
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
 
             const SizedBox(height: 32),
 
-            // 🔁 Voir profil
+            // Voir profil
             ElevatedButton.icon(
               onPressed: () => context.go('/driver-profile'),
               icon: const Icon(Icons.person, color: AppColors.black),
@@ -1465,10 +1367,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 backgroundColor: AppColors.gold,
                 foregroundColor: AppColors.black,
                 minimumSize: const Size.fromHeight(56),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                textStyle:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
 
@@ -1478,6 +1378,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       ),
     );
   }
+
+  // ── Widgets secondaires ──────────────────────────────────────────────────
 
   Widget _testimonialCard(Testimonial t) {
     return FadeInUp(
@@ -1494,43 +1396,33 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              radius: 24,
-              backgroundImage: NetworkImage(t.avatarUrl),
-            ),
+                radius: 24, backgroundImage: NetworkImage(t.avatarUrl)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    t.passengerName,
-                    style: const TextStyle(
-                      color: AppColors.gold,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
+                  Text(t.passengerName,
+                      style: const TextStyle(
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15)),
                   const SizedBox(height: 4),
                   Row(
                     children: List.generate(
                       5,
                       (i) => Icon(
-                        i < t.rating.floor()
-                            ? Icons.star_rounded
-                            : Icons.star_border_rounded,
-                        size: 16,
-                        color: Colors.amber,
-                      ),
+                          i < t.rating.floor()
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          size: 16,
+                          color: Colors.amber),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    t.comment,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
+                  Text(t.comment,
+                      style: const TextStyle(
+                          color: Colors.white70, fontStyle: FontStyle.italic)),
                 ],
               ),
             ),
@@ -1549,7 +1441,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         }
 
         final weather = snapshot.data!;
-
         return _infoCard(
           title: "Météo à ${weather.city}",
           child: Row(
@@ -1567,11 +1458,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   children: [
                     Image.network(weather.iconUrl, width: 36),
                     const SizedBox(height: 8),
-                    Text(
-                      weather.city,
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 13),
-                    ),
+                    Text(weather.city,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 13)),
                     Text(
                       "${weather.temperature.toStringAsFixed(1)}°C",
                       style: const TextStyle(
@@ -1606,7 +1495,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Future<WeatherInfo> _fetchWeatherFromCurrentLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       throw Exception('Les services de localisation sont désactivés.');
     }
@@ -1618,7 +1507,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         throw Exception('Permission de localisation refusée.');
       }
     }
-
     if (permission == LocationPermission.deniedForever) {
       throw Exception('Permissions de localisation refusées définitivement.');
     }
@@ -1637,10 +1525,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           child: Text(
             value,
             style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500),
           ),
         ),
       ],
@@ -1653,7 +1540,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return _loadingCard("Chargement stats...");
         final stats = snapshot.data!;
-
         return _infoCard(
           title: "Mes statistiques",
           child: Row(
@@ -1663,8 +1549,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   Icons.directions_car, "${stats.nbTrajets}", "Trajets"),
               _statColumn(
                   Icons.map_rounded, "${stats.totalKm} km", "Kilomètres"),
-              _statColumn(Icons.star_rounded,
-                  "${stats.note.toStringAsFixed(1)}", "Note"),
+              _statColumn(
+                  Icons.star_rounded, stats.note.toStringAsFixed(1), "Note"),
             ],
           ),
         );
@@ -1672,27 +1558,40 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  Widget _stars(double rating) {
+    final full = rating.floor();
+    final hasHalf = (rating - full) >= 0.5;
+    const total = 5;
+
+    final icons = <Widget>[];
+    for (int i = 0; i < total; i++) {
+      if (i < full) {
+        icons
+            .add(const Icon(Icons.star_rounded, size: 14, color: Colors.amber));
+      } else if (i == full && hasHalf) {
+        icons.add(
+            const Icon(Icons.star_half_rounded, size: 14, color: Colors.amber));
+      } else {
+        icons.add(const Icon(Icons.star_border_rounded,
+            size: 14, color: Colors.amber));
+      }
+    }
+    return Row(children: icons);
+  }
+
   Widget _statColumn(IconData icon, String value, String label) {
     return Column(
       children: [
         Icon(icon, color: AppColors.gold, size: 30),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Colors.white54,
-          ),
-        ),
+        Text(label,
+            style: const TextStyle(fontSize: 13, color: Colors.white54)),
       ],
     );
   }
@@ -1719,6 +1618,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (!snapshot.hasData) return _loadingCard("Chargement revenus...");
 
         final revenues = snapshot.data!;
+        // background bar max Y (must be a double)
+        final double bgMaxY = (() {
+          if (revenues.values.isEmpty) return 800.0;
+          final double maxRevenue =
+              revenues.values.reduce((a, b) => a > b ? a : b);
+          // 20% headroom, clamp to sensible bounds, then force to double
+          return (maxRevenue * 1.2).clamp(200.0, 5000.0).toDouble();
+        })();
+
         return _infoCard(
           title: "Mes revenus (mois) 💸",
           child: SizedBox(
@@ -1731,12 +1639,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     tooltipPadding: const EdgeInsets.all(8),
                     tooltipMargin: 8,
                     getTooltipItem: (group, _, rod, __) {
+                      final idx = group.x.toInt().clamp(0, 11);
                       return BarTooltipItem(
-                        "${months[group.x]} : ${rod.toY.toInt()}€",
+                        "${months[idx]} : ${rod.toY.toInt()}€",
                         const TextStyle(
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            color: AppColors.gold, fontWeight: FontWeight.w600),
                       );
                     },
                   ),
@@ -1749,23 +1656,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       getTitlesWidget: (value, _) => Text(
                         "${value.toInt()}€",
                         style: const TextStyle(
-                          color: Colors.white38,
-                          fontSize: 10,
-                        ),
+                            color: Colors.white38, fontSize: 10),
                       ),
                     ),
                   ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (value, _) => Text(
-                        months[value.toInt()],
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      getTitlesWidget: (value, _) {
+                        final i = value.toInt().clamp(0, 11);
+                        return Text(
+                          months[i],
+                          style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500),
+                        );
+                      },
                     ),
                   ),
                   topTitles:
@@ -1787,7 +1694,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         borderRadius: BorderRadius.circular(6),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: 800,
+                          toY: bgMaxY, // ← use the computed double
                           color: Colors.white12,
                         ),
                       ),
@@ -1833,29 +1740,152 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
-  Widget _statRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey[300])),
-          Text(value, style: _valueTextStyle()),
-        ],
+  // ── Petits helpers de formatage ──────────────────────────────────────────
+
+  Widget _tripCard(BuildContext context, Trip trip) {
+    final isSmall = MediaQuery.of(context).size.width < 380;
+
+    return GestureDetector(
+      onTap: () => context.go('/driver/trip/${trip.id}'),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.location_on, color: Color(0xFFFFD700), size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      "Trajet",
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: .6),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.calendar_today_rounded,
+                        color: Colors.white60, size: 14),
+                    const SizedBox(width: 6),
+                    Text(
+                      trip.departureTime
+                          .toLocal()
+                          .toIso8601String()
+                          .split('T')
+                          .first,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.euro, color: Colors.white60, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      trip.price.toStringAsFixed(2),
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(width: 2),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                          fontSize: isSmall ? 15 : 16,
+                          color: Colors.white,
+                          height: 1.35),
+                      children: [
+                        TextSpan(
+                            text: trip.from,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFFFD700))),
+                        const TextSpan(
+                            text: "  ➜  ",
+                            style: TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500)),
+                        TextSpan(
+                            text: trip.to,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFFFD700))),
+                      ],
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  TextStyle _valueTextStyle() {
-    return const TextStyle(
-      color: AppColors.gold,
-      fontSize: 16,
-      fontWeight: FontWeight.bold,
-    );
+  String _formatDate(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return "$y-$m-$d $hh:$mm";
+  }
+
+  String _timeUntil(DateTime target) {
+    final diff = target.difference(DateTime.now());
+    if (diff.isNegative) return "trajet passé";
+    if (diff.inDays >= 1) {
+      final d = diff.inDays;
+      return "dans $d jour${d > 1 ? 's' : ''}";
+    }
+    if (diff.inHours >= 1) {
+      return "dans ${diff.inHours} h";
+    }
+    return "dans ${diff.inMinutes} min";
   }
 }
 
-// Mocked data classes and fetchers
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats conducteur
+// ─────────────────────────────────────────────────────────────────────────────
 
 class DriverStats {
   final int nbTrajets;
@@ -1870,7 +1900,6 @@ Future<DriverStats> fetchDriverStats() async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) throw Exception("Utilisateur non connecté");
 
-  // 1. Trajets terminés du conducteur
   final reservationsSnapshot = await FirebaseFirestore.instance
       .collection('reservations')
       .where('driverId', isEqualTo: uid)
@@ -1884,12 +1913,10 @@ Future<DriverStats> fetchDriverStats() async {
     totalKm += (data['distance'] as num?)?.round() ?? 0;
   }
 
-  // 2. Feedbacks concernant ce conducteur
   final feedbacksSnapshot = await FirebaseFirestore.instance
       .collection('feedbacks')
       .where('driverId', isEqualTo: uid)
-      .where('fromDriver',
-          isEqualTo: false) // uniquement ceux venant de passagers
+      .where('fromDriver', isEqualTo: false)
       .get();
 
   double totalRating = 0.0;
@@ -1909,155 +1936,4 @@ Future<DriverStats> fetchDriverStats() async {
     totalKm: totalKm,
     note: nbRatings > 0 ? (totalRating / nbRatings) : 0.0,
   );
-}
-
-Widget _tripCard(BuildContext context, Trip trip) {
-  final isSmall = MediaQuery.of(context).size.width < 380;
-
-  return GestureDetector(
-    onTap: () => context.go('/driver/trip/${trip.id}'),
-    child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ✅ ne déborde plus : Wrap autorise le retour à la ligne
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.location_on, color: Color(0xFFFFD700), size: 18),
-                  SizedBox(width: 6),
-                  Text(
-                    "Trajet",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: .6,
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.calendar_today_rounded,
-                      color: Colors.white60, size: 14),
-                  const SizedBox(width: 6),
-                  Text(
-                    trip.departureTime
-                        .toLocal()
-                        .toIso8601String()
-                        .split('T')
-                        .first,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white60, fontSize: 13),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.euro, color: Colors.white60, size: 14),
-                  const SizedBox(width: 4),
-                  Text(
-                    trip.price.toStringAsFixed(2),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white60, fontSize: 13),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // ✅ bloc adresses : s’adapte / coupe proprement si très long
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(width: 2),
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      fontSize: isSmall ? 15 : 16,
-                      color: Colors.white,
-                      height: 1.35,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: trip.from,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFFD700),
-                        ),
-                      ),
-                      const TextSpan(
-                        text: "  ➜  ",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      TextSpan(
-                        text: trip.to,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFFFD700),
-                        ),
-                      ),
-                    ],
-                  ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: true,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-String _formatDate(DateTime dt) {
-  // évite d’ajouter une dépendance, format simple
-  final y = dt.year.toString().padLeft(4, '0');
-  final m = dt.month.toString().padLeft(2, '0');
-  final d = dt.day.toString().padLeft(2, '0');
-  final hh = dt.hour.toString().padLeft(2, '0');
-  final mm = dt.minute.toString().padLeft(2, '0');
-  return "$y-$m-$d $hh:$mm";
-}
-
-String _timeUntil(DateTime target) {
-  final diff = target.difference(DateTime.now());
-  if (diff.isNegative) return "trajet passé";
-  if (diff.inDays >= 1) {
-    final d = diff.inDays;
-    return "dans $d jour${d > 1 ? 's' : ''}";
-  }
-  if (diff.inHours >= 1) {
-    return "dans ${diff.inHours} h";
-  }
-  return "dans ${diff.inMinutes} min";
 }

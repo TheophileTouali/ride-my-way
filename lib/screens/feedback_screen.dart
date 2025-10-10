@@ -10,7 +10,8 @@ class PassengerFeedbackScreen extends StatefulWidget {
   const PassengerFeedbackScreen({super.key, required this.reservationId});
 
   @override
-  State<PassengerFeedbackScreen> createState() => _PassengerFeedbackScreenState();
+  State<PassengerFeedbackScreen> createState() =>
+      _PassengerFeedbackScreenState();
 }
 
 class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
@@ -29,7 +30,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     _loadReservationData();
   }
@@ -53,8 +55,10 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         _reservationData = resSnap.data();
         final driverId = _reservationData!['driverId'];
         if (driverId != null) {
-          final driverSnap =
-              await FirebaseFirestore.instance.collection('drivers').doc(driverId).get();
+          final driverSnap = await FirebaseFirestore.instance
+              .collection('drivers')
+              .doc(driverId)
+              .get();
           if (driverSnap.exists) {
             _driverData = driverSnap.data();
           }
@@ -68,7 +72,10 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
   }
 
   Future<void> _submitFeedback() async {
-    if (_isSubmitting || _rating == 0 || _reservationData == null || _driverData == null) return;
+    if (_isSubmitting ||
+        _rating == 0 ||
+        _reservationData == null ||
+        _driverData == null) return;
 
     setState(() => _isSubmitting = true);
 
@@ -134,7 +141,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         : 'Date inconnue';
 
     final driverName =
-        "${_driverData!['firstName'] ?? ''} ${_driverData!['lastName'] ?? ''}".trim();
+        "${_driverData!['firstName'] ?? ''} ${_driverData!['lastName'] ?? ''}"
+            .trim();
     final driverPhoto = _driverData!['photoUrl'];
 
     return Scaffold(
@@ -145,7 +153,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
         centerTitle: true,
         title: const Text(
           "🚗 Noter le chauffeur",
-          style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 20),
+          style: TextStyle(
+              color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 20),
         ),
       ),
       body: FadeTransition(
@@ -185,13 +194,17 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
               _infoRow(Icons.location_pin, "Départ", from),
               _infoRow(Icons.flag_rounded, "Arrivée", to),
               _infoRow(Icons.calendar_today_rounded, "Date", date),
-              _infoRow(Icons.euro_rounded, "Montant", "${price.toStringAsFixed(2)} €"),
+              _infoRow(Icons.euro_rounded, "Montant",
+                  "${price.toStringAsFixed(2)} €"),
               const SizedBox(height: 30),
               _buildUserCard(driverName, driverPhoto),
               const SizedBox(height: 36),
               const Text(
                 "🌟 Attribuez une note",
-                style: TextStyle(color: Colors.white70, fontSize: 17, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500),
                 textScaleFactor: 1.0,
               ),
               const SizedBox(height: 14),
@@ -203,8 +216,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
                   itemCount: 5,
                   unratedColor: Colors.white24,
                   itemPadding: const EdgeInsets.symmetric(horizontal: 6.0),
-                  itemBuilder: (context, _) =>
-                      const Icon(Icons.star_rounded, size: 34, color: AppColors.gold),
+                  itemBuilder: (context, _) => const Icon(Icons.star_rounded,
+                      size: 34, color: AppColors.gold),
                   onRatingUpdate: (rating) => setState(() => _rating = rating),
                 ),
               ),
@@ -234,16 +247,19 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
               ),
               const SizedBox(height: 40),
               ElevatedButton.icon(
-                onPressed: _rating == 0 || _isSubmitting ? null : _submitFeedback,
+                onPressed:
+                    _rating == 0 || _isSubmitting ? null : _submitFeedback,
                 icon: const Icon(Icons.rocket_launch, color: Colors.black),
                 label: Text(
                   _isSubmitting ? "Envoi..." : "Envoyer la note",
-                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.gold,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30)),
                   elevation: 10,
                 ),
               ),
@@ -298,7 +314,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
             radius: 32,
             backgroundImage: photoUrl != null
                 ? NetworkImage(photoUrl)
-                : const AssetImage('assets/images/avatar_placeholder.png') as ImageProvider,
+                : const AssetImage('assets/images/avatar_placeholder.png')
+                    as ImageProvider,
             onBackgroundImageError: (_, __) {
               debugPrint("🧨 Erreur chargement image chauffeur : $photoUrl");
             },
@@ -314,7 +331,8 @@ class _PassengerFeedbackScreenState extends State<PassengerFeedbackScreen>
                       fontSize: 16),
                   textScaleFactor: 1.0),
               const SizedBox(height: 4),
-              const Text("Votre chauffeur", style: TextStyle(color: Colors.white60)),
+              const Text("Votre chauffeur",
+                  style: TextStyle(color: Colors.white60)),
             ],
           )
         ],

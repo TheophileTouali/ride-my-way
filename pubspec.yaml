@@ -69,16 +69,12 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.1
 
-flutter_launcher_icons:
+flutter_launcher_icons: # ⬅️ nouvelle clé (pas flutter_icons)
   android: true
   ios: true
-
-  image_path: assets/icons/app_icon.png
-
-  adaptive_icon_background: "#0E0E0E"
-  adaptive_icon_foreground: assets/icons/app_icon_fg.png
-  adaptive_icon_monochrome: assets/icons/app_icon_mono.png
-
+  image_path: assets/app_icon/icon.png
+  adaptive_icon_background: "#000000" # fond noir plein (Android)
+  adaptive_icon_foreground: assets/app_icon/icon.png
   remove_alpha_ios: true
   min_sdk_android: 24
 

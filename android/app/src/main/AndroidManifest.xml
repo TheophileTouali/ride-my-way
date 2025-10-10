@@ -1,40 +1,62 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <application
-      android:name="${applicationName}"
-      android:label="ride_my_way"
-      android:icon="@mipmap/ic_launcher"
-      android:theme="@style/NormalTheme">  <!-- ✅ thème Material effectif -->
+<!-- android/app/src/main/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.ride_my_way">
 
-    <activity
-        android:name=".MainActivity"
-        android:exported="true"
-        android:launchMode="singleTop"
-        android:theme="@style/LaunchTheme"
-        android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-        android:hardwareAccelerated="true"
-        android:windowSoftInputMode="adjustResize">
+    <!-- 🌐 Réseau (météo + géocoding) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-      <!-- LAUNCHER -->
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.LAUNCHER" />
-      </intent-filter>
+    <!-- 📍 Localisation (Android 12+) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Facultatif : si tu fais du suivi en arrière-plan -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-      <!-- ✅ Stripe 3DS / retour banque -->
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="flutterstripe" />
-      </intent-filter>
+    <!-- Conseillé : pour Play Store si GPS non obligatoire -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
 
-      <meta-data
-          android:name="io.flutter.embedding.android.NormalTheme"
-          android:resource="@style/NormalTheme" />
-    </activity>
+    <application
+        android:name="${applicationName}"
+        android:label="Ride My Way"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/NormalTheme">
 
-    <meta-data
-        android:name="flutterEmbedding"
-        android:value="2" />
-  </application>
+        <!-- 🔑 Clé Google Maps (référence la valeur dans res/values/strings.xml) -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="@string/google_maps_api_key" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <!-- LAUNCHER -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- ✅ Stripe 3DS / retour banque -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="flutterstripe" />
+            </intent-filter>
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+        </activity>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
 </manifest>

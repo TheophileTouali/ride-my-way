@@ -9,6 +9,9 @@ import '../themes/app_theme.dart';
 import '../providers/driver_provider.dart';
 import '../models/driver_user.dart';
 
+// 👇 Couleur d’accent conducteur (turquoise premium)
+const Color kDriverAccent = Color(0xFF8C6A2C);
+
 class DriverLoginScreen extends StatefulWidget {
   const DriverLoginScreen({super.key});
 
@@ -64,10 +67,8 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     try {
       setState(() => _isLoading = true);
 
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
       final user = userCredential.user;
       await user?.reload();
@@ -91,7 +92,6 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
         final data = doc.data()!;
         final role = data['role'];
-
         if (role != 'driver') {
           _showPremiumError("Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
           await FirebaseAuth.instance.signOut();
@@ -134,18 +134,48 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // --- Logo ---
                   Image.asset(
                     'assets/images/logo_transparent.png',
                     height: 180,
                     fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 12),
 
-                  // Email
+                  // --- Badge "Espace Conducteur" ---
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: kDriverAccent.withOpacity(.12),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: kDriverAccent.withOpacity(.5), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.local_taxi_rounded, size: 16, color: kDriverAccent),
+                          SizedBox(width: 8),
+                          Text(
+                            "Espace Conducteur",
+                            style: TextStyle(
+                              color: kDriverAccent,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: .3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // --- Email ---
                   TextField(
                     controller: emailController,
                     style: const TextStyle(color: Colors.white),
-                    cursorColor: AppColors.gold,
+                    cursorColor: kDriverAccent,
                     decoration: InputDecoration(
                       floatingLabelBehavior: FloatingLabelBehavior.never,
                       labelText: 'Email',
@@ -154,19 +184,19 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         borderSide: BorderSide(color: Colors.grey),
                       ),
                       focusedBorder: const UnderlineInputBorder(
-                        borderSide: BorderSide(color: AppColors.gold),
+                        borderSide: BorderSide(color: kDriverAccent),
                       ),
                     ),
                   ),
 
                   const SizedBox(height: 32),
 
-                  // Mot de passe
+                  // --- Mot de passe ---
                   TextField(
                     controller: passwordController,
                     obscureText: _obscurePassword,
                     style: const TextStyle(color: Colors.white),
-                    cursorColor: AppColors.gold,
+                    cursorColor: kDriverAccent,
                     decoration: InputDecoration(
                       labelText: 'Mot de passe',
                       labelStyle: TextStyle(color: Colors.grey[400]),
@@ -174,33 +204,27 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         borderSide: BorderSide(color: Colors.grey),
                       ),
                       focusedBorder: const UnderlineInputBorder(
-                        borderSide: BorderSide(color: AppColors.gold),
+                        borderSide: BorderSide(color: kDriverAccent),
                       ),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword ? Icons.visibility_off : Icons.visibility,
                           color: Colors.grey[500],
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                   ),
 
                   const SizedBox(height: 8),
 
-                  // Mot de passe oublié
+                  // --- Mot de passe oublié ---
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {
-                        context.go('/forgot-password');
-                      },
+                      onPressed: () => context.go('/forgot-password'),
                       style: TextButton.styleFrom(
-                        foregroundColor: AppColors.gold,
+                        foregroundColor: kDriverAccent,
                         padding: EdgeInsets.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
@@ -210,15 +234,13 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
                   const SizedBox(height: 32),
 
-                  // Bouton Connexion
+                  // --- Bouton Connexion ---
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.gold,
+                      backgroundColor: kDriverAccent,
                       foregroundColor: AppColors.black,
                       minimumSize: const Size.fromHeight(56),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(40),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
                       textStyle: const TextStyle(
                         fontFamily: 'PlayfairDisplay',
                         fontSize: 18,
@@ -233,7 +255,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
                   const SizedBox(height: 32),
 
-                  // Lien vers inscription
+                  // --- Lien vers inscription conducteur ---
                   Center(
                     child: RichText(
                       text: TextSpan(
@@ -243,20 +265,34 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                           TextSpan(
                             text: 'Créer un compte',
                             style: const TextStyle(
-                              color: AppColors.gold,
+                              color: kDriverAccent,
                               fontWeight: FontWeight.bold,
                             ),
                             recognizer: TapGestureRecognizer()
-                              ..onTap = () {
-                                context.go('/signup-driver');
-                              },
+                              ..onTap = () => context.go('/signup-driver'),
                           ),
                         ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
+
+                  // --- Lien inverse : Passager (en or) ---
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => context.go('/login'),
+                      icon: const Icon(Icons.vpn_key_rounded, size: 16, color: AppColors.gold),
+                      label: const Text("Se connecter en tant que passager"),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.gold,
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
                 ],
               ),
             ),

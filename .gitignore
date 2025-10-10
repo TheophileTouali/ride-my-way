@@ -72,3 +72,5 @@ build/
 .dart_tool/
 .gradle/
 .idea/
+
+android/app/src/main/res/values/strings.xml

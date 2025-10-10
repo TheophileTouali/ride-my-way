@@ -6,6 +6,8 @@ import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+// Couleur d’accent conducteur (turquoise premium)
+const Color kDriverAccent = Color(0xFF8C6A2C);
 
 
 class LoginScreen extends StatefulWidget {
@@ -126,10 +128,47 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Image.asset(
-                    'assets/images/logo_transparent.png',
-                    height: 180,
-                    fit: BoxFit.contain,
-                  ),
+                            'assets/images/logo_transparent.png',
+                            height: 180,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Badge premium "Espace Passager"
+                          Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.gold.withOpacity(.12),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: AppColors.gold.withOpacity(.5),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.person, size: 16, color: AppColors.gold),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    "Espace Passager",
+                                    style: TextStyle(
+                                      color: AppColors.gold,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: .3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+
+
+
                   const SizedBox(height: 32),
 
                   // Email
@@ -245,7 +284,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+const SizedBox(height: 12), // petit espace après "Créer un compte"
+
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => context.go('/login-driver'),
+                      icon: const Icon(Icons.vpn_key_rounded, size: 16, color: kDriverAccent),
+                      label: const Text("Se connecter en tant que conducteur"),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kDriverAccent,
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32), // descend un peu plus le bloc
+
                 ],
               ),
             ),

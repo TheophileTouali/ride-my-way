@@ -12,7 +12,7 @@ import '../themes/app_theme.dart';
 import 'package:ride_my_way/utils/location_utils.dart';
 
 // ⏱️ Buffer global (minutes) pour garder la course visible/urgente
-const int _NOW_BUFFER_MIN = 15;
+const int _NOW_BUFFER_MIN = 6;
 
 class ConfirmationScreen extends StatefulWidget {
   final String from;
@@ -114,16 +114,20 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     if (_loading) return;
     setState(() => _loading = true);
 
-    final nowPlusBuf = DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
+    final nowPlusBuf =
+        DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
     // valeur initiale selon “partir maintenant” ou “planifier”
-    DateTime departureTime = _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
+    DateTime departureTime =
+        _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
 
     // 🔒 Clamp : on ne laisse jamais partir avant now + buffer
     if (departureTime.isBefore(nowPlusBuf)) {
       departureTime = nowPlusBuf;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Heure ajustée à +$_NOW_BUFFER_MIN min pour garantir la prise en charge.")),
+          SnackBar(
+              content: Text(
+                  "Heure ajustée à +$_NOW_BUFFER_MIN min pour garantir la prise en charge.")),
         );
       }
     }
@@ -133,7 +137,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
       final coords = await getCoordinatesFromAddress(widget.from);
       if (coords == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Impossible de géolocaliser l'adresse.")),
+          const SnackBar(
+              content: Text("Impossible de géolocaliser l'adresse.")),
         );
         return;
       }
@@ -151,11 +156,10 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         'vehicle': widget.vehicle,
         'distance': widget.distance,
         'planned': !_isNowSelected, // 👈 utile pour stats/filtrage côté serveur
-        if (kIsWeb)
-          ...{
-            'baseUrl': Uri.base.origin,
-            'timestamp': departureTime.toIso8601String(), // 👈 envoyé à Checkout
-          }
+        if (kIsWeb) ...{
+          'baseUrl': Uri.base.origin,
+          'timestamp': departureTime.toIso8601String(), // 👈 envoyé à Checkout
+        }
       };
 
       final result = await callable.call(payload);
@@ -177,7 +181,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         );
         if (!ok) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Impossible d'ouvrir Stripe Checkout.")),
+            const SnackBar(
+                content: Text("Impossible d'ouvrir Stripe Checkout.")),
           );
         }
         return; // création Firestore faite sur l’écran succès web
@@ -193,7 +198,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'price': widget.price,
           'distance': widget.distance,
           'userId': user.uid,
-          'timestamp': Timestamp.fromDate(departureTime), // 👈 buffer/clamp appliqué
+          'timestamp':
+              Timestamp.fromDate(departureTime), // 👈 buffer/clamp appliqué
           'status': 'En attente',
           'paymentStatus': 'authorized',
           'paymentIntentId': data['paymentIntentId'],
@@ -217,10 +223,15 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
       );
     } on StripeException catch (e) {
       final codeStr = e.error.code.toString().toLowerCase();
-      final isCanceled = codeStr.contains('canceled') || codeStr.contains('cancelled');
-      final msg = e.error.message ?? (isCanceled ? 'Paiement annulé.' : 'Paiement refusé.');
+      final isCanceled =
+          codeStr.contains('canceled') || codeStr.contains('cancelled');
+      final msg = e.error.message ??
+          (isCanceled ? 'Paiement annulé.' : 'Paiement refusé.');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isCanceled ? 'Paiement annulé par l’utilisateur.' : 'Paiement refusé : $msg')),
+        SnackBar(
+            content: Text(isCanceled
+                ? 'Paiement annulé par l’utilisateur.'
+                : 'Paiement refusé : $msg')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -233,8 +244,10 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final nowPlusBuf = DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
-    final departureTime = _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
+    final nowPlusBuf =
+        DateTime.now().add(const Duration(minutes: _NOW_BUFFER_MIN));
+    final departureTime =
+        _isNowSelected ? nowPlusBuf : (_selectedDateTime ?? nowPlusBuf);
     final label = _isNowSelected ? "Vous partez maintenant" : "Départ planifié";
 
     return Scaffold(
@@ -244,9 +257,11 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.gold, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: AppColors.gold, size: 20),
           tooltip: 'Retour',
-          onPressed: () => context.canPop() ? context.pop() : context.go('/results'),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/results'),
         ),
         title: const Text(
           "Confirmation de votre trajet sur mesure",
@@ -311,9 +326,11 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                   const SizedBox(height: 10),
                   _buildInfoLine("Véhicule", widget.vehicle),
                   const SizedBox(height: 10),
-                  _buildInfoLine("Distance", "${widget.distance.toStringAsFixed(1)} km"),
+                  _buildInfoLine(
+                      "Distance", "${widget.distance.toStringAsFixed(1)} km"),
                   const SizedBox(height: 10),
-                  _buildInfoLine("Prix", "${widget.price.toStringAsFixed(2)} €"),
+                  _buildInfoLine(
+                      "Prix", "${widget.price.toStringAsFixed(2)} €"),
                 ],
               ),
             ),
@@ -337,7 +354,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.access_time_filled_rounded, color: AppColors.gold, size: 22),
+                  const Icon(Icons.access_time_filled_rounded,
+                      color: AppColors.gold, size: 22),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -382,12 +400,17 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.gold.withOpacity(0.2)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.3), offset: const Offset(0, 2), blurRadius: 6),
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      offset: const Offset(0, 2),
+                      blurRadius: 6),
                 ],
               ),
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                leading: const Icon(Icons.calendar_today_rounded, color: AppColors.gold),
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                leading: const Icon(Icons.calendar_today_rounded,
+                    color: AppColors.gold),
                 title: const Text(
                   "Planifier un autre moment",
                   style: TextStyle(
@@ -398,7 +421,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                   ),
                 ),
                 onTap: _selectAnotherTime,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 tileColor: Colors.transparent,
               ),
             ),
@@ -412,7 +436,10 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                 onPressed: _loading ? null : _confirmTrip,
                 icon: _loading
                     ? const SizedBox(
-                        width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black))
                     : const Icon(Icons.check_circle, color: Colors.black),
                 label: Text(
                   _loading ? "Traitement..." : "Confirmer ce trajet",
@@ -426,7 +453,8 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.gold,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
               ),
             ),

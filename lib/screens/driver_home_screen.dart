@@ -13,11 +13,15 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-
+import 'package:intl/intl.dart';
 import '../models/trip.dart';
 import '../providers/driver_provider.dart';
 import '../themes/app_theme.dart';
 import 'package:ride_my_way/services/weather_service.dart';
+
+String _formatEuroFr(double v) =>
+    NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 2)
+        .format(v); // ex: 604,01 €
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilitaires
@@ -109,30 +113,6 @@ Future<Map<int, double>> fetchMonthlyRevenues() async {
   return revenues;
 }
 
-Future<List<Testimonial>> fetchDriverTestimonials() async {
-  await Future.delayed(const Duration(milliseconds: 600));
-  return [
-    Testimonial(
-      passengerName: "Alice Dupont",
-      avatarUrl: "https://randomuser.me/api/portraits/women/1.jpg",
-      rating: 4.8,
-      comment: "Très ponctuel et agréable !",
-    ),
-    Testimonial(
-      passengerName: "Karim B.",
-      avatarUrl: "https://randomuser.me/api/portraits/men/3.jpg",
-      rating: 5.0,
-      comment: "Un excellent trajet, merci 😊",
-    ),
-    Testimonial(
-      passengerName: "Sophie L.",
-      avatarUrl: "https://randomuser.me/api/portraits/women/6.jpg",
-      rating: 4.5,
-      comment: "Conduite fluide et conversation sympa.",
-    ),
-  ];
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Écran principal
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +128,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isVisible = false;
   double _driverRating = 0.0;
   List<Map<String, dynamic>> _feedbacks = [];
+  double _todayEarnings = 0.0;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _todayEarningsSub;
 
   LatLng? _currentPosition;
   BitmapDescriptor? _customDriverIcon;
@@ -159,6 +141,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // Avis (maquette premium)
   int? _starFilter; // null = Tous, sinon 5..1
   final Set<int> _expandedReviews = {}; // indices ouverts "Voir plus"
+  String _greetingFor(DateTime dt) {
+    final h = dt.hour;
+    if (h >= 5 && h < 12) return "Bonjour";
+    if (h >= 12 && h < 18) return "Bon après-midi";
+    if (h >= 18 && h < 22) return "Bonsoir";
+    return "Bonne nuit";
+  }
 
   @override
   void initState() {
@@ -169,12 +158,62 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _loadRecentFeedbacks();
     _loadCustomIcon();
     _getCurrentPosition();
+    _listenTodayEarnings();
   }
 
   @override
   void dispose() {
     _refreshTimer.cancel();
     super.dispose();
+    _todayEarningsSub?.cancel();
+  }
+
+  DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
+  DateTime _startOfNextDay(DateTime d) =>
+      _startOfDay(d).add(const Duration(days: 1));
+
+  Future<void> _listenTodayEarnings() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    // bornes locales (minuit -> minuit+1)
+    final now = DateTime.now();
+    final start = _startOfDay(now);
+    final end = _startOfNextDay(now);
+
+    _todayEarningsSub?.cancel();
+
+    _todayEarningsSub = FirebaseFirestore.instance
+        .collection('reservations')
+        .where('driverId', isEqualTo: uid)
+        .where('status', isEqualTo: 'Terminée') // plus fiable
+        .snapshots()
+        .listen((snap) {
+      double sum = 0.0;
+
+      for (final d in snap.docs) {
+        final data = d.data();
+
+        // 1) choisir le bon champ date
+        final ts = (data['completedAt'] ??
+            data['timestamp'] ??
+            data['createdAt']) as Timestamp?;
+        if (ts == null) continue;
+
+        final dt = ts
+            .toDate(); // UTC → converti automatiquement en DateTime local pour les comparaisons
+        if (dt.isBefore(start) || !dt.isBefore(end))
+          continue; // garder uniquement "aujourd'hui"
+
+        // 2) choisir le bon champ prix
+        final price = (data['price'] ?? data['amount'] ?? data['fare']) as num?;
+        sum += (price?.toDouble() ?? 0.0);
+      }
+
+      if (mounted) setState(() => _todayEarnings = sum);
+    }, onError: (e) {
+      debugPrint('❌ todayEarnings stream: $e');
+    });
   }
 
   // ── Inits ────────────────────────────────────────────────────────────────
@@ -263,23 +302,107 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (uid == null) return [];
 
     try {
-      final snapshot = await FirebaseFirestore.instance
+      // ── 1) Base query
+      Query<Map<String, dynamic>> baseQ = FirebaseFirestore.instance
           .collection('feedbacks')
           .where('driverId', isEqualTo: uid)
-          .get();
+          .where('fromDriver', isEqualTo: false);
 
-      final feedbacks = snapshot.docs
-          .map((doc) => doc.data())
-          .where((data) => data['fromDriver'] == false)
-          .toList();
+      // ── 2) Tente avec orderBy (rapide si index dispo) ; sinon fallback sans index
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> fbDocs;
+      try {
+        fbDocs =
+            (await baseQ.orderBy('timestamp', descending: true).limit(5).get())
+                .docs;
+      } on FirebaseException {
+        final tmp = await baseQ.get();
+        fbDocs = tmp.docs
+          ..sort((a, b) => ((b.data()['timestamp'] as Timestamp?) ??
+                  Timestamp(0, 0))
+              .compareTo(
+                  (a.data()['timestamp'] as Timestamp?) ?? Timestamp(0, 0)));
+        if (fbDocs.length > 5) fbDocs = fbDocs.sublist(0, 5);
+      }
 
-      // Tri par date décroissante
-      feedbacks.sort((a, b) =>
-          (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
+      if (fbDocs.isEmpty) return [];
 
-      return feedbacks.take(5).toList();
+      // ── 3) Prépare IDs (<= 10 → ok pour whereIn)
+      final passengerIds = <String>{};
+      final reservationIds = <String>{};
+      for (final d in fbDocs) {
+        final data = d.data();
+        final pid = data['passengerId'] as String?;
+        final rid = data['reservationId'] as String?;
+        if (pid != null && pid.isNotEmpty) passengerIds.add(pid);
+        if (rid != null && rid.isNotEmpty) reservationIds.add(rid);
+      }
+
+      // Helper: fetch par lot sur __name__ (documentId)
+      Future<Map<String, Map<String, dynamic>>> _fetchByIds(
+        String collection,
+        Set<String> ids,
+      ) async {
+        if (ids.isEmpty) return {};
+        final snap = await FirebaseFirestore.instance
+            .collection(collection)
+            .where(FieldPath.documentId, whereIn: ids.toList())
+            .get();
+        return {for (final d in snap.docs) d.id: d.data()};
+      }
+
+      // ── 4) Chargement passagers + réservations (users → fallback passengers)
+      Map<String, Map<String, dynamic>> usersById = {};
+      try {
+        usersById = await _fetchByIds('users', passengerIds);
+        if (usersById.isEmpty) {
+          usersById = await _fetchByIds('passengers', passengerIds);
+        }
+      } catch (_) {
+        usersById = await _fetchByIds('passengers', passengerIds);
+      }
+
+      final reservationsById =
+          await _fetchByIds('reservations', reservationIds);
+
+      // ── 5) Construit la liste enrichie
+      final result = <Map<String, dynamic>>[];
+      for (final doc in fbDocs) {
+        final fb = doc.data();
+        final pid = fb['passengerId'] as String?;
+        final rid = fb['reservationId'] as String?;
+
+        final user = (pid != null) ? usersById[pid] : null;
+        final res = (rid != null) ? reservationsById[rid] : null;
+
+        // Nom passager: first/last → displayName → "Passager"
+        final firstName =
+            (user?['firstName'] ?? user?['prenom'] ?? '') as String;
+        final lastName = (user?['lastName'] ?? user?['nom'] ?? '') as String;
+        final displayName = (user?['displayName'] ?? '').toString();
+        final combined = [firstName, lastName]
+            .where((s) => s.trim().isNotEmpty)
+            .join(' ')
+            .trim();
+        final passengerName = combined.isNotEmpty
+            ? combined
+            : (displayName.isNotEmpty ? displayName : 'Passager');
+
+        // Trajet (compat origin/destination)
+        final from = (res?['from'] ?? res?['origin'] ?? '') as String? ?? '';
+        final to = (res?['to'] ?? res?['destination'] ?? '') as String? ?? '';
+
+        result.add({
+          ...fb,
+          '_id': doc.id,
+          'passengerName': passengerName,
+          'from': from,
+          'to': to,
+        });
+      }
+
+      return result;
     } catch (e) {
-      debugPrint("❌ Erreur lors de la récupération des feedbacks : $e");
+      debugPrint("❌ fetchRecentFeedbacks (enrichi) : $e");
       return [];
     }
   }
@@ -753,6 +876,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<DriverProvider>(context).user;
+    final greeting = _greetingFor(DateTime.now());
 
     return Scaffold(
       backgroundColor: AppColors.black,
@@ -894,12 +1018,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Bienvenue",
-                      style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400),
+                    Text(
+                      greeting, // ex: "Bonjour" / "Bon après-midi" / "Bonsoir" / "Bonne nuit"
+                      // ou "$greeting $emo" si tu actives l’emoji
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
                     Text(
                       "${user?.firstName ?? 'Conducteur'} 👋",
@@ -912,29 +1038,147 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ),
                   ],
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.star_rounded,
-                          color: Colors.amber, size: 20),
-                      const SizedBox(width: 4),
-                      Text(
-                        _driverRating.toStringAsFixed(1),
-                        style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 16),
-                      ),
-                    ],
-                  ),
-                ),
+// ——— À mettre à la place du Container(...) actuel
+                LayoutBuilder(
+                  builder: (context, _) {
+                    final double capsuleMaxW =
+                        (MediaQuery.of(context).size.width * 0.58)
+                            .clamp(260.0, 460.0);
+
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── Capsule "Aujourd’hui"
+                        Container(
+                          constraints: BoxConstraints(maxWidth: capsuleMaxW),
+                          padding: const EdgeInsets.all(
+                              2.4), // épaisseur de la bordure
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Color(0xFF9C7A23),
+                                Color(0xFFFFE29F),
+                                Color(0xFF9C7A23)
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(40),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.gold.withOpacity(0.18),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            children: [
+                              // fin liseré lumineux
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(38),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Colors.white.withOpacity(0.04),
+                                          Colors.transparent
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 18, vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0E0E0E),
+                                  borderRadius: BorderRadius.circular(38),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const SizedBox(width: 10),
+                                    Flexible(
+                                      child: RichText(
+                                        overflow: TextOverflow.ellipsis,
+                                        text: TextSpan(
+                                          children: [
+                                            const TextSpan(
+                                              text: "Aujourd’hui : ",
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontFamily: 'PlayfairDisplay',
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            TextSpan(
+                                              text:
+                                                  _formatEuroFr(_todayEarnings),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontFamily: 'PlayfairDisplay',
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        // ── Badge note
+                        Container(
+                          padding: const EdgeInsets.all(2.2),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [Color(0xFFFFE29F), Color(0xFF9C7A23)],
+                            ),
+                          ),
+                          child: Container(
+                            width: 70,
+                            height: 70,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF0E0E0E),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.star_rounded,
+                                    color: Colors.amber, size: 28),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _driverRating
+                                      .toStringAsFixed(1)
+                                      .replaceAll('.', ','),
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                )
               ],
             ),
 
@@ -1191,8 +1435,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(height: 24),
 
             // Avis passagers
-            FutureBuilder<List<Testimonial>>(
-              future: fetchDriverTestimonials(),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: fetchRecentFeedbacks(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(
@@ -1253,17 +1497,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                               .map((entry) {
                             final i = entry.key;
                             final fb = entry.value;
-                            final rating =
-                                (fb['rating'] as num?)?.toDouble() ?? 0.0;
+
+                            // 🔹 Déclarations ici (avant tout widget)
+                            final passengerName =
+                                (fb['passengerName'] as String?) ?? 'Passager';
+                            final fromAddr = (fb['from'] as String?)?.trim();
+                            final toAddr = (fb['to'] as String?)?.trim();
+
                             final date =
                                 (fb['timestamp'] as Timestamp?)?.toDate();
-                            final commentRaw =
-                                (fb['comment'] as String?)?.trim() ?? "—";
+                            final rating =
+                                (fb['rating'] as num?)?.toDouble() ?? 0.0;
+                            final comment = (fb['comment'] as String?) ?? '';
 
-                            final isExpanded = _expandedReviews.contains(i);
-                            final comment = _truncate(commentRaw, 170,
-                                keepExpanded: isExpanded);
-
+                            // 🔹 Partie UI ensuite
                             return Container(
                               margin: const EdgeInsets.symmetric(vertical: 8),
                               padding: const EdgeInsets.all(14),
@@ -1272,78 +1519,61 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                     color: AppColors.gold.withOpacity(0.15)),
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: Colors.black.withOpacity(0.25),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 6)),
-                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     children: [
-                                      _nameAvatar("Passager"),
+                                      _nameAvatar(
+                                          passengerName), // ✅ variable dynamique ici
                                       const SizedBox(width: 12),
-                                      const Expanded(
-                                        child: Text(
-                                          "Passager",
-                                          style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 15),
-                                          overflow: TextOverflow.ellipsis,
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              passengerName, // ✅ plus de "const" ici
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 15,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (fromAddr != null &&
+                                                toAddr != null)
+                                              Text(
+                                                "$fromAddr ➜ $toAddr",
+                                                style: const TextStyle(
+                                                  color: Colors.white54,
+                                                  fontSize: 12,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                          ],
                                         ),
                                       ),
                                       Text(
-                                          date != null
-                                              ? _formatFrenchDate(date)
-                                              : "",
-                                          style: const TextStyle(
-                                              color: Colors.white38,
-                                              fontSize: 12)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Text(rating.toStringAsFixed(1),
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 16)),
-                                      const SizedBox(width: 6),
-                                      _stars(rating),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(comment,
-                                      style: const TextStyle(
-                                          color: Colors.white70, height: 1.4)),
-                                  if (commentRaw.length > 170)
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            if (isExpanded) {
-                                              _expandedReviews.remove(i);
-                                            } else {
-                                              _expandedReviews.add(i);
-                                            }
-                                          });
-                                        },
-                                        child: Text(
-                                          isExpanded
-                                              ? "Voir moins"
-                                              : "Voir plus",
-                                          style: const TextStyle(
-                                              color: AppColors.gold,
-                                              fontWeight: FontWeight.w600),
-                                        ),
+                                        date != null
+                                            ? _formatFrenchDate(date)
+                                            : "",
+                                        style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 12),
                                       ),
-                                    ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _stars(rating),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    comment,
+                                    style: const TextStyle(
+                                        color: Colors.white70, height: 1.4),
+                                  ),
                                 ],
                               ),
                             );

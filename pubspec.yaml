@@ -62,6 +62,7 @@ dependencies:
 
   # Paiement
   flutter_stripe: ^11.5.0
+  intl: 0.20.2
 
 dev_dependencies:
   flutter_test:

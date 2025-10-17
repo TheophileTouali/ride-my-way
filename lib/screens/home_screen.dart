@@ -46,12 +46,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final upcoming = snapshot.docs
         .where((doc) => (doc['timestamp'] as Timestamp).toDate().isAfter(now))
         .toList()
-      ..sort((a, b) => (a['timestamp'] as Timestamp).compareTo(b['timestamp'] as Timestamp));
+      ..sort((a, b) =>
+          (a['timestamp'] as Timestamp).compareTo(b['timestamp'] as Timestamp));
 
     final past = snapshot.docs
         .where((doc) => (doc['timestamp'] as Timestamp).toDate().isBefore(now))
         .toList()
-      ..sort((a, b) => (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
+      ..sort((a, b) =>
+          (b['timestamp'] as Timestamp).compareTo(a['timestamp'] as Timestamp));
 
     setState(() {
       _trips = [
@@ -92,13 +94,19 @@ class _HomeScreenState extends State<HomeScreen> {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) throw Exception('Permission refusée');
+        if (permission == LocationPermission.denied)
+          throw Exception('Permission refusée');
       }
-      if (permission == LocationPermission.deniedForever) throw Exception('Permission permanente refusée');
+      if (permission == LocationPermission.deniedForever)
+        throw Exception('Permission permanente refusée');
 
-      final position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      final city = placemarks.first.locality ?? placemarks.first.administrativeArea ?? "Votre position";
+      final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      final placemarks =
+          await placemarkFromCoordinates(position.latitude, position.longitude);
+      final city = placemarks.first.locality ??
+          placemarks.first.administrativeArea ??
+          "Votre position";
 
       setState(() {
         _fromController.text = city;
@@ -144,9 +152,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Accueil", style: TextStyle(color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
+                      const Text("Accueil",
+                          style: TextStyle(
+                              color: AppColors.gold,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'PlayfairDisplay')),
                       IconButton(
-                        icon: const Icon(Icons.person_outline, color: AppColors.gold),
+                        icon: const Icon(Icons.person_outline,
+                            color: AppColors.gold),
                         onPressed: () => context.go('/profile'),
                       ),
                     ],
@@ -175,31 +189,36 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 6),
                         const Text(
                           "Préparez-vous à vivre un trajet d’exception. ✨",
-                          style: TextStyle(color: Colors.white60, fontSize: 14, fontStyle: FontStyle.italic, fontFamily: 'PlayfairDisplay'),
+                          style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 14,
+                              fontStyle: FontStyle.italic,
+                              fontFamily: 'PlayfairDisplay'),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 28),
                   GooglePlacesAutoCompleteTextFormField(
-                  textEditingController: _fromController,
-                  googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
-                  debounceTime: 800,
-                  countries: ["fr"],
-                  fetchCoordinates: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration(_hintFrom, Icons.place_rounded),
-                  onSuggestionClicked: (prediction) {
-                    _fromController.text = prediction.description!;
-                    FocusScope.of(context).unfocus();
-                  },
-                  overlayContainerBuilder: (child) => Material(
-                    elevation: 2.0,
-                    color: Colors.grey[900], // fond noir
-                    borderRadius: BorderRadius.circular(12),
-                    child: child,
+                    textEditingController: _fromController,
+                    googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                    debounceTime: 800,
+                    countries: ["fr"],
+                    fetchCoordinates: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration:
+                        _inputDecoration(_hintFrom, Icons.place_rounded),
+                    onSuggestionClicked: (prediction) {
+                      _fromController.text = prediction.description!;
+                      FocusScope.of(context).unfocus();
+                    },
+                    overlayContainerBuilder: (child) => Material(
+                      elevation: 2.0,
+                      color: Colors.grey[900], // fond noir
+                      borderRadius: BorderRadius.circular(12),
+                      child: child,
+                    ),
                   ),
-                ),
                   const SizedBox(height: 16),
                   GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _toController,
@@ -208,7 +227,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     countries: ["fr"],
                     fetchCoordinates: true,
                     style: const TextStyle(color: Colors.white),
-                    decoration: _inputDecoration("Entrer une destination", Icons.search),
+                    decoration: _inputDecoration(
+                        "Entrer une destination", Icons.search),
                     onSuggestionClicked: (prediction) {
                       _toController.text = prediction.description!;
                       FocusScope.of(context).unfocus();
@@ -216,7 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onEditingComplete: () {
                       final from = _fromController.text.trim();
                       final to = _toController.text.trim();
-                      if (to.isNotEmpty) context.go('/results?from=$from&to=$to');
+                      if (to.isNotEmpty)
+                        context.go('/results?from=$from&to=$to');
                     },
                     overlayContainerBuilder: (child) => Material(
                       elevation: 2.0,
@@ -225,7 +246,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: child,
                     ),
                   ),
-
                   const SizedBox(height: 16),
                   InkWell(
                     onTap: () {
@@ -236,7 +256,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("Merci de renseigner le départ et la destination"),
+                            content: Text(
+                                "Merci de renseigner le départ et la destination"),
                             backgroundColor: Colors.redAccent,
                           ),
                         );
@@ -275,11 +296,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  _homeButton(context, Icons.event_note, "Mes réservations", '/reservations'),
-                  _homeButton(context, Icons.favorite_border, "Mes favoris", '/favorites'),
+                  _homeButton(context, Icons.event_note, "Mes réservations",
+                      '/reservations'),
+                  _homeButton(context, Icons.favorite_border, "Mes favoris",
+                      '/favorites'),
                   const SizedBox(height: 28),
                   if (_trips.isEmpty)
-                    const Center(child: CircularProgressIndicator(color: AppColors.gold))
+                    const Center(
+                        child: CircularProgressIndicator(color: AppColors.gold))
                   else
                     Column(
                       children: [
@@ -287,7 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 160,
                           child: PageView.builder(
                             controller: _pageController,
-                            onPageChanged: (index) => setState(() => _currentPage = index),
+                            onPageChanged: (index) =>
+                                setState(() => _currentPage = index),
                             itemCount: _trips.length,
                             itemBuilder: (context, index) {
                               final trip = _trips[index];
@@ -303,7 +328,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(_trips.length, (index) => _buildDot(index == _currentPage)),
+                          children: List.generate(_trips.length,
+                              (index) => _buildDot(index == _currentPage)),
                         ),
                       ],
                     ),
@@ -311,7 +337,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Center(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Provider.of<UserProvider>(context, listen: false).logout();
+                        Provider.of<UserProvider>(context, listen: false)
+                            .logout();
                         context.go('/login');
                       },
                       icon: const Icon(Icons.logout),
@@ -319,7 +346,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.redAccent,
                         side: const BorderSide(color: Colors.redAccent),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
                       ),
                     ),
                   ),
@@ -335,7 +363,8 @@ class _HomeScreenState extends State<HomeScreen> {
   InputDecoration _inputDecoration(String hint, IconData icon) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Colors.white70, fontFamily: 'PlayfairDisplay'),
+      hintStyle:
+          const TextStyle(color: Colors.white70, fontFamily: 'PlayfairDisplay'),
       filled: true,
       fillColor: Colors.grey[900],
       prefixIcon: Icon(icon, color: AppColors.gold),
@@ -351,7 +380,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _homeButton(BuildContext context, IconData icon, String label, String route) {
+  Widget _homeButton(
+      BuildContext context, IconData icon, String label, String route) {
     return InkWell(
       onTap: () => context.go(route),
       child: Container(
@@ -360,13 +390,21 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: Colors.grey[900],
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: AppColors.gold.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+                color: AppColors.gold.withOpacity(0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4))
+          ],
         ),
         child: Row(
           children: [
             Icon(icon, color: AppColors.gold),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: const TextStyle(color: Colors.white, fontFamily: 'PlayfairDisplay'))),
+            Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        color: Colors.white, fontFamily: 'PlayfairDisplay'))),
             const Icon(Icons.chevron_right, color: Colors.white),
           ],
         ),
@@ -394,7 +432,11 @@ class _TripCard extends StatelessWidget {
   final String to;
   final String date;
 
-  const _TripCard({required this.title, required this.from, required this.to, required this.date});
+  const _TripCard(
+      {required this.title,
+      required this.from,
+      required this.to,
+      required this.date});
 
   @override
   Widget build(BuildContext context) {
@@ -411,22 +453,36 @@ class _TripCard extends StatelessWidget {
               ? Center(
                   child: OutlinedButton.icon(
                     onPressed: () => context.go('/reservations'),
-                    icon: const Icon(Icons.directions_car, color: AppColors.gold),
-                    label: const Text("Voir tous mes trajets", style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w600, fontFamily: 'PlayfairDisplay')),
+                    icon:
+                        const Icon(Icons.directions_car, color: AppColors.gold),
+                    label: const Text("Voir tous mes trajets",
+                        style: TextStyle(
+                            color: AppColors.gold,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'PlayfairDisplay')),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppColors.gold),
                       foregroundColor: AppColors.gold,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
                     ),
                   ),
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay')),
+                    Text(title,
+                        style: const TextStyle(
+                            color: AppColors.gold,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'PlayfairDisplay')),
                     const SizedBox(height: 8),
-                    Text("$from ➔ $to", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                    Text("Départ prévu : $date", style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                    Text("$from ➔ $to",
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w500)),
+                    Text("Départ prévu : $date",
+                        style: const TextStyle(
+                            color: Colors.white60, fontSize: 13)),
                   ],
                 ),
         ),

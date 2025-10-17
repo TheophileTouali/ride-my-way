@@ -14,10 +14,12 @@ class DriverPickupTrackingScreen extends StatefulWidget {
   const DriverPickupTrackingScreen({super.key, required this.reservationId});
 
   @override
-  State<DriverPickupTrackingScreen> createState() => _DriverPickupTrackingScreenState();
+  State<DriverPickupTrackingScreen> createState() =>
+      _DriverPickupTrackingScreenState();
 }
 
-class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen> with SingleTickerProviderStateMixin {
+class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
+    with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   LatLng? _driverPosition;
   LatLng? _pickupLocation;
@@ -69,14 +71,17 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
 
   void _startLocationUpdates() {
     const settings = LocationSettings(accuracy: LocationAccuracy.high);
-    _positionStream = Geolocator.getPositionStream(locationSettings: settings).listen((position) {
+    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
+        .listen((position) {
       final newPos = LatLng(position.latitude, position.longitude);
       setState(() => _driverPosition = newPos);
 
       FirebaseFirestore.instance
           .collection('reservations')
           .doc(widget.reservationId)
-          .update({'driverLocation': {'lat': newPos.latitude, 'lng': newPos.longitude}});
+          .update({
+        'driverLocation': {'lat': newPos.latitude, 'lng': newPos.longitude}
+      });
 
       _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
       _updateDistanceAndDuration();
@@ -95,7 +100,8 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
 
     if (result.points.isNotEmpty) {
       setState(() {
-        _polylineCoordinates = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        _polylineCoordinates =
+            result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
         _polylines = {
           Polyline(
             polylineId: const PolylineId("route"),
@@ -158,7 +164,8 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
           if (_driverPosition != null)
             GoogleMap(
               polylines: _polylines,
-              initialCameraPosition: CameraPosition(target: _driverPosition!, zoom: 15),
+              initialCameraPosition:
+                  CameraPosition(target: _driverPosition!, zoom: 15),
               myLocationEnabled: false,
               onMapCreated: (controller) {
                 _mapController = controller;
@@ -168,23 +175,28 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
                 Marker(
                   markerId: const MarkerId('driver'),
                   position: _driverPosition!,
-                  icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
+                  icon: _carIcon ??
+                      BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueYellow),
                 ),
                 if (_pickupLocation != null)
                   Marker(
                     markerId: const MarkerId('pickup'),
                     position: _pickupLocation!,
-                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueAzure),
                   ),
               },
             ),
-
           if (_driverPosition != null)
             AnimatedBuilder(
               animation: _haloAnimation,
               builder: (context, child) => Positioned(
-                top: MediaQuery.of(context).size.height / 2 - _haloAnimation.value / 2 - 80,
-                left: MediaQuery.of(context).size.width / 2 - _haloAnimation.value / 2,
+                top: MediaQuery.of(context).size.height / 2 -
+                    _haloAnimation.value / 2 -
+                    80,
+                left: MediaQuery.of(context).size.width / 2 -
+                    _haloAnimation.value / 2,
                 child: Container(
                   width: _haloAnimation.value,
                   height: _haloAnimation.value,
@@ -195,7 +207,6 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
                 ),
               ),
             ),
-
           Positioned(
             bottom: 80,
             left: 20,
@@ -222,13 +233,13 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
                       style: TextStyle(color: Colors.white70, fontSize: 13)),
                   Text("Distance : ${_remainingDistance.toStringAsFixed(1)} km",
                       style: const TextStyle(color: Colors.white70)),
-                  Text("Durée estimée : ${_estimatedDuration.toStringAsFixed(0)} min",
+                  Text(
+                      "Durée estimée : ${_estimatedDuration.toStringAsFixed(0)} min",
                       style: const TextStyle(color: Colors.white70)),
                 ],
               ),
             ),
           ),
-
           Positioned(
             bottom: 20,
             right: 20,
@@ -239,7 +250,8 @@ class _DriverPickupTrackingScreenState extends State<DriverPickupTrackingScreen>
               icon: const Icon(Icons.navigation),
               label: const Text(
                 "Je suis arrivé",
-                style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay'),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, fontFamily: 'PlayfairDisplay'),
               ),
             ),
           ),

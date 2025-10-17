@@ -14,7 +14,8 @@ class DriverSearchScreen extends StatefulWidget {
   State<DriverSearchScreen> createState() => _DriverSearchScreenState();
 }
 
-class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTickerProviderStateMixin {
+class _DriverSearchScreenState extends State<DriverSearchScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
   late Timer _messageTimer;
   late Timer _timeoutTimer;
@@ -56,11 +57,12 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
 
     _messageTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       setState(() {
-        _currentMessageIndex = (_currentMessageIndex + 1) % _searchMessages.length;
+        _currentMessageIndex =
+            (_currentMessageIndex + 1) % _searchMessages.length;
       });
     });
 
-    _timeoutTimer = Timer(const Duration(minutes: 5), () {
+    _timeoutTimer = Timer(const Duration(minutes: 3), () {
       setState(() => _searchExpired = true);
     });
 
@@ -96,7 +98,7 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
     });
 
     _timeoutTimer.cancel();
-    _timeoutTimer = Timer(const Duration(minutes: 5), () {
+    _timeoutTimer = Timer(const Duration(minutes: 3), () {
       setState(() => _searchExpired = true);
     });
   }
@@ -116,7 +118,8 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
             final status = data['status'];
             final driverId = data['driverId'];
 
-            if (status == 'Confirmée' || (driverId != null && driverId.toString().isNotEmpty)) {
+            if (status == 'Confirmée' ||
+                (driverId != null && driverId.toString().isNotEmpty)) {
               if (!_showDriverFoundMessage) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (!mounted) return;
@@ -213,7 +216,9 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
                               color: AppColors.gold,
                               shadows: [
                                 Shadow(blurRadius: 24, color: Colors.amber),
-                                Shadow(blurRadius: 40, color: Colors.deepOrangeAccent),
+                                Shadow(
+                                    blurRadius: 40,
+                                    color: Colors.deepOrangeAccent),
                               ],
                             ),
                           ),
@@ -230,7 +235,8 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
                   child: Center(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 800),
-                      transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
                       child: ShaderMask(
                         key: ValueKey(_searchMessages[_currentMessageIndex]),
                         shaderCallback: (bounds) => const LinearGradient(
@@ -286,8 +292,10 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.gold,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
@@ -304,7 +312,8 @@ class _DriverSearchScreenState extends State<DriverSearchScreen> with SingleTick
               opacity: 1.0,
               duration: const Duration(milliseconds: 500),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(14),

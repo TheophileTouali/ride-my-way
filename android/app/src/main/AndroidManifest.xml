@@ -9,10 +9,14 @@
     <!-- 📍 Localisation (Android 12+) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <!-- Facultatif : si tu fais du suivi en arrière-plan -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- Conseillé : pour Play Store si GPS non obligatoire -->
+    <!-- ➕ Android 13+ : permission notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- (Optionnel) vibration explicite, souvent merge automatiquement -->
+    <!-- <uses-permission android:name="android.permission.VIBRATE" /> -->
+
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-feature android:name="android.hardware.location.network" android:required="false" />
 
@@ -22,10 +26,23 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/NormalTheme">
 
-        <!-- 🔑 Clé Google Maps (référence la valeur dans res/values/strings.xml) -->
+        <!-- 🔑 Clé Google Maps -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="@string/google_maps_api_key" />
+
+        <!-- ➕ FCM : canal de notification par défaut (doit exister côté code) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id" />
+
+        <!-- ➕ FCM : icône & couleur par défaut des notifs -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+        <meta-data
+    android:name="com.google.firebase.messaging.default_notification_color"
+    android:resource="@android:color/black" />
 
         <activity
             android:name=".MainActivity"

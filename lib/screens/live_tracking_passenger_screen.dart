@@ -10,16 +10,19 @@ import 'package:geolocator/geolocator.dart';
 import '../themes/app_theme.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 class LiveTrackingPassengerScreen extends StatefulWidget {
   final String reservationId;
   const LiveTrackingPassengerScreen({super.key, required this.reservationId});
 
   @override
-  State<LiveTrackingPassengerScreen> createState() => _LiveTrackingPassengerScreenState();
+  State<LiveTrackingPassengerScreen> createState() =>
+      _LiveTrackingPassengerScreenState();
 }
 
-class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScreen>
+class _LiveTrackingPassengerScreenState
+    extends State<LiveTrackingPassengerScreen>
     with SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   LatLng? _driverPosition;
@@ -43,6 +46,11 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   Set<Polyline> _polylines = {};
   final PolylinePoints _polylinePoints = PolylinePoints();
   final String _googleApiKey = 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI';
+  String? _driverName;
+  String? _driverPhone;
+  String? _driverPhotoUrl;
+  bool get _canShowDriverPhone =>
+      _status == 'Arrivé' || _status == 'À bord' || _status == 'En cours';
 
   @override
   void initState() {
@@ -51,6 +59,7 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
     _loadReservationData();
     _startDriverLocationUpdates();
     _listenReservationStatus();
+    _loadDriverInfo();
 
     _haloController = AnimationController(
       duration: const Duration(seconds: 2),
@@ -58,6 +67,89 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
     )..repeat(reverse: true);
 
     _haloAnimation = Tween<double>(begin: 20, end: 40).animate(_haloController);
+  }
+
+  Future<void> _loadDriverInfo() async {
+    try {
+      final resRef = FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(widget.reservationId);
+
+      final resSnap = await resRef.get();
+      final m = resSnap.data();
+      if (m == null) return;
+
+      // 1) driverId direct / ref
+      String? driverId;
+      final refLike = m['driverRef'];
+      if (refLike is DocumentReference) {
+        driverId = refLike.id;
+      } else {
+        driverId =
+            (m['driverId'] ?? m['chauffeurId'] ?? m['ownerId'])?.toString();
+      }
+      if (driverId == null || driverId.isEmpty) return;
+
+      // 2) drivers/{id}
+      final dSnap = await FirebaseFirestore.instance
+          .collection('drivers')
+          .doc(driverId)
+          .get();
+
+      String? first;
+      String? last;
+      String? phone;
+      String? photo;
+
+      if (dSnap.exists) {
+        final d = dSnap.data()!;
+        first = (d['firstName'] ?? d['prenom'])?.toString();
+        last = (d['lastName'] ?? d['nom'])?.toString();
+        phone = (d['phone'] ?? d['telephone'] ?? d['mobile'])?.toString();
+        photo = (d['photoUrl'])?.toString();
+      } else {
+        // 3) Fallback sur users/passengers
+        final uSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(driverId)
+            .get();
+        if (uSnap.exists) {
+          final u = uSnap.data()!;
+          first = (u['firstName'] ?? u['prenom'])?.toString();
+          last = (u['lastName'] ?? u['nom'])?.toString();
+          phone = (u['phone'] ?? u['telephone'] ?? u['mobile'])?.toString();
+          photo = (u['photoUrl'])?.toString();
+        } else {
+          final pSnap = await FirebaseFirestore.instance
+              .collection('passengers')
+              .doc(driverId)
+              .get();
+          if (pSnap.exists) {
+            final p = pSnap.data()!;
+            first = (p['firstName'] ?? p['prenom'])?.toString();
+            last = (p['lastName'] ?? p['nom'])?.toString();
+            phone = (p['phone'] ?? p['telephone'] ?? p['mobile'])?.toString();
+            photo = (p['photoUrl'])?.toString();
+          }
+        }
+      }
+
+      final name = [first, last]
+          .where((s) => (s ?? '').trim().isNotEmpty)
+          .join(' ')
+          .trim();
+
+      if (mounted) {
+        setState(() {
+          _driverName = name.isEmpty ? null : name;
+          _driverPhone = (phone ?? '').trim().isNotEmpty ? phone!.trim() : null;
+          _driverPhotoUrl =
+              (photo ?? '').trim().isNotEmpty ? photo!.trim() : null;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ _loadDriverInfo: $e');
+    }
   }
 
   Future<void> _loadCarIcon() async {
@@ -174,7 +266,9 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
           _boardingDialogVisible = false;
         }
 
-        if (_status == 'Arrivé' && !_hasConfirmedBoarding && !_boardingDialogVisible) {
+        if (_status == 'Arrivé' &&
+            !_hasConfirmedBoarding &&
+            !_boardingDialogVisible) {
           _boardingDialogVisible = true;
           _showBoardingDialog();
           _reminderTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
@@ -198,11 +292,128 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           backgroundColor: AppColors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Votre chauffeur est arrivé", style: TextStyle(color: AppColors.gold)),
-          content: const Text(
-            "Veuillez confirmer que vous êtes bien monté à bord. Le chauffeur pourra démarrer la course ensuite.",
-            style: TextStyle(color: Colors.white70),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            "Votre chauffeur est arrivé",
+            style: TextStyle(color: AppColors.gold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ——— Carte chauffeur (affichée seulement si on a les infos ET statut autorisé)
+              if ((_driverName != null || _driverPhone != null) &&
+                  _canShowDriverPhone)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.gold.withOpacity(0.35)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.gold.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Avatar
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.gold,
+                        backgroundImage: (_driverPhotoUrl != null)
+                            ? NetworkImage(_driverPhotoUrl!)
+                            : null,
+                        child: (_driverPhotoUrl == null)
+                            ? const Icon(Icons.person, color: Colors.black)
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Nom + téléphone
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_driverName != null)
+                              Text(
+                                _driverName!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'PlayfairDisplay',
+                                ),
+                              ),
+                            if (_driverPhone != null) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.call,
+                                      size: 14, color: Colors.white60),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _driverPhone!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white70, fontSize: 13),
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 6),
+                                      foregroundColor: AppColors.gold,
+                                    ),
+                                    onPressed: () async {
+                                      await Clipboard.setData(
+                                          ClipboardData(text: _driverPhone!));
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: Colors.grey.shade900,
+                                          behavior: SnackBarBehavior.floating,
+                                          content: const Text(
+                                            "Numéro copié",
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.copy, size: 14),
+                                    label: const Text("Copier",
+                                        style: TextStyle(fontSize: 12)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if ((_driverName != null || _driverPhone != null) &&
+                  _canShowDriverPhone)
+                const SizedBox(height: 12),
+
+              const Text(
+                "Veuillez confirmer que vous êtes bien monté à bord. Le chauffeur pourra démarrer la course ensuite.",
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
@@ -211,8 +422,10 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.gold,
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   elevation: 6,
                 ),
                 onPressed: () async {
@@ -227,18 +440,15 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                     _showCheckmark = true;
                   });
                   _reminderTimer?.cancel();
-                  final AudioPlayer _audioPlayer = AudioPlayer();
 
-                  Future<void> playConfirmedSound() async {
-                    try {
-                      await _audioPlayer.setAsset('assets/sounds/confirmed.mp3');
-                      await _audioPlayer.play();
-                    } catch (e) {
-                      debugPrint("Erreur lors de la lecture du son confirmé : $e");
-                    }
-                  }
+                  // son de confirmation (si ton asset est présent)
+                  try {
+                    await _audioPlayer.setAsset('assets/sounds/confirmed.mp3');
+                    await _audioPlayer.play();
+                  } catch (_) {}
+
                   Future.delayed(const Duration(seconds: 2), () {
-                    setState(() => _showCheckmark = false);
+                    if (mounted) setState(() => _showCheckmark = false);
                   });
                 },
                 icon: const Icon(Icons.check_circle_outline),
@@ -258,7 +468,8 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
   }
 
   String get statusMessage {
-    if (_showTripEndedMessage) return "✅ Trajet terminé. Merci d’avoir voyagé avec nous !";
+    if (_showTripEndedMessage)
+      return "✅ Trajet terminé. Merci d’avoir voyagé avec nous !";
     switch (_status) {
       case 'En route':
         return "🚕 Votre chauffeur est en route vers vous";
@@ -306,23 +517,28 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 Marker(
                   markerId: const MarkerId('driver'),
                   position: _driverPosition!,
-                  icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
+                  icon: _carIcon ??
+                      BitmapDescriptor.defaultMarkerWithHue(
+                          BitmapDescriptor.hueYellow),
                 ),
                 if (_destination != null)
                   Marker(
                     markerId: const MarkerId('destination'),
                     position: _destination!,
-                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueAzure),
                   ),
               },
             ),
-
           if (_driverPosition != null)
             AnimatedBuilder(
               animation: _haloAnimation,
               builder: (context, child) => Positioned(
-                top: MediaQuery.of(context).size.height / 2 - _haloAnimation.value / 2 - 80,
-                left: MediaQuery.of(context).size.width / 2 - _haloAnimation.value / 2,
+                top: MediaQuery.of(context).size.height / 2 -
+                    _haloAnimation.value / 2 -
+                    80,
+                left: MediaQuery.of(context).size.width / 2 -
+                    _haloAnimation.value / 2,
                 child: Container(
                   width: _haloAnimation.value,
                   height: _haloAnimation.value,
@@ -333,16 +549,15 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 ),
               ),
             ),
-
           if (_showCheckmark)
             Center(
               child: AnimatedOpacity(
                 opacity: _showCheckmark ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 600),
-                child: const Icon(Icons.check_circle, color: AppColors.gold, size: 90),
+                child: const Icon(Icons.check_circle,
+                    color: AppColors.gold, size: 90),
               ),
             ),
-
           if (_showTripEndedMessage)
             AnimatedOpacity(
               opacity: 1.0,
@@ -354,7 +569,8 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: const [
-                    Icon(Icons.emoji_emotions_rounded, color: AppColors.gold, size: 110),
+                    Icon(Icons.emoji_emotions_rounded,
+                        color: AppColors.gold, size: 110),
                     SizedBox(height: 24),
                     Text(
                       "Merci pour ce merveilleux voyage 🥂",
@@ -381,11 +597,6 @@ class _LiveTrackingPassengerScreenState extends State<LiveTrackingPassengerScree
                 ),
               ),
             ),
-
-
-
-
-
           Positioned(
             bottom: 20,
             left: 20,

@@ -18,6 +18,7 @@ import '../models/trip.dart';
 import '../providers/driver_provider.dart';
 import '../themes/app_theme.dart';
 import 'package:ride_my_way/services/weather_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 String _formatEuroFr(double v) =>
     NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 2)
@@ -125,6 +126,12 @@ class DriverHomeScreen extends StatefulWidget {
 }
 
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  // 🔔 suivi des courses proches (pour détecter les nouvelles)
+  Set<String> _nearbyIds = {};
+// 🎧 sonnerie en boucle
+  final AudioPlayer _ringer = AudioPlayer();
+  bool _isRinging = false;
+
   bool _isVisible = false;
   double _driverRating = 0.0;
   List<Map<String, dynamic>> _feedbacks = [];
@@ -149,6 +156,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return "Bonne nuit";
   }
 
+  final FlutterLocalNotificationsPlugin _flnp =
+      FlutterLocalNotificationsPlugin();
+  static const AndroidNotificationChannel _nearbyChannel =
+      AndroidNotificationChannel(
+    'nearby_courses_channel',
+    'Courses proches',
+    description: 'Alertes de courses à proximité',
+    importance: Importance.max,
+    playSound: true,
+    sound: RawResourceAndroidNotificationSound('urgent_alert'),
+    enableVibration: true,
+    showBadge: true,
+  );
+
+  DateTime? _lastNearbyAlertAt;
+  final Duration _nearbyAlertCooldown = const Duration(seconds: 90);
+
   @override
   void initState() {
     super.initState();
@@ -159,13 +183,84 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     _loadCustomIcon();
     _getCurrentPosition();
     _listenTodayEarnings();
+    _initLocalNotifications();
   }
 
   @override
   void dispose() {
     _refreshTimer.cancel();
-    super.dispose();
     _todayEarningsSub?.cancel();
+    _stopRinger();
+    _ringer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startRinger() async {
+    if (_isRinging) return;
+    try {
+      // ⚠️ place aussi le fichier dans android/app/src/main/res/raw/urgent_alert.mp3
+      await _ringer.setAsset('assets/sounds/urgent_alert.mp3');
+      await _ringer.setLoopMode(LoopMode.one);
+      await _ringer.play();
+      _isRinging = true;
+    } catch (e) {
+      debugPrint('Ringer start error: $e');
+    }
+  }
+
+  Future<void> _stopRinger() async {
+    if (!_isRinging) return;
+    try {
+      await _ringer.stop();
+    } catch (_) {}
+    _isRinging = false;
+  }
+
+  Future<void> _initLocalNotifications() async {
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestSoundPermission: true,
+      requestBadgePermission: true,
+    );
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    await _flnp.initialize(
+      const InitializationSettings(android: androidInit, iOS: iosInit),
+      onDidReceiveNotificationResponse: (_) {
+        if (mounted) showNearbyCoursesDialog(context);
+      },
+    );
+
+    await _flnp
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_nearbyChannel);
+  }
+
+  Future<void> _showNearbyHeadsUp(
+      {required String title, required String body}) async {
+    await _flnp.show(
+      1001,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _nearbyChannel.id,
+          _nearbyChannel.name,
+          channelDescription: _nearbyChannel.description,
+          importance: Importance.max,
+          priority: Priority.max,
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound('urgent_alert'),
+          enableVibration: true,
+          category: AndroidNotificationCategory.call,
+          visibility: NotificationVisibility.public,
+        ),
+        iOS: const DarwinNotificationDetails(
+            presentAlert: true, presentSound: true),
+      ),
+      payload: 'open_nearby_dialog',
+    );
   }
 
   DateTime _startOfDay(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -268,30 +363,54 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-      final newData = await _fetchNearbyPendingReservations();
+      final newDocs = await _fetchNearbyPendingReservations();
 
-      if (newData.isNotEmpty && newData.length != _nearbyReservations.length) {
+      // maj UI (liste + bouton qui clignote)
+      final hasNew =
+          newDocs.isNotEmpty && newDocs.length != _nearbyReservations.length;
+      if (mounted) {
         setState(() {
-          _hasNewNearbyCourse = true;
-          _nearbyReservations = newData;
-        });
-
-        // Ping sonore court
-        final urgentPlayer = AudioPlayer();
-        try {
-          await urgentPlayer.setAsset('assets/sounds/urgent_alert.mp3');
-          await urgentPlayer.play();
-        } catch (e) {
-          debugPrint("Erreur lecture son d’urgence : $e");
-        } finally {
-          Future.delayed(const Duration(seconds: 2), urgentPlayer.dispose);
-        }
-      } else {
-        setState(() {
-          _hasNewNearbyCourse = false;
-          _nearbyReservations = newData;
+          _hasNewNearbyCourse = hasNew;
+          _nearbyReservations = newDocs;
         });
       }
+
+      // set des IDs actuels
+      final newIds = newDocs.map((d) => d.id).toSet();
+      final newlyAdded = newIds.difference(_nearbyIds);
+
+      // 1) si nouvelle(s) course(s) → heads-up + démarre sonnerie en boucle
+      if (newlyAdded.isNotEmpty) {
+        // anti-spam (tu as déjà _lastNearbyAlertAt / _nearbyAlertCooldown)
+        final now = DateTime.now();
+        final canAlert = _lastNearbyAlertAt == null ||
+            now.difference(_lastNearbyAlertAt!) > _nearbyAlertCooldown;
+        if (canAlert) {
+          _lastNearbyAlertAt = now;
+          final first = newDocs
+              .firstWhere((d) => d.id == newlyAdded.first)
+              .data() as Map<String, dynamic>;
+          final from = (first['from'] ?? 'Départ').toString();
+          final to = (first['to'] ?? 'Arrivée').toString();
+          try {
+            await _showNearbyHeadsUp(
+              title: '🚗 Course proche disponible',
+              body: '$from ➜ $to • touchez pour voir',
+            );
+          } catch (e) {
+            debugPrint('Heads-up error: $e');
+          }
+        }
+        await _startRinger(); // 🔊 boucle
+      }
+
+      // 2) s’il n’y a plus AUCUNE course proche → coupe la sonnerie
+      if (newIds.isEmpty) {
+        await _stopRinger();
+      }
+
+      // mémorise
+      _nearbyIds = newIds;
     });
   }
 
@@ -505,7 +624,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                               : '?';
 
                           final duration = date.difference(DateTime.now());
-                          final isUrgent = duration.inMinutes <= 5;
+                          final isUrgent = duration.inMinutes <= 3;
 
                           return FadeInUp(
                             duration: const Duration(milliseconds: 300),
@@ -685,6 +804,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
 
     debugPrint("✅ Course $docId acceptée par $driverName ($uid)");
+    await _stopRinger();
   }
 
   Future<void> _toggleVisibility(bool value) async {
@@ -1011,48 +1131,55 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      greeting, // ex: "Bonjour" / "Bon après-midi" / "Bonsoir" / "Bonne nuit"
-                      // ou "$greeting $emo" si tu actives l’emoji
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    Text(
-                      "${user?.firstName ?? 'Conducteur'} 👋",
-                      style: const TextStyle(
-                        color: AppColors.gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-// ——— À mettre à la place du Container(...) actuel
-                LayoutBuilder(
-                  builder: (context, _) {
-                    final double capsuleMaxW =
-                        (MediaQuery.of(context).size.width * 0.58)
-                            .clamp(260.0, 460.0);
+// ── Header responsive : 2 colonnes à parts égales, wrap en 2 lignes si étroit
+            LayoutBuilder(
+              builder: (context, c) {
+                final isNarrow = c.maxWidth < 420; // breakpoint mobile étroit
+                final double itemW =
+                    isNarrow ? c.maxWidth : (c.maxWidth / 2) - 8;
 
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ── Capsule "Aujourd’hui"
-                        Container(
-                          constraints: BoxConstraints(maxWidth: capsuleMaxW),
-                          padding: const EdgeInsets.all(
-                              2.4), // épaisseur de la bordure
+                return Wrap(
+                  spacing: 16, // espace horizontal entre colonnes
+                  runSpacing: 14, // espace vertical si ça wrap
+                  alignment: WrapAlignment.spaceBetween,
+                  children: [
+                    // ── Colonne gauche : salutation
+                    SizedBox(
+                      width: itemW,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            greeting,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          Text(
+                            "${user?.firstName ?? 'Conducteur'} 👋",
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.gold,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Colonne droite : capsule montant du jour
+                    SizedBox(
+                      width: itemW,
+                      child: Align(
+                        alignment: isNarrow
+                            ? Alignment.centerLeft
+                            : Alignment.centerRight,
+                        child: Container(
+                          padding: const EdgeInsets.all(2.4),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
                               begin: Alignment.centerLeft,
@@ -1074,7 +1201,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           ),
                           child: Stack(
                             children: [
-                              // fin liseré lumineux
                               Positioned.fill(
                                 child: IgnorePointer(
                                   child: Container(
@@ -1099,87 +1225,48 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                   color: const Color(0xFF0E0E0E),
                                   borderRadius: BorderRadius.circular(38),
                                 ),
-                                child: Row(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    const SizedBox(width: 10),
-                                    Flexible(
-                                      child: RichText(
-                                        overflow: TextOverflow.ellipsis,
-                                        text: TextSpan(
-                                          children: [
-                                            const TextSpan(
-                                              text: "Aujourd’hui : ",
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontFamily: 'PlayfairDisplay',
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text:
-                                                  _formatEuroFr(_todayEarnings),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontFamily: 'PlayfairDisplay',
-                                                fontSize: 24,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ],
+                                    const Text(
+                                      "Votre gain du jour",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: AppColors.gold,
+                                        fontSize: 10, // petit descriptif doré
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: .6,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    FittedBox(
+                                      fit: BoxFit
+                                          .scaleDown, // évite tout overflow
+                                      child: Text(
+                                        _formatEuroFr(_todayEarnings),
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontFamily: 'PlayfairDisplay',
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.1,
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
+                              )
                             ],
                           ),
                         ),
-
-                        const SizedBox(width: 12),
-
-                        // ── Badge note
-                        Container(
-                          padding: const EdgeInsets.all(2.2),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [Color(0xFFFFE29F), Color(0xFF9C7A23)],
-                            ),
-                          ),
-                          child: Container(
-                            width: 70,
-                            height: 70,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF0E0E0E),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.star_rounded,
-                                    color: Colors.amber, size: 28),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _driverRating
-                                      .toStringAsFixed(1)
-                                      .replaceAll('.', ','),
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                )
-              ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
 
             // Météo
@@ -1222,7 +1309,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                               final timeBefore = diff.inMinutes < 60
                                   ? "dans ${diff.inMinutes} min"
                                   : "dans ${diff.inHours} h";
-                              final isUrgent = diff.inMinutes <= 5;
+                              final isUrgent = diff.inMinutes <= 3;
 
                               return FadeInUp(
                                 duration: const Duration(milliseconds: 400),

@@ -58,8 +58,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
     'Voitures électriques',
     'Berlines',
     'Vans Standing',
-    'Classe S',
-    'Classe E',
+    'Véhicules premiums',
     'Motos',
   ];
 

@@ -34,6 +34,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   bool _isSubmitting = false;
 
+  // 🔒 Toujours le même bucket (cohérent avec l’écran Profil)
+  final FirebaseStorage storage = FirebaseStorage.instanceFor(
+    bucket: 'gs://ride-my-way-7f258.firebasestorage.app',
+  );
+
   @override
   void initState() {
     super.initState();
@@ -42,7 +47,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _loadUserData() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final data = doc.data();
     if (data != null) {
       firstNameController.text = data['firstName'] ?? '';
@@ -60,88 +66,106 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-    Future<void> _submit() async {
+  String _bust(String url) {
+    final sep = url.contains('?') ? '&' : '?';
+    return '$url${sep}ts=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  Future<String?> _uploadXFile({
+    required XFile file,
+    required Reference ref,
+  }) async {
+    final meta = SettableMetadata(contentType: 'image/png');
+    if (kIsWeb) {
+      final bytes = await file.readAsBytes();
+      await ref.putData(bytes, meta);
+    } else {
+      await ref.putFile(File(file.path), meta);
+    }
+    return ref.getDownloadURL();
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isSubmitting) return;
 
     setState(() => _isSubmitting = true);
-    print('▶ Début de _submit()');
 
     try {
-        final uid = FirebaseAuth.instance.currentUser!.uid;
-        print('✅ UID: $uid');
+      final user = FirebaseAuth.instance.currentUser!;
+      final uid = user.uid;
 
-        String? photoUrl = existingPhotoUrl;
-        if (_selectedImage != null) {
-        print('📷 Upload nouvelle photo...');
-        final ref = FirebaseStorage.instanceFor(
-            bucket: 'ride-my-way-7f258.appspot.com',
-        ).ref().child("users_data/$uid/profile_${DateTime.now().millisecondsSinceEpoch}.png");
+      // 1) Uploads éventuels
+      String? photoUrl = existingPhotoUrl;
+      if (_selectedImage != null) {
+        final path =
+            'users_data/$uid/profile_${DateTime.now().millisecondsSinceEpoch}.png';
+        final ref = storage.ref().child(path);
+        photoUrl = await _uploadXFile(file: _selectedImage!, ref: ref);
+      }
 
-        if (kIsWeb) {
-            final bytes = await _selectedImage!.readAsBytes();
-            await ref.putData(bytes);
-        } else {
-            await ref.putFile(File(_selectedImage!.path));
-        }
+      String? idCardUrl = existingIdCardUrl;
+      if (_identityCardImage != null) {
+        final path =
+            'users_data/$uid/id_card_${DateTime.now().millisecondsSinceEpoch}.png';
+        final ref = storage.ref().child(path);
+        idCardUrl = await _uploadXFile(file: _identityCardImage!, ref: ref);
+      }
 
-        photoUrl = await ref.getDownloadURL();
-        print('✅ Nouvelle photo uploadée');
-        }
-
-        String? idCardUrl = existingIdCardUrl;
-        if (_identityCardImage != null) {
-        print('🪪 Upload nouvelle carte ID...');
-        final ref = FirebaseStorage.instanceFor(
-            bucket: 'ride-my-way-7f258.appspot.com',
-        ).ref().child("users_data/$uid/id_card_${DateTime.now().millisecondsSinceEpoch}.png");
-
-        if (kIsWeb) {
-            final bytes = await _identityCardImage!.readAsBytes();
-            await ref.putData(bytes);
-        } else {
-            await ref.putFile(File(_identityCardImage!.path));
-        }
-
-        idCardUrl = await ref.getDownloadURL();
-        print('✅ Nouvelle carte ID uploadée');
-        }
-
-        print('📤 Mise à jour Firestore...');
-        await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      // 2) Mise à jour Firestore (merge, pour ne pas écraser d’autres champs)
+      final payload = <String, dynamic>{
         'firstName': firstNameController.text.trim(),
         'lastName': lastNameController.text.trim(),
         'phone': phoneController.text.trim(),
         'address': addressController.text.trim(),
-        'birthdate': Timestamp.fromDate(
-            DateFormat('dd/MM/yyyy').parse(birthdateController.text.trim()),
-        ),
-        'photoUrl': photoUrl,
-        'identityCardUrl': idCardUrl,
-        'updatedAt': Timestamp.now(),
-        });
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
-        print('✅ Firestore mis à jour');
-        if (mounted) {
-        context.go('/profile?refresh=true');
-        }
+      // birthdate → Timestamp si non vide
+      final b = birthdateController.text.trim();
+      if (b.isNotEmpty) {
+        payload['birthdate'] =
+            Timestamp.fromDate(DateFormat('dd/MM/yyyy').parse(b));
+      }
 
+      if (photoUrl != null) payload['photoUrl'] = photoUrl;
+      if (idCardUrl != null) payload['identityCardUrl'] = idCardUrl;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .set(payload, SetOptions(merge: true));
+
+      // 3) MAJ Auth.photoURL (utile pour d’autres widgets/plugins)
+      if (photoUrl != null) {
+        await user.updatePhotoURL(photoUrl);
+      }
+
+      // 4) Retour profil – le StreamBuilder s’actualise; on ajoute un bust param
+      if (mounted) {
+        final target = '/profile?bust=${DateTime.now().millisecondsSinceEpoch}';
+        context.go(target);
+      }
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Profil mis à jour."),
+          const SnackBar(
+            content: Text('Profil mis à jour.'),
             backgroundColor: AppColors.deepGold,
-        ),
+          ),
         );
+      }
     } catch (e) {
-        print('❌ Erreur : $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur : $e"), backgroundColor: Colors.redAccent),
+          SnackBar(
+              content: Text('Erreur : $e'), backgroundColor: Colors.redAccent),
         );
+      }
     } finally {
-        if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) setState(() => _isSubmitting = false);
     }
-    }
-
+  }
 
   Future<void> _selectBirthDate() async {
     final now = DateTime.now();
@@ -161,149 +185,175 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (picked != null) {
       final age = now.difference(picked).inDays ~/ 365;
       if (age < 18) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Vous devez avoir au moins 18 ans."),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Vous devez avoir au moins 18 ans.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
         return;
       }
       birthdateController.text = DateFormat('dd/MM/yyyy').format(picked);
     }
   }
 
-
-    @override
-    Widget build(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: AppColors.black,
-        appBar: AppBar(
-        title: const Text("Modifier mon profil", style: TextStyle(color: AppColors.gold)),
+      backgroundColor: AppColors.black,
+      appBar: AppBar(
+        title: const Text('Modifier mon profil',
+            style: TextStyle(color: AppColors.gold)),
         backgroundColor: AppColors.black,
         iconTheme: const IconThemeData(color: AppColors.gold),
-        ),
-        body: SingleChildScrollView(
+      ),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
-            key: _formKey,
-            child: Column(
+          key: _formKey,
+          child: Column(
             children: [
-                // PHOTO DE PROFIL
-                FutureBuilder<Widget>(
+              // PHOTO DE PROFIL
+              FutureBuilder<Widget>(
                 future: _buildProfileImage(),
                 builder: (context, snapshot) {
-                    return Column(
+                  return Column(
                     children: [
-                        if (snapshot.hasData) snapshot.data!,
-                        TextButton.icon(
+                      if (snapshot.hasData) snapshot.data!,
+                      TextButton.icon(
                         onPressed: () async {
-                            final picked = await _picker.pickImage(source: ImageSource.gallery);
-                            if (picked != null) setState(() => _selectedImage = picked);
+                          final picked = await _picker.pickImage(
+                              source: ImageSource.gallery);
+                          if (picked != null)
+                            setState(() => _selectedImage = picked);
                         },
-                        icon: const Icon(Icons.photo_camera_outlined, color: AppColors.gold),
-                        label: const Text("Changer la photo de profil", style: TextStyle(color: AppColors.gold)),
-                        ),
-                        const SizedBox(height: 16),
+                        icon: const Icon(Icons.photo_camera_outlined,
+                            color: AppColors.gold),
+                        label: const Text('Changer la photo de profil',
+                            style: TextStyle(color: AppColors.gold)),
+                      ),
+                      const SizedBox(height: 16),
                     ],
-                    );
+                  );
                 },
-                ),
+              ),
 
-                // CARTE D'IDENTITÉ
-                FutureBuilder<Widget>(
+              // CARTE D'IDENTITÉ
+              FutureBuilder<Widget>(
                 future: _buildIdCardImage(),
                 builder: (context, snapshot) {
-                    return Column(
+                  return Column(
                     children: [
-                        if (snapshot.hasData) snapshot.data!,
-                        TextButton.icon(
+                      if (snapshot.hasData) snapshot.data!,
+                      TextButton.icon(
                         onPressed: () async {
-                            final picked = await _picker.pickImage(source: ImageSource.gallery);
-                            if (picked != null) setState(() => _identityCardImage = picked);
+                          final picked = await _picker.pickImage(
+                              source: ImageSource.gallery);
+                          if (picked != null) {
+                            setState(() => _identityCardImage = picked);
+                          }
                         },
-                        icon: const Icon(Icons.credit_card, color: AppColors.gold),
-                        label: const Text("Changer la carte d’identité", style: TextStyle(color: AppColors.gold)),
-                        ),
-                        const SizedBox(height: 16),
+                        icon: const Icon(Icons.credit_card,
+                            color: AppColors.gold),
+                        label: const Text('Changer la carte d’identité',
+                            style: TextStyle(color: AppColors.gold)),
+                      ),
+                      const SizedBox(height: 16),
                     ],
-                    );
+                  );
                 },
-                ),
+              ),
 
-                _buildTextField(firstNameController, "Prénom"),
-                _buildTextField(lastNameController, "Nom"),
-                _buildTextField(emailController, "Email", enabled: false),
-                _buildTextField(phoneController, "Téléphone"),
-                _buildTextField(addressController, "Adresse"),
-                GestureDetector(
+              _buildTextField(firstNameController, 'Prénom'),
+              _buildTextField(lastNameController, 'Nom'),
+              _buildTextField(emailController, 'Email', enabled: false),
+              _buildTextField(phoneController, 'Téléphone'),
+              _buildTextField(addressController, 'Adresse'),
+              GestureDetector(
                 onTap: _selectBirthDate,
                 child: AbsorbPointer(
-                    child: _buildTextField(birthdateController, "Date de naissance"),
-                ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
+                    child: _buildTextField(
+                        birthdateController, 'Date de naissance')),
+              ),
+
+              const SizedBox(height: 24),
+              ElevatedButton(
                 onPressed: _submit,
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: AppColors.black,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: AppColors.black,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _isSubmitting
                     ? const CircularProgressIndicator(color: AppColors.black)
-                    : const Text("Enregistrer les modifications"),
-                )
+                    : const Text('Enregistrer les modifications'),
+              ),
             ],
-            ),
+          ),
         ),
-        ),
+      ),
     );
-    }
-
-    Future<Widget> _buildProfileImage() async {
-  if (_selectedImage != null) {
-    if (kIsWeb) {
-      final bytes = await _selectedImage!.readAsBytes();
-      return ClipOval(child: Image.memory(bytes, width: 100, height: 100, fit: BoxFit.cover));
-    } else {
-      return ClipOval(child: Image.file(File(_selectedImage!.path), width: 100, height: 100, fit: BoxFit.cover));
-    }
-  } else if (existingPhotoUrl != null) {
-    return ClipOval(child: Image.network(existingPhotoUrl!, width: 100, height: 100, fit: BoxFit.cover));
-  } else {
-    return const SizedBox.shrink();
   }
-}
 
-    Future<Widget> _buildIdCardImage() async {
+  // ————— Helpers UI/preview
+  Future<Widget> _buildProfileImage() async {
+    if (_selectedImage != null) {
+      if (kIsWeb) {
+        final bytes = await _selectedImage!.readAsBytes();
+        return ClipOval(
+          child:
+              Image.memory(bytes, width: 160, height: 160, fit: BoxFit.cover),
+        );
+      } else {
+        return ClipOval(
+          child: Image.file(File(_selectedImage!.path),
+              width: 160, height: 160, fit: BoxFit.cover),
+        );
+      }
+    } else if (existingPhotoUrl != null && existingPhotoUrl!.isNotEmpty) {
+      final bust = _bust(existingPhotoUrl!);
+      return ClipOval(
+        child: Image.network(bust, width: 160, height: 160, fit: BoxFit.cover),
+      );
+    } else {
+      return ClipOval(
+        child: Image.asset('assets/images/user_placeholder.png',
+            width: 160, height: 160, fit: BoxFit.cover),
+      );
+    }
+  }
+
+  Future<Widget> _buildIdCardImage() async {
     if (_identityCardImage != null) {
-        if (kIsWeb) {
+      if (kIsWeb) {
         final bytes = await _identityCardImage!.readAsBytes();
         return ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.memory(bytes, height: 120),
+          borderRadius: BorderRadius.circular(16),
+          child: Image.memory(bytes, height: 120),
         );
-        } else {
+      } else {
         return ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.file(File(_identityCardImage!.path), height: 120),
+          borderRadius: BorderRadius.circular(16),
+          child: Image.file(File(_identityCardImage!.path), height: 120),
         );
-        }
-    } else if (existingIdCardUrl != null) {
-        return ClipRRect(
+      }
+    } else if (existingIdCardUrl != null && existingIdCardUrl!.isNotEmpty) {
+      final bust = _bust(existingIdCardUrl!);
+      return ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Image.network(existingIdCardUrl!, height: 120),
-        );
+        child: Image.network(bust, height: 120),
+      );
     } else {
-        return const SizedBox.shrink();
+      return const SizedBox.shrink();
     }
-    }
+  }
 
-
-
-  Widget _buildTextField(TextEditingController controller, String label, {bool enabled = true}) {
+  Widget _buildTextField(TextEditingController controller, String label,
+      {bool enabled = true}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextFormField(
@@ -314,13 +364,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           labelText: label,
           labelStyle: const TextStyle(color: Colors.grey),
           enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.gold)),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.gold),
+          ),
           focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
+          ),
         ),
-        validator: (v) => v == null || v.trim().isEmpty ? "Champ requis" : null,
+        validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
       ),
     );
   }

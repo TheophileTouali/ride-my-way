@@ -1,29 +1,34 @@
+// lib/main.dart
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 
-// 🔔 Notifications & FCM
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-
-// Ton router & options
+// Firebase core
+import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+
+// Router & providers
 import 'config/app_routes.dart';
 import 'providers/user_provider.dart';
 import 'providers/driver_provider.dart';
+import 'package:provider/provider.dart';
 
-// ────────────────────────────────────────────────────────────────────────────
-// Notifications locales (service minimal ici pour garder ton fichier autonome)
-// Si tu as déjà NotificationService dans /services, importe-le plutôt.
-// ────────────────────────────────────────────────────────────────────────────
+// Stripe (po garde comme avant)
+import 'package:flutter_stripe/flutter_stripe.dart';
+
+// ─────────────────────────────────────────────
+// NOTIFS & FCM — entièrement NO-OP sur le Web
+// ─────────────────────────────────────────────
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+bool get _isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
 final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
+
 const AndroidNotificationChannel _nearbyChannel = AndroidNotificationChannel(
   'nearby_courses_channel',
   'Courses proches',
@@ -36,25 +41,22 @@ const AndroidNotificationChannel _nearbyChannel = AndroidNotificationChannel(
 );
 
 Future<void> _initLocalNotifications() async {
-  // iOS
+  if (!_isMobile) return; // ← rien à faire sur le Web
+
   const iosInit = DarwinInitializationSettings(
     requestAlertPermission: true,
     requestSoundPermission: true,
     requestBadgePermission: true,
   );
-
-  // Android
   const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
 
   await _flnp.initialize(
     const InitializationSettings(android: androidInit, iOS: iosInit),
     onDidReceiveNotificationResponse: (resp) async {
-      // 👉 Ici tu peux ouvrir directement ton écran ou ton dialogue
-      // ex: AppRoutes.router.go('/driver-home?openNearbyDialog=1');
+      // Exemple: AppRoutes.router.go('/driver-home?openNearbyDialog=1');
     },
   );
 
-  // Canal Android
   final android = _flnp.resolvePlatformSpecificImplementation<
       AndroidFlutterLocalNotificationsPlugin>();
   await android?.createNotificationChannel(_nearbyChannel);
@@ -64,6 +66,7 @@ Future<void> _showNearbyHeadsUp({
   required String title,
   required String body,
 }) async {
+  if (!_isMobile) return; // ← pas de notif locale sur Web
   await _flnp.show(
     1001,
     title,
@@ -78,7 +81,7 @@ Future<void> _showNearbyHeadsUp({
         playSound: true,
         sound: const RawResourceAndroidNotificationSound('urgent_alert'),
         enableVibration: true,
-        category: AndroidNotificationCategory.call, // heads-up agressif
+        category: AndroidNotificationCategory.call,
         visibility: NotificationVisibility.public,
       ),
       iOS: const DarwinNotificationDetails(
@@ -91,29 +94,22 @@ Future<void> _showNearbyHeadsUp({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// FCM background handler (obligatoirement top-level)
-// Affiche une notif locale quand un push arrive écran éteint / app en BG.
-// ────────────────────────────────────────────────────────────────────────────
+// Doit être top-level; sera enregistré uniquement sur mobile.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Important : init Firebase dans le handler BG
+  if (!_isMobile) return;
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final title = message.notification?.title ?? 'Course proche disponible';
   final body = message.notification?.body ??
       '${message.data['from'] ?? 'Départ'} ➜ ${message.data['to'] ?? 'Arrivée'}';
 
-  // Initialise le plugin local si besoin (no-op si déjà fait)
   await _initLocalNotifications();
   await _showNearbyHeadsUp(title: title, body: body);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Enregistrement du token FCM dans drivers/{uid}.fcmToken
-// Appelé au démarrage et à chaque refresh de token.
-// ────────────────────────────────────────────────────────────────────────────
 Future<void> _saveDriverFcmToken() async {
+  if (!_isMobile) return;
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
 
@@ -126,11 +122,50 @@ Future<void> _saveDriverFcmToken() async {
   );
 }
 
+Future<void> _initFcmMobileOnly() async {
+  if (!_isMobile) {
+    debugPrint('🔕 FCM ignoré sur le Web (pas de service worker configuré)');
+    return;
+  }
+
+  await _initLocalNotifications();
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+    provisional: false,
+  );
+
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+    final title = message.notification?.title ?? 'Course proche disponible';
+    final body = message.notification?.body ??
+        '${message.data['from'] ?? 'Départ'} ➜ ${message.data['to'] ?? 'Arrivée'}';
+    await _showNearbyHeadsUp(title: title, body: body);
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((_) {
+    // Exemple: AppRoutes.router.go('/driver-home?openNearbyDialog=1');
+  });
+
+  FirebaseAuth.instance.authStateChanges().listen((u) async {
+    if (u != null) await _saveDriverFcmToken();
+  });
+
+  FirebaseMessaging.instance.onTokenRefresh
+      .listen((_) => _saveDriverFcmToken());
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Stripe (inchangé)
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Stripe
   if (!kIsWeb) {
     Stripe.publishableKey = const String.fromEnvironment(
       'STRIPE_PK',
@@ -141,51 +176,10 @@ Future<void> main() async {
       Stripe.merchantIdentifier = 'merchant.com.example.ride_my_way';
     }
     Stripe.urlScheme = 'flutterstripe';
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        await Stripe.instance.applySettings();
-      } catch (e, st) {
-        // ignore: avoid_print
-        print('⚠️ Stripe applySettings post-frame failed: $e\n$st');
-      }
-    });
   }
 
-  // 🔔 Notifications locales + FCM
-  await _initLocalNotifications();
-
-  // Enregistre le handler background FCM
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Permissions de notifications (iOS + Android 13+)
-  final settings = await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-    provisional: false,
-  );
-  // print('FCM permission: ${settings.authorizationStatus}');
-
-  // Foreground messages → on affiche une notif locale heads-up
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-    final title = message.notification?.title ?? 'Course proche disponible';
-    final body = message.notification?.body ??
-        '${message.data['from'] ?? 'Départ'} ➜ ${message.data['to'] ?? 'Arrivée'}';
-    await _showNearbyHeadsUp(title: title, body: body);
-  });
-
-  // Tap sur la notif quand l’app est en background → ici tu peux router
-  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-    // Ex: AppRoutes.router.go('/driver-home?openNearbyDialog=1');
-  });
-
-  // Sauvegarde le token FCM quand l’utilisateur est connecté
-  FirebaseAuth.instance.authStateChanges().listen((u) async {
-    if (u != null) await _saveDriverFcmToken();
-  });
-  // Et quand le token refresh
-  FirebaseMessaging.instance.onTokenRefresh
-      .listen((_) => _saveDriverFcmToken());
+  // 🔔 FCM/Notifs → seulement Android/iOS
+  await _initFcmMobileOnly();
 
   runApp(const RideMyWayApp());
 }
@@ -209,12 +203,15 @@ class RideMyWayApp extends StatelessWidget {
           scaffoldBackgroundColor: Colors.black,
         ),
         routerConfig: AppRoutes.router,
-        localizationsDelegates: const [
+        localizationsDelegates: [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        supportedLocales: const [Locale('fr', 'FR'), Locale('en', 'US')],
+        supportedLocales: const [
+          Locale('fr', 'FR'),
+          Locale('en', 'US'),
+        ],
       ),
     );
   }

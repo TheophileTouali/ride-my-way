@@ -14,6 +14,7 @@ import '../screens/forgot_password_screen.dart';
 import '../screens/reset_password_screen.dart';
 import '../screens/passenger_profile_screen.dart';
 import '../screens/driver_profile_screen.dart';
+import '../screens/edit_driver_profile_screen.dart';
 import '../screens/edit_preferences_screen.dart';
 import '../screens/passenger_preferences_editor_screen.dart';
 import '../screens/reservations_screen.dart';
@@ -22,7 +23,7 @@ import '../screens/results_screen.dart';
 import '../screens/signup_driver_screen.dart';
 import '../screens/signup_screen.dart';
 import '../screens/driver_home_screen.dart';
-import '../screens/confirmation_screen.dart'; 
+import '../screens/confirmation_screen.dart';
 import '../screens/booking_success_screen.dart';
 import '../screens/driver_search_screen.dart';
 import '../screens/live_tracking_screen.dart';
@@ -34,11 +35,6 @@ import '../screens/feedback_driver_screen.dart';
 import '../screens/edit_profile_screen.dart';
 import '../screens/payment_success_screen.dart';
 import '../screens/payment_cancel_screen.dart';
-
-
-
-
-
 
 // 👈 ajoute ce fichier à ton projet
 
@@ -57,6 +53,10 @@ class AppRoutes {
       GoRoute(
         path: '/login-driver',
         builder: (context, state) => const DriverLoginScreen(),
+      ),
+      GoRoute(
+        path: '/edit-driver-profile',
+        builder: (context, state) => const EditDriverProfileScreen(),
       ),
       GoRoute(
         path: '/preferences-edit',
@@ -162,89 +162,72 @@ class AppRoutes {
           );
         },
       ),
-            GoRoute(
+      GoRoute(
         path: '/success',
         builder: (context, state) => const BookingSuccessScreen(),
       ),
-
       GoRoute(
-      path: '/driver/live_tracking/:reservationId',
-      builder: (context, state) => LiveTrackingScreen(
-        reservationId: state.pathParameters['reservationId']!,
+        path: '/driver/live_tracking/:reservationId',
+        builder: (context, state) => LiveTrackingScreen(
+          reservationId: state.pathParameters['reservationId']!,
+        ),
       ),
-    ),
-
-   GoRoute(
-      path: '/tracking/:reservationId',
-      name: 'tracking',
-      builder: (context, state) {
-        final id = state.pathParameters['reservationId']!;
-        return LiveTrackingPassengerScreen(reservationId: id);
-      },
-    ),
-
-
-
-    GoRoute(
-      path: '/driver/trip/:reservationId',
-      builder: (context, state) {
-        final reservationId = state.pathParameters['reservationId']!;
-        return DriverTripDetailScreen(reservationId: reservationId);
-      },
-    ),
-
-    GoRoute(
-      path: '/driver/pickup_tracking/:id',
-      name: 'driver-pickup-tracking',
-      builder: (context, state) {
-        final reservationId = state.pathParameters['id']!;
-        return DriverPickupTrackingScreen(reservationId: reservationId);
-      },
-    ),
-
-
       GoRoute(
-      path: '/searching',
-      builder: (context, state) {
-        final reservationId = state.uri.queryParameters['reservationId']!;
-        return DriverSearchScreen(reservationId: reservationId);
-      },
-    ),
-
-    GoRoute(
-      path: '/feedback/:reservationId',
-      builder: (context, state) {
-        final reservationId = state.pathParameters['reservationId']!;
-        return PassengerFeedbackScreen(reservationId: reservationId); // ✅ Corrigé
-      },
-    ),
-
-    GoRoute(
-      path: '/edit-profile',
-      builder: (context, state) => const EditProfileScreen(),
-    ),
-
-
-
-    GoRoute(
+        path: '/tracking/:reservationId',
+        name: 'tracking',
+        builder: (context, state) {
+          final id = state.pathParameters['reservationId']!;
+          return LiveTrackingPassengerScreen(reservationId: id);
+        },
+      ),
+      GoRoute(
+        path: '/driver/trip/:reservationId',
+        builder: (context, state) {
+          final reservationId = state.pathParameters['reservationId']!;
+          return DriverTripDetailScreen(reservationId: reservationId);
+        },
+      ),
+      GoRoute(
+        path: '/driver/pickup_tracking/:id',
+        name: 'driver-pickup-tracking',
+        builder: (context, state) {
+          final reservationId = state.pathParameters['id']!;
+          return DriverPickupTrackingScreen(reservationId: reservationId);
+        },
+      ),
+      GoRoute(
+        path: '/searching',
+        builder: (context, state) {
+          final reservationId = state.uri.queryParameters['reservationId']!;
+          return DriverSearchScreen(reservationId: reservationId);
+        },
+      ),
+      GoRoute(
+        path: '/feedback/:reservationId',
+        builder: (context, state) {
+          final reservationId = state.pathParameters['reservationId']!;
+          return PassengerFeedbackScreen(
+              reservationId: reservationId); // ✅ Corrigé
+        },
+      ),
+      GoRoute(
+        path: '/edit-profile',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
         path: '/feedback-driver/:reservationId',
         builder: (context, state) => DriverFeedbackScreen(
           reservationId: state.pathParameters['reservationId']!, // ✅ Corrigé
         ),
       ),
-
       GoRoute(
-          path: '/payment-success',
-          builder: (context, state) => const PaymentSuccessScreen(),
-        ),
-        GoRoute(
-          path: '/payment-cancel',
-          builder: (context, state) => const PaymentCancelScreen(),
-        ),
-
-
-
-
+        path: '/payment-success',
+        builder: (context, state) => const PaymentSuccessScreen(),
+      ),
+      GoRoute(
+        path: '/payment-cancel',
+        builder: (context, state) => const PaymentCancelScreen(),
+      ),
     ],
   );
 }

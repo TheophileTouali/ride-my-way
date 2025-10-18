@@ -186,7 +186,6 @@ class DriverProfileScreen extends StatelessWidget {
     if (picked == null) return;
 
     try {
-      // Sur Web, le path peut être "blob:..." => on déduit l’extension
       final isPng = picked.name.toLowerCase().endsWith('.png') ||
           picked.path.toLowerCase().endsWith('.png');
       final ext = isPng ? 'png' : 'jpg';
@@ -200,6 +199,7 @@ class DriverProfileScreen extends StatelessWidget {
 
       final metadata = SettableMetadata(
         contentType: contentType,
+        // important to beat caches:
         cacheControl: 'no-cache, max-age=0',
       );
 
@@ -215,13 +215,42 @@ class DriverProfileScreen extends StatelessWidget {
       final snap = await task;
       final url = await snap.ref.getDownloadURL();
 
-      // ⚠️ Ton provider accepte un String non-null => on envoie l’URL
-      await driverProvider.updateDriverDocument('photoUrl', url);
+      // 1) Update top-level photoUrl in Firestore
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(uid)
+            .set({'photoUrl': url}, SetOptions(merge: true));
+      }
 
-      // Optionnel: MAJ FirebaseAuth (si tu affiches user.photoURL ailleurs)
+      // 2) Optional but nice: update Auth profile photo too
       try {
         await FirebaseAuth.instance.currentUser?.updatePhotoURL(url);
       } catch (_) {}
+
+      // 3) Update the local provider user so UI refreshes right away
+      final current = driverProvider.user!;
+      driverProvider.setUser(
+        DriverUser(
+          uid: current.uid,
+          firstName: current.firstName,
+          lastName: current.lastName,
+          email: current.email,
+          phone: current.phone,
+          photoUrl: url, // <- updated
+          address: current.address,
+          birthdate: current.birthdate,
+          vehicleType: current.vehicleType,
+          vehicleBrand: current.vehicleBrand,
+          vehicleModel: current.vehicleModel,
+          vehicleYear: current.vehicleYear,
+          licensePlate: current.licensePlate,
+          driverLicenseNumber: current.driverLicenseNumber,
+          vehiclePhotoUrl: current.vehiclePhotoUrl,
+          documents: current.documents,
+        ),
+      );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -781,25 +810,31 @@ class DriverProfileScreen extends StatelessWidget {
       {"key": "idCardUrl", "label": "Pièce d'identité"},
     ];
 
-    print("📂 Documents utilisateur : ${user.documents}");
     return documents.map((doc) {
       final key = doc['key']!;
       final label = doc['label']!;
       final url = user.documents?[key];
       final hasUrl = url is String && url.isNotEmpty;
 
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white12),
+        ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
               hasUrl ? Icons.check_circle_rounded : Icons.cancel_rounded,
               color: hasUrl ? Colors.greenAccent : Colors.redAccent,
-              size: 18,
+              size: 20,
             ),
             const SizedBox(width: 10),
 
-            // Miniature si c'est une image
+            // Miniature image (si image disponible)
             if (hasUrl && _isImageUrl(url)) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -820,10 +855,12 @@ class DriverProfileScreen extends StatelessWidget {
               const SizedBox(width: 10),
             ],
 
-            // Libellé
+            // Libellé du document
             Expanded(
+              flex: 3,
               child: Text(
                 label,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: hasUrl ? Colors.white70 : Colors.white38,
                   fontSize: 15,
@@ -832,23 +869,35 @@ class DriverProfileScreen extends StatelessWidget {
               ),
             ),
 
-            // Bouton VOIR : image -> preview ; PDF -> navigateur
+            const SizedBox(width: 8),
+
+            // Bouton "Voir"
             if (hasUrl)
               TextButton(
                 onPressed: () => _isPdfUrl(url)
                     ? _openUrl(url)
                     : _previewImage(context, url),
-                child: const Text('Voir',
-                    style: TextStyle(color: AppColors.deepGold)),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.deepGold,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(50, 36),
+                ),
+                child: const Text('Voir'),
               ),
 
-            // Ajouter / Modifier
+            // Bouton "Modifier"
             TextButton.icon(
               onPressed: () => _uploadDocument(context, key, label),
               icon: const Icon(Icons.edit_rounded,
-                  size: 18, color: AppColors.deepGold),
-              label: Text(hasUrl ? 'Modifier' : 'Ajouter',
-                  style: const TextStyle(color: AppColors.deepGold)),
+                  size: 16, color: AppColors.deepGold),
+              label: Text(
+                hasUrl ? 'Modifier' : 'Ajouter',
+                style: const TextStyle(color: AppColors.deepGold),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(70, 36),
+              ),
             ),
           ],
         ),

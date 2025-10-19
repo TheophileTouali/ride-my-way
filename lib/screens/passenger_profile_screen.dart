@@ -470,31 +470,299 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
 
                         const SizedBox(height: 24),
 
-                        // —— Préférences
+                        // —— Préférences (NOUVELLE VERSION – étendue & rétro-compatible)
                         Builder(builder: (_) {
-                          final prefs =
+                          // 1) Prefs depuis Firestore (nouveau modèle)
+                          final Map<String, dynamic> prefsMap =
+                              (data['preferences'] as Map?)
+                                      ?.cast<String, dynamic>() ??
+                                  {};
+
+                          // 2) Fallback vers le provider (legacy déjà chargé en mémoire)
+                          final legacy =
                               Provider.of<UserProvider>(context).preferences;
+
+                          // Helpers d’affichage
+                          String s(String key, {String? orElse}) {
+                            final v = prefsMap[key];
+                            if (v == null) return orElse ?? '—';
+                            final str = v.toString().trim();
+                            return str.isEmpty ? (orElse ?? '—') : str;
+                          }
+
+                          bool b(String key, {bool? orElse}) {
+                            final v = prefsMap[key];
+                            if (v is bool) return v;
+                            return orElse ?? false;
+                          }
+
+                          String listStr(String key) {
+                            final v = prefsMap[key];
+                            if (v is List && v.isNotEmpty) {
+                              return v.map((e) => e.toString()).join(', ');
+                            }
+                            return '—';
+                          }
+
+                          // ===== Conditions d'affichage côté PROFIL =====
+                          bool showMusicStyle() =>
+                              (prefsMap['music'] == true) &&
+                              (s('ambiance') != 'Silencieux');
+
+                          bool showTemperatureLevel() =>
+                              (prefsMap['temperature'] == true);
+
+                          bool showScentLevel() =>
+                              (prefsMap['perfume'] == true);
+
+                          bool isMoto() => s('vehicleType') == 'Moto';
+
+                          Widget lineIf(
+                                  bool cond, String label, dynamic value) =>
+                              cond
+                                  ? _preferenceItem(label, value)
+                                  : const SizedBox.shrink();
+
+                          // Valeurs avec fallback (compat descendante)
+                          final ambiance =
+                              s('ambiance', orElse: legacy.ambiance);
+                          final musicOn = b('music', orElse: legacy.music);
+                          final perfumeOn =
+                              b('perfume', orElse: legacy.perfume);
+                          final tempSwitchOn =
+                              b('temperature', orElse: legacy.temperature);
+                          final wifiOn = b('wifi', orElse: legacy.wifi);
+                          final smokeFreeOn =
+                              b('smokeFree', orElse: legacy.smokeFree);
+                          final petsOn = b('pets', orElse: legacy.pets);
+
                           return _sectionCard(
                             title: '🎧 Vos préférences de trajet',
                             children: [
-                              _preferenceItem('Ambiance', prefs.ambiance),
-                              const Divider(color: Colors.white10, height: 26),
+                              // 1) Ambiance & confort intérieur
+                              Text(
+                                '🚗 Ambiance et confort intérieur',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               _preferenceItem(
-                                  'Playlist exclusive', prefs.music),
-                              const Divider(color: Colors.white10, height: 26),
+                                  'Ambiance sonore (niveau de musique)',
+                                  ambiance),
+                              const SizedBox(height: 8),
+                              lineIf(
+                                  showMusicStyle(),
+                                  'Style musical (genre favori)',
+                                  s('musicStyle', orElse: '—')),
+                              const SizedBox(height: 8),
                               _preferenceItem(
-                                  'Parfum d’ambiance', prefs.perfume),
-                              const Divider(color: Colors.white10, height: 26),
+                                  'Conversation (interaction souhaitée)',
+                                  s('conversation', orElse: '—')),
+                              const SizedBox(height: 8),
+                              lineIf(
+                                  showTemperatureLevel(),
+                                  'Température (préférence de climatisation)',
+                                  s('temperatureLevel', orElse: '—')),
+                              const SizedBox(height: 8),
+                              lineIf(
+                                  showScentLevel(),
+                                  'Parfum / désodorisant',
+                                  s('scentLevel',
+                                      orElse: perfumeOn ? 'Oui' : 'Non')),
+                              const SizedBox(height: 8),
+                              lineIf(
+                                  !isMoto(),
+                                  'Lumière d’ambiance (couleur/intensité)',
+                                  s('ambientLight', orElse: '—')),
+                              const SizedBox(height: 8),
                               _preferenceItem(
-                                  'Température réglée', prefs.temperature),
-                              const Divider(color: Colors.white10, height: 26),
-                              _preferenceItem('Wi-Fi premium', prefs.wifi),
-                              const Divider(color: Colors.white10, height: 26),
+                                  'Playlist exclusive (on/off)', musicOn),
+                              const SizedBox(height: 8),
                               _preferenceItem(
-                                  'Trajet non-fumeur', prefs.smokeFree),
+                                  'Température réglée (on/off)', tempSwitchOn),
+
                               const Divider(color: Colors.white10, height: 26),
+
+                              // 2) Confort physique & ergonomique
+                              Text(
+                                '🪑 Confort physique et ergonomique',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               _preferenceItem(
-                                  'Animaux élégants acceptés', prefs.pets),
+                                  'Position du siège (avant / arrière)',
+                                  s('seatPosition', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Réglage du siège (inclinaison)',
+                                  s('seatIncline', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Chargeur / USB',
+                                  s('chargerUsb', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Wi-Fi', wifiOn),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Eau / Boisson', s('water', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Snacks', s('snacks', orElse: '—')),
+
+                              const Divider(color: Colors.white10, height: 26),
+
+                              // 3) Environnement & hygiène
+                              Text(
+                                '🚭 Environnement et hygiène',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Véhicule non-fumeur', smokeFreeOn),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Véhicule désinfecté',
+                                  b('disinfected', orElse: false)),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Animaux acceptés', petsOn),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Silence à bord',
+                                  b('silentRide', orElse: false)),
+
+                              const Divider(color: Colors.white10, height: 26),
+
+                              // 4) Style de conduite
+                              Text(
+                                '🏎️ Style de conduite',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Conduite (douce / normale / dynamique)',
+                                  s('drivingStyle', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Vitesse moyenne (équilibrée / rapide)',
+                                  s('avgSpeed', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Suspension / type de véhicule (souple / sport)',
+                                  s('suspension', orElse: '—')),
+
+                              const Divider(color: Colors.white10, height: 26),
+
+                              // 5) Esthétique & premium
+                              Text(
+                                '🧥 Préférences esthétiques et premium',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Type de véhicule',
+                                  s('vehicleType', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Couleur intérieure',
+                                  s('interiorColor', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Marques préférées', listStr('brands')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Chauffeur attitré',
+                                  b('preferredDriver', orElse: false)),
+
+                              const Divider(color: Colors.white10, height: 26),
+
+                              // 6) Spécifiques moto (uniquement si Moto)
+                              if (isMoto()) ...[
+                                Text(
+                                  '🏍️ Spécifiques moto',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    letterSpacing: .2,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                _preferenceItem('Type de casque',
+                                    s('helmetType', orElse: '—')),
+                                const SizedBox(height: 8),
+                                _preferenceItem('Hygiène casque',
+                                    s('helmetHygiene', orElse: '—')),
+                                const SizedBox(height: 8),
+                                _preferenceItem('Tenue / protections',
+                                    s('protections', orElse: '—')),
+                                const SizedBox(height: 8),
+                                _preferenceItem('Vitesse de conduite (moto)',
+                                    s('motoSpeed', orElse: '—')),
+                                const SizedBox(height: 8),
+                                _preferenceItem('Discussion en intercom',
+                                    b('intercom', orElse: false)),
+                                const Divider(
+                                    color: Colors.white10, height: 26),
+                              ],
+
+                              // 7) Écologie & éthique
+                              Text(
+                                '🌍 Préférences écologiques et éthiques',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Type d’énergie',
+                                  s('energyType', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Compensation carbone',
+                                  b('carbonOffset', orElse: false)),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Silence moteur',
+                                  b('engineSilence', orElse: false)),
+
+                              const Divider(color: Colors.white10, height: 26),
+
+                              // 8) Paiement & réservation
+                              Text(
+                                '💳 Paiement et réservation',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  letterSpacing: .2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Mode de paiement',
+                                  s('paymentMode', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem(
+                                  'Facture', s('invoiceMethod', orElse: '—')),
+                              const SizedBox(height: 8),
+                              _preferenceItem('Notifications',
+                                  s('notifications', orElse: '—')),
                             ],
                           );
                         }),

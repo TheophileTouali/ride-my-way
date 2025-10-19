@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,8 +8,19 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
+
+// ---- Config clé Google (évite le hardcode; fallback si non fournie) ----
+const String kGooglePlacesApiKey = String.fromEnvironment(
+  'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI',
+  defaultValue: 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI',
+);
 
 // --- Réputation passager (top-level) ---
 class _Reputation {
@@ -39,6 +51,55 @@ class _Reputation {
   });
 }
 
+// ---- Simple Shimmer sans package ----
+class _Shimmer extends StatefulWidget {
+  final double height;
+  final double width;
+  final BorderRadius radius;
+  const _Shimmer({
+    required this.height,
+    this.width = double.infinity,
+    this.radius = const BorderRadius.all(Radius.circular(16)),
+  });
+  @override
+  State<_Shimmer> createState() => _ShimmerState();
+}
+
+class _ShimmerState extends State<_Shimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 2))
+        ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        return Container(
+          height: widget.height,
+          width: widget.width,
+          decoration: BoxDecoration(
+            borderRadius: widget.radius,
+            gradient: LinearGradient(
+              begin: Alignment(-1 + 2 * _c.value, 0),
+              end: Alignment(1 + 2 * _c.value, 0),
+              colors: [Colors.grey[850]!, Colors.grey[800]!, Colors.grey[850]!],
+              stops: const [0.25, 0.5, 0.75],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -50,15 +111,49 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(viewportFraction: 0.9);
   final TextEditingController _fromController = TextEditingController();
   final TextEditingController _toController = TextEditingController();
-  int _currentPage = 0;
   String _hintFrom = "Détection en cours...";
   List<Map<String, dynamic>> _trips = [];
+  Map<String, dynamic>? _weather;
+  bool _weatherLoading = false;
+
+  // Quick places (Maison/Travail/Aéroports)
+  List<Map<String, String>> _quickPlaces = [];
+
+  // Destinations récentes (local)
+  List<String> _recentDestinations = [];
+
+  // Navigation guard
+  bool _isNavigating = false;
 
   // Grille des rangs PAR NOMBRE DE TRAJETS
   static const int bronzeMin = 1; // >=1
   static const int argentMin = 100; // suggestion
   static const int orMin = 250; // ✅ Or à 250
   static const int diamantMin = 500; // ✅ Diamant à 500
+
+  @override
+  void initState() {
+    super.initState();
+    _initIntl();
+    _detectCurrentLocation();
+    _loadTrips();
+    _loadQuickPlaces();
+    _loadRecentDestinations();
+    _initWeather();
+  }
+
+  void _initIntl() {
+    // Assure le locale fr pour les formats de date
+    Intl.defaultLocale = 'fr_FR';
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _fromController.dispose();
+    _toController.dispose();
+    super.dispose();
+  }
 
   String _rankFromTrips(int trips) {
     if (trips >= diamantMin) return "Voyageur Diamant";
@@ -93,11 +188,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return p; // 0..1
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _detectCurrentLocation();
-    _loadTrips();
+  Future<void> _initWeather() async {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      perm = await Geolocator.requestPermission();
+    }
+    await _loadWeather();
   }
 
   Future<void> _loadTrips() async {
@@ -108,6 +205,8 @@ class _HomeScreenState extends State<HomeScreen> {
         .collection('reservations')
         .where('userId', isEqualTo: user.uid)
         .get();
+
+    if (!mounted) return;
 
     final now = DateTime.now();
 
@@ -149,9 +248,60 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Quick places facultatifs: users/{uid}/places (label, address)
+  Future<void> _loadQuickPlaces() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('places')
+          .get();
+
+      if (!mounted) return;
+
+      final items = snap.docs
+          .map((d) {
+            final m = d.data();
+            final label = (m['label'] ?? '').toString();
+            final address = (m['address'] ?? '').toString();
+            if (label.isEmpty || address.isEmpty) return null;
+            return {"label": label, "address": address};
+          })
+          .whereType<Map<String, String>>()
+          .toList();
+
+      setState(() => _quickPlaces = items.take(6).toList());
+    } catch (_) {
+      // silencieux -> rien à afficher
+    }
+  }
+
+  // Historique local de 3 destinations
+  Future<void> _loadRecentDestinations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('recent_destinations') ?? <String>[];
+    if (!mounted) return;
+    setState(() => _recentDestinations = list.take(3).toList());
+  }
+
+  Future<void> _saveRecentDestination(String dest) async {
+    if (dest.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('recent_destinations') ?? <String>[];
+    // place en tête, unicité
+    list.remove(dest);
+    list.insert(0, dest);
+    await prefs.setStringList('recent_destinations', list.take(10).toList());
+    if (!mounted) return;
+    setState(() => _recentDestinations = list.take(3).toList());
+  }
+
   String _formatDate(Timestamp timestamp) {
     final date = timestamp.toDate();
-    return "${date.day}/${date.month} à ${date.hour}h${date.minute.toString().padLeft(2, '0')}";
+    final f = DateFormat('EEE d MMM • HH:mm', 'fr_FR');
+    return f.format(date);
   }
 
   Future<void> _detectCurrentLocation() async {
@@ -178,15 +328,21 @@ class _HomeScreenState extends State<HomeScreen> {
           placemarks.first.administrativeArea ??
           "Votre position";
 
+      if (!mounted) return;
       setState(() {
         _fromController.text = city;
         _hintFrom = city;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _hintFrom = "Saisir votre point de départ";
       });
     }
+  }
+
+  Future<void> _openLocationSettings() async {
+    await Geolocator.openLocationSettings();
   }
 
   String _getGreeting() {
@@ -320,6 +476,194 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // -------------------- UI utilitaires --------------------
+
+  Future<void> _loadWeather() async {
+    try {
+      setState(() => _weatherLoading = true);
+
+      // utilise la même permission que la détection de ville
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+      );
+
+      final uri = Uri.parse(
+        'https://api.open-meteo.com/v1/forecast'
+        '?latitude=${pos.latitude}&longitude=${pos.longitude}'
+        '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m',
+      );
+
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body) as Map<String, dynamic>;
+        final cur = (j['current'] as Map?) ?? {};
+        if (!mounted) return;
+        setState(() {
+          _weather = {
+            't': (cur['temperature_2m'] ?? 0).toDouble(),
+            'feels': (cur['apparent_temperature'] ?? 0).toDouble(),
+            'code': (cur['weather_code'] ?? -1).toInt(),
+            'wind': (cur['wind_speed_10m'] ?? 0).toDouble(),
+          };
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _weather = null);
+    } finally {
+      if (!mounted) return;
+      setState(() => _weatherLoading = false);
+    }
+  }
+
+  String _wmoLabel(int code) {
+    switch (code) {
+      case 0:
+        return "Ciel clair";
+      case 1:
+      case 2:
+        return "Partiellement nuageux";
+      case 3:
+        return "Couvert";
+      case 45:
+      case 48:
+        return "Brouillard";
+      case 51:
+      case 53:
+      case 55:
+        return "Bruine";
+      case 61:
+      case 63:
+      case 65:
+        return "Pluie";
+      case 66:
+      case 67:
+        return "Pluie verglaçante";
+      case 71:
+      case 73:
+      case 75:
+        return "Neige";
+      case 77:
+        return "Grésil";
+      case 80:
+      case 81:
+      case 82:
+        return "Averses";
+      case 85:
+      case 86:
+        return "Averses de neige";
+      case 95:
+        return "Orage";
+      case 96:
+      case 99:
+        return "Orage violent";
+      default:
+        return "Météo";
+    }
+  }
+
+  IconData _wmoIcon(int code) {
+    switch (code) {
+      case 0:
+        return Icons.wb_sunny_rounded;
+      case 1:
+      case 2:
+        return Icons.wb_cloudy_rounded;
+      case 3:
+        return Icons.cloud_rounded;
+      case 45:
+      case 48:
+        return Icons.foggy;
+      case 51:
+      case 53:
+      case 55:
+      case 61:
+      case 63:
+      case 65:
+      case 80:
+      case 81:
+      case 82:
+        return Icons.umbrella_rounded;
+      case 66:
+      case 67:
+        return Icons.ac_unit_rounded;
+      case 71:
+      case 73:
+      case 75:
+      case 85:
+      case 86:
+        return Icons.ac_unit_rounded;
+      case 95:
+      case 96:
+      case 99:
+        return Icons.thunderstorm_rounded;
+      default:
+        return Icons.wb_cloudy_rounded;
+    }
+  }
+
+  Widget _weatherSection() {
+    if (_weatherLoading) {
+      return const _Shimmer(height: 74);
+    }
+    if (_weather == null) return const SizedBox.shrink();
+
+    final t = (_weather!['t'] as double).toStringAsFixed(1);
+    final feels = (_weather!['feels'] as double).toStringAsFixed(1);
+    final wind = (_weather!['wind'] as double).toStringAsFixed(0);
+    final code = _weather!['code'] as int;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.gold.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Icon(_wmoIcon(code), color: AppColors.gold, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _wmoLabel(code),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'PlayfairDisplay',
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Ressenti $feels° • Vent $wind km/h",
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            "$t°",
+            style: const TextStyle(
+              color: AppColors.gold,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'PlayfairDisplay',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _reputationCard(_Reputation rep) {
     return Container(
@@ -485,6 +829,13 @@ class _HomeScreenState extends State<HomeScreen> {
       nextTarget = bronzeMin; // 1
     }
 
+    final tooltipText = rank == "Voyageur Diamant"
+        ? "Félicitations ! Vous avez atteint le rang maximum."
+        : "Il vous reste ${nextTarget - rep.completedTrips} trajets pour atteindre le prochain rang.";
+
+    final currency =
+        NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 0);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -540,12 +891,26 @@ class _HomeScreenState extends State<HomeScreen> {
               "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %"),
           _fusionInfoRow(
               "Chauffeurs satisfaits", "${rep.satisfied} / ${rep.total}"),
+          _fusionInfoRow("Cumul dépensé", currency.format(rep.totalSpend)),
 
-          // ——— ICI: barre de progression + aide ———
           const SizedBox(height: 14),
-          Text(nextLabel,
+          Tooltip(
+            message: tooltipText,
+            preferBelow: true,
+            child: Text(
+              rank == "Voyageur Diamant"
+                  ? "Rang maximum atteint"
+                  : (rank == "Voyageur d'Or"
+                      ? "Progrès vers Voyageur Diamant ($diamantMin)"
+                      : (rank == "Voyageur d'Argent"
+                          ? "Progrès vers Voyageur d'Or ($orMin)"
+                          : (rank == "Voyageur de Bronze"
+                              ? "Progrès vers Voyageur d'Argent ($argentMin)"
+                              : "Progrès vers Voyageur de Bronze ($bronzeMin)"))),
               style: const TextStyle(
-                  color: Colors.white70, fontFamily: 'PlayfairDisplay')),
+                  color: Colors.white70, fontFamily: 'PlayfairDisplay'),
+            ),
+          ),
           const SizedBox(height: 8),
           _progressBar(rep.progressToNext),
           if (rank != "Voyageur Diamant") ...[
@@ -752,6 +1117,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return "—";
   }
 
+  void _submitSearch() {
+    if (_isNavigating) return;
+    final from = _fromController.text.trim();
+    final to = _toController.text.trim();
+    if (from.isEmpty || to.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Merci de renseigner le départ et la destination"),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+    _isNavigating = true;
+    HapticFeedback.lightImpact();
+    _saveRecentDestination(to);
+    context.go('/results?from=$from&to=$to');
+    Future.delayed(const Duration(milliseconds: 600), () {
+      _isNavigating = false;
+    });
+  }
+
+  void _rebookLastTrip() {
+    final last = _trips.firstWhere(
+      (t) => t['title'] == 'Dernier trajet',
+      orElse: () => {},
+    );
+    if (last.isEmpty) return;
+    _fromController.text = last['from'] ?? '';
+    _toController.text = last['to'] ?? '';
+    _submitSearch();
+  }
+
   // -------------------- BUILD --------------------
   @override
   Widget build(BuildContext context) {
@@ -789,6 +1187,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         icon: const Icon(Icons.person_outline,
                             color: AppColors.gold),
                         onPressed: () => context.go('/profile'),
+                        tooltip: 'Profil',
                       ),
                     ],
                   ),
@@ -813,6 +1212,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        _weatherSection(),
                         const SizedBox(height: 6),
                         const Text(
                           "Préparez-vous à vivre un trajet d’exception. ✨",
@@ -825,12 +1226,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 20),
+
+                  // Si GPS off/perms refusées -> info discrète
+                  if (_hintFrom == "Saisir votre point de départ")
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.redAccent.withOpacity(0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.location_off,
+                              color: Colors.redAccent),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              "Activez la localisation pour détecter votre ville automatiquement.",
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _openLocationSettings,
+                            child: const Text("Activer",
+                                style: TextStyle(color: Colors.redAccent)),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Champ départ
                   GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _fromController,
-                    googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                    googleAPIKey: kGooglePlacesApiKey,
                     debounceTime: 800,
-                    countries: ["fr"],
+                    countries: const ["fr"],
                     fetchCoordinates: true,
                     style: const TextStyle(color: Colors.white),
                     decoration:
@@ -846,26 +1280,36 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: child,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // Chips rapides (facultatifs)
+                  _quickPlaces.isEmpty
+                      ? const SizedBox.shrink()
+                      : _quickPlacesChips(),
+
+                  // Historique destinations récentes (facultatif)
+                  _recentDestinations.isEmpty
+                      ? const SizedBox.shrink()
+                      : _recentRow(),
+
+                  const SizedBox(height: 8),
+
+                  // Champ destination
                   GooglePlacesAutoCompleteTextFormField(
                     textEditingController: _toController,
-                    googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                    googleAPIKey: kGooglePlacesApiKey,
                     debounceTime: 800,
-                    countries: ["fr"],
+                    countries: const ["fr"],
                     fetchCoordinates: true,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(
                         "Entrer une destination", Icons.search),
                     onSuggestionClicked: (prediction) {
                       _toController.text = prediction.description!;
+                      _saveRecentDestination(prediction.description!);
                       FocusScope.of(context).unfocus();
                     },
-                    onEditingComplete: () {
-                      final from = _fromController.text.trim();
-                      final to = _toController.text.trim();
-                      if (to.isNotEmpty)
-                        context.go('/results?from=$from&to=$to');
-                    },
+                    onEditingComplete: _submitSearch,
                     overlayContainerBuilder: (child) => Material(
                       elevation: 2.0,
                       color: Colors.grey[900],
@@ -874,63 +1318,118 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  InkWell(
-                    onTap: () {
-                      final from = _fromController.text.trim();
-                      final to = _toController.text.trim();
-                      if (from.isNotEmpty && to.isNotEmpty) {
-                        context.go('/results?from=$from&to=$to');
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                                "Merci de renseigner le départ et la destination"),
-                            backgroundColor: Colors.redAccent,
+
+                  // Bouton rechercher
+                  Semantics(
+                    button: true,
+                    label: 'Trouver un véhicule',
+                    child: InkWell(
+                      onTap: _submitSearch,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Text(
-                          "Trouver un véhicule",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            fontFamily: 'PlayfairDisplay',
+                        child: const Center(
+                          child: Text(
+                            "Trouver un véhicule",
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              fontFamily: 'PlayfairDisplay',
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 24),
                   _homeButton(context, Icons.event_note, "Mes réservations",
                       '/reservations'),
                   _homeButton(context, Icons.favorite_border, "Mes favoris",
                       '/favorites'),
+
+                  // Carrousel trajets (Shimmer/Empty states élégants)
+                  if (_trips.isEmpty) ...[
+                    const _Shimmer(height: 160),
+                    const SizedBox(height: 8),
+                    _emptyTripsCard(),
+                  ] else
+                    Column(
+                      children: [
+                        SizedBox(
+                          height: 200,
+                          child: PageView.builder(
+                            controller: _pageController,
+                            padEnds: false,
+                            physics: const BouncingScrollPhysics(),
+                            // ❌ on retire ce setState global :
+                            // onPageChanged: (index) => setState(() => _currentPage = index),
+                            itemCount: _trips.length,
+                            itemBuilder: (context, index) {
+                              final trip = _trips[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12.0),
+                                child: _TripCard(
+                                  title: trip['title'],
+                                  from: trip['from'],
+                                  to: trip['to'],
+                                  date: trip['date'],
+                                  onRebook: _rebookLastTrip,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // ✅ Indicateurs animés sans rebuild global
+                        AnimatedBuilder(
+                          animation: _pageController,
+                          builder: (context, _) {
+                            final hasClients = _pageController.hasClients;
+                            final double? rawPage =
+                                hasClients ? _pageController.page : 0;
+                            final int current = rawPage?.round() ?? 0;
+
+                            return Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 6,
+                              children: List.generate(
+                                _trips.length,
+                                (index) => _buildDot(index == current),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+
                   const SizedBox(height: 28),
+
+                  // Réputation (Shimmer -> FutureBuilder)
                   FutureBuilder<_Reputation>(
                     future: _fetchPassengerReputation(),
                     builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const _Shimmer(height: 260);
+                      }
                       if (!snap.hasData) {
                         return const Center(
                           child: Padding(
@@ -941,49 +1440,56 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       }
                       final rep = snap.data!;
+                      final rank = _rankFromTrips(rep.completedTrips);
+
+                      // --- Message personnalisé selon le rang ---
+                      String message;
+                      switch (rank) {
+                        case "Voyageur Diamant":
+                          message =
+                              "Vous êtes au sommet, voyageur d’exception 💎";
+                          break;
+                        case "Voyageur d'Or":
+                          message =
+                              "Élégance et fidélité : vous brillez parmi les voyageurs d’Or ✨";
+                          break;
+                        case "Voyageur d'Argent":
+                          message =
+                              "Toujours plus haut ! Votre parcours inspire confiance 🥈";
+                          break;
+                        case "Voyageur de Bronze":
+                          message =
+                              "Chaque trajet compte : votre aventure commence 🥉";
+                          break;
+                        default:
+                          message = "Bienvenue dans l’univers Ride My Way ✨";
+                      }
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _reputationFusion(rep),
+                          const SizedBox(height: 10),
+                          Center(
+                            child: Text(
+                              message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.gold,
+                                fontSize: 16,
+                                fontFamily: 'PlayfairDisplay',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _reputationFusion(
+                              rep), // <-- Statistiques "Voyageur d'excellence"
                         ],
                       );
                     },
                   ),
+
                   const SizedBox(height: 28),
-                  if (_trips.isEmpty)
-                    const Center(
-                        child: CircularProgressIndicator(color: AppColors.gold))
-                  else
-                    Column(
-                      children: [
-                        SizedBox(
-                          height: 160,
-                          child: PageView.builder(
-                            controller: _pageController,
-                            onPageChanged: (index) =>
-                                setState(() => _currentPage = index),
-                            itemCount: _trips.length,
-                            itemBuilder: (context, index) {
-                              final trip = _trips[index];
-                              return _TripCard(
-                                title: trip['title'],
-                                from: trip['from'],
-                                to: trip['to'],
-                                date: trip['date'],
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(
-                            _trips.length,
-                            (index) => _buildDot(index == _currentPage),
-                          ),
-                        ),
-                      ],
-                    ),
                   const SizedBox(height: 28),
                   Center(
                     child: OutlinedButton.icon(
@@ -1006,6 +1512,96 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _quickPlacesChips() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _quickPlaces.map((p) {
+          return ChoiceChip(
+            label:
+                Text(p['label']!, style: const TextStyle(color: Colors.black)),
+            selected: false,
+            onSelected: (_) {
+              _toController.text = p['address']!;
+              _saveRecentDestination(p['address']!);
+              FocusScope.of(context).unfocus();
+            },
+            backgroundColor: const Color(0xFFFFD700),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _recentRow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.history, color: Colors.white54, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _recentDestinations.map((d) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ActionChip(
+                      label:
+                          Text(d, style: const TextStyle(color: Colors.white)),
+                      onPressed: () {
+                        _toController.text = d;
+                        _submitSearch();
+                      },
+                      backgroundColor: Colors.grey[850],
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyTripsCard() {
+    return Card(
+      color: Colors.grey[900],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_car, color: AppColors.gold),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                "Réservez votre premier trajet ✨",
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontFamily: 'PlayfairDisplay',
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _submitSearch,
+              child: const Text("Chercher",
+                  style: TextStyle(color: AppColors.gold)),
+            ),
+          ],
         ),
       ),
     );
@@ -1084,68 +1680,96 @@ class _TripCard extends StatelessWidget {
   final String from;
   final String to;
   final String date;
+  final VoidCallback? onRebook;
 
   const _TripCard({
     required this.title,
     required this.from,
     required this.to,
     required this.date,
+    this.onRebook,
   });
 
   @override
   Widget build(BuildContext context) {
     final isRedirect = from.isEmpty && to.isEmpty;
+    final isLastTrip = title == 'Dernier trajet';
 
-    return FadeInUp(
-      duration: const Duration(milliseconds: 400),
-      child: Card(
-        color: Colors.grey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: isRedirect
-              ? Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.go('/reservations'),
-                    icon:
-                        const Icon(Icons.directions_car, color: AppColors.gold),
-                    label: const Text(
-                      "Voir tous mes trajets",
-                      style: TextStyle(
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'PlayfairDisplay',
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.gold),
-                      foregroundColor: AppColors.gold,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+    return Card(
+      color: Colors.grey[900],
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: isRedirect
+            ? Center(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.go('/reservations'),
+                  icon: const Icon(Icons.directions_car, color: AppColors.gold),
+                  label: const Text(
+                    "Voir tous mes trajets",
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PlayfairDisplay',
                     ),
                   ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'PlayfairDisplay',
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.gold),
+                    foregroundColor: AppColors.gold,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titre
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: AppColors.gold,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'PlayfairDisplay',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Infos trajet
+                  Text(
+                    "$from ➔ $to",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    "Départ prévu : $date",
+                    style: const TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
+
+                  // Bouton en bas à droite UNIQUEMENT pour le dernier trajet
+                  if (isLastTrip && onRebook != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: TextButton.icon(
+                        onPressed: onRebook,
+                        icon: const Icon(Icons.refresh,
+                            color: AppColors.gold, size: 18),
+                        label: const Text(
+                          "Refaire ce trajet",
+                          style: TextStyle(
+                            color: AppColors.gold,
+                            fontFamily: 'PlayfairDisplay',
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text("$from ➔ $to",
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w500)),
-                    Text("Départ prévu : $date",
-                        style: const TextStyle(
-                            color: Colors.white60, fontSize: 13)),
                   ],
-                ),
-        ),
+                ],
+              ),
       ),
     );
   }

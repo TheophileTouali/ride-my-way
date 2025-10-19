@@ -30,7 +30,8 @@ String _formatEuroFr(double v) =>
 
 Future<({double lat, double lng})?> getCoordinatesFromAddress(
     String address) async {
-  const apiKey = 'REPLACE_ME_WITH_YOUR_API_KEY'; // 🔐 Remplace par ta vraie clé
+  const apiKey =
+      'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI'; // 🔐 Remplace par ta vraie clé
   final url = Uri.parse(
     'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$apiKey',
   );

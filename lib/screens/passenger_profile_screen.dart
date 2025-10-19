@@ -28,6 +28,9 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
 
   final _picker = ImagePicker();
 
+  /// Aperçu immédiat après upload (avant que Firestore ne se propage)
+  String? _tempPhotoUrl;
+
   /// Ajoute un paramètre pour casser le cache navigateur/CDN
   String _cacheBust(String url) {
     final sep = url.contains('?') ? '&' : '?';
@@ -223,7 +226,7 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // On récupère l’ancienne URL depuis Firestore pour pouvoir supprimer l’ancien fichier
+      // Ancienne URL pour supprimer l'ancien fichier (best effort)
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -234,7 +237,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
       final path = 'users_data/${user.uid}/profile_$ts.png';
       final ref = storage.ref().child(path);
 
-      // Upload selon plateforme
       UploadTask task;
       if (kIsWeb) {
         final bytes = await picked.readAsBytes();
@@ -244,9 +246,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
             File(picked.path), SettableMetadata(contentType: 'image/png'));
       }
       await task.whenComplete(() {});
-
-      // URL publique signée
       final newUrl = (await ref.getDownloadURL()).trim();
+
+      // 🔥 Aperçu instantané : on met à jour l'UI tout de suite
+      if (mounted) setState(() => _tempPhotoUrl = newUrl);
 
       // Firestore + FirebaseAuth (photoURL)
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -255,7 +258,7 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
       }, SetOptions(merge: true));
       await user.updatePhotoURL(newUrl);
 
-      // Supprimer l’ancienne image (best effort)
+      // Supprimer l’ancienne image (optionnel)
       if (oldUrl != null && oldUrl.isNotEmpty) {
         try {
           await storage.refFromURL(oldUrl).delete();
@@ -264,7 +267,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
         }
       }
 
-      // Feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Photo de profil mise à jour')),
@@ -284,7 +286,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final prefs = Provider.of<UserProvider>(context).preferences;
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
@@ -332,8 +333,22 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                 }
 
                 final data = snap.data!.data() ?? {};
-                final photo = (data['photoUrl'] as String?) ?? '';
-                final bust = photo.isEmpty ? null : _cacheBust(photo);
+                final firestorePhoto = (data['photoUrl'] as String?) ?? '';
+
+                // Si Firestore a rattrapé l’aperçu local, on nettoie _tempPhotoUrl
+                if (_tempPhotoUrl != null && _tempPhotoUrl == firestorePhoto) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _tempPhotoUrl = null);
+                  });
+                }
+
+                // Priorité à l’aperçu local, sinon valeur Firestore
+                final effectivePhoto = (_tempPhotoUrl?.isNotEmpty ?? false)
+                    ? _tempPhotoUrl!
+                    : firestorePhoto;
+
+                final bust =
+                    effectivePhoto.isEmpty ? null : _cacheBust(effectivePhoto);
 
                 return Animate(
                   effects: [
@@ -377,7 +392,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                                       )
                                     : Image.network(
                                         bust,
-                                        key: ValueKey(bust),
+                                        key: ValueKey(
+                                            bust), // force le rebuild si URL change
+                                        gaplessPlayback:
+                                            true, // évite le flash au remplacement
                                         fit: BoxFit.cover,
                                         errorBuilder: (ctx, err, st) {
                                           debugPrint(
@@ -483,7 +501,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
 
                         const SizedBox(height: 32),
 
-                        // —— Actions
                         // —— Actions
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,

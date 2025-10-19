@@ -777,7 +777,17 @@ class DriverProfileScreen extends StatelessWidget {
               // Paramètres du compte (carte premium)
               _settingsCard(
                 context: context,
-                onChangePassword: () => context.go('/reset-password'),
+                onChangePassword: () => context.push(
+                  Uri(
+                    path: '/reset-password',
+                    queryParameters: {
+                      'from':
+                          '/driver-profile', // où revenir après Valider/Annuler
+                      'role':
+                          'driver', // filet de sécurité si Firestore pas encore chargé
+                    },
+                  ).toString(),
+                ),
                 onLogout: () {
                   Provider.of<DriverProvider>(context, listen: false).logout();
                   context.go('/login-driver');

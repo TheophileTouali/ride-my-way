@@ -107,6 +107,481 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+// =====================
+// UTILITAIRES PREMIUM
+// =====================
+
+class _WeatherPalette {
+  final Color ringStart, ringEnd, glow, chipBg, chipText;
+  const _WeatherPalette({
+    required this.ringStart,
+    required this.ringEnd,
+    required this.glow,
+    required this.chipBg,
+    required this.chipText,
+  });
+}
+
+_WeatherPalette _paletteFor(int code) {
+  if (code == 0) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFFFFD700),
+      ringEnd: Color(0xFFA87C00),
+      glow: Color(0x33FFD700),
+      chipBg: Color(0x26FFD700),
+      chipText: AppColors.gold,
+    );
+  }
+  if (code == 1 || code == 2 || code == 3) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFFE6C200),
+      ringEnd: Color(0xFF8FA0B5),
+      glow: Color(0x338FA0B5),
+      chipBg: Color(0x1A8FA0B5),
+      chipText: Colors.white70,
+    );
+  }
+  if (code == 45 || code == 48) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFFBFC6D0),
+      ringEnd: Color(0xFF6F7B88),
+      glow: Color(0x336F7B88),
+      chipBg: Color(0x1A6F7B88),
+      chipText: Colors.white70,
+    );
+  }
+  if ({51, 53, 55, 61, 63, 65, 80, 81, 82}.contains(code)) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFF50C2FF),
+      ringEnd: Color(0xFF2A6FB8),
+      glow: Color(0x332A6FB8),
+      chipBg: Color(0x1A2A6FB8),
+      chipText: Colors.white70,
+    );
+  }
+  if ({66, 67, 71, 73, 75, 77, 85, 86}.contains(code)) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFFB5E8FF),
+      ringEnd: Color(0xFF6EC1E4),
+      glow: Color(0x336EC1E4),
+      chipBg: Color(0x1A6EC1E4),
+      chipText: Colors.white70,
+    );
+  }
+  if ({95, 96, 99}.contains(code)) {
+    return const _WeatherPalette(
+      ringStart: Color(0xFFFFD700),
+      ringEnd: Color(0xFF6A5ACD),
+      glow: Color(0x336A5ACD),
+      chipBg: Color(0x1A6A5ACD),
+      chipText: Colors.white70,
+    );
+  }
+  return const _WeatherPalette(
+    ringStart: Color(0xFFE6C200),
+    ringEnd: Color(0xFF8FA0B5),
+    glow: Color(0x338FA0B5),
+    chipBg: Color(0x1A8FA0B5),
+    chipText: Colors.white70,
+  );
+}
+
+// ——— Bordure dégradée animée (carte luxe)
+class _AnimatedLuxBorder extends StatefulWidget {
+  final Widget child;
+  final List<Color> colors;
+  final double radius;
+  final double stroke;
+  const _AnimatedLuxBorder({
+    super.key,
+    required this.child,
+    required this.colors,
+    this.radius = 16,
+    this.stroke = 1.2,
+  });
+
+  @override
+  State<_AnimatedLuxBorder> createState() => _AnimatedLuxBorderState();
+}
+
+class _AnimatedLuxBorderState extends State<_AnimatedLuxBorder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 8))
+        ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.radius),
+            gradient: SweepGradient(
+              startAngle: _c.value * 6.2831853,
+              endAngle: _c.value * 6.2831853 + 6.2831853,
+              colors: [
+                ...widget.colors,
+                widget.colors.first,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: Container(
+            margin: EdgeInsets.all(widget.stroke),
+            decoration: BoxDecoration(
+              borderRadius:
+                  BorderRadius.circular(widget.radius - widget.stroke),
+              color: Colors.grey[900],
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 12,
+                    offset: Offset(3, 5)),
+                BoxShadow(
+                    color: Color(0x19000000),
+                    blurRadius: 18,
+                    offset: Offset(-3, -2)),
+              ],
+            ),
+            child: widget.child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ——— Icône anneau premium (animé)
+class _LuxWeatherIcon extends StatefulWidget {
+  final IconData icon;
+  final int code;
+  final double size;
+  final double thickness;
+  const _LuxWeatherIcon({
+    super.key,
+    required this.icon,
+    required this.code,
+    this.size = 56,
+    this.thickness = 4,
+  });
+
+  @override
+  State<_LuxWeatherIcon> createState() => _LuxWeatherIconState();
+}
+
+class _LuxWeatherIconState extends State<_LuxWeatherIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 6))
+        ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _paletteFor(widget.code);
+    final r = widget.size;
+    final inner = r - widget.thickness * 2;
+
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // halo
+            Container(
+              width: r + 16,
+              height: r + 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: p.glow, blurRadius: 26, spreadRadius: 2),
+                ],
+              ),
+            ),
+            // anneau
+            Transform.rotate(
+              angle: _c.value * 6.2831853,
+              child: Container(
+                width: r,
+                height: r,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: SweepGradient(
+                    colors: [p.ringStart, p.ringEnd, p.ringStart],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            // masque intérieur (verre fumé)
+            Container(
+              width: inner,
+              height: inner,
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white10, width: 1),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 10,
+                      offset: Offset(3, 3)),
+                  BoxShadow(
+                      color: Color(0x19FFFFFF),
+                      blurRadius: 10,
+                      offset: Offset(-3, -3)),
+                ],
+              ),
+            ),
+            // lustre
+            Positioned(
+              top: 4,
+              child: Container(
+                width: inner * 0.88,
+                height: inner * 0.46,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x22FFFFFF), Color(0x00000000)],
+                  ),
+                ),
+              ),
+            ),
+            Icon(widget.icon, size: inner * 0.56, color: Colors.white),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ——— Chip “condition” luxe
+class _ConditionChip extends StatelessWidget {
+  final String label;
+  final _WeatherPalette palette;
+  const _ConditionChip({super.key, required this.label, required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.chipBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: palette.chipText,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'PlayfairDisplay',
+        ),
+      ),
+    );
+  }
+}
+
+// ——— Ligne métrique (icône + valeurs)
+class _Metric extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String hint;
+  const _Metric({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.white60),
+        const SizedBox(width: 6),
+        RichText(
+          text: TextSpan(
+            style: const TextStyle(fontSize: 12, fontFamily: 'PlayfairDisplay'),
+            children: [
+              TextSpan(
+                text: value,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              const TextSpan(text: '  '),
+              TextSpan(
+                text: hint,
+                style: const TextStyle(color: Colors.white54),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ————————— LUX HELPERS —————————
+
+class _LuxMiniIcon extends StatelessWidget {
+  final IconData icon;
+  final Color ringStart;
+  final Color ringEnd;
+  final Color glow;
+  final double size; // outer diameter
+
+  const _LuxMiniIcon({
+    super.key,
+    required this.icon,
+    required this.ringStart,
+    required this.ringEnd,
+    required this.glow,
+    this.size = 32,
+  });
+
+  factory _LuxMiniIcon.danger({required IconData icon}) => _LuxMiniIcon(
+        icon: icon,
+        ringStart: const Color(0xFFFF5A5A),
+        ringEnd: const Color(0xFFD24545),
+        glow: const Color(0x33FF5A5A),
+        size: 32,
+      );
+
+  factory _LuxMiniIcon.gold({required IconData icon}) => _LuxMiniIcon(
+        icon: icon,
+        ringStart: const Color(0xFFFFD700),
+        ringEnd: const Color(0xFFA87C00),
+        glow: const Color(0x33FFD700),
+        size: 36,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final inner = size - 6;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: size + 8,
+          height: size + 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: glow, blurRadius: 16, spreadRadius: 1)
+            ],
+          ),
+        ),
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(
+              colors: [ringStart, ringEnd, ringStart],
+              stops: const [0.0, .7, 1.0],
+            ),
+          ),
+        ),
+        Container(
+          width: inner,
+          height: inner,
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white12, width: 1),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 8,
+                  offset: Offset(2, 2)),
+              BoxShadow(
+                  color: Color(0x19FFFFFF),
+                  blurRadius: 8,
+                  offset: Offset(-2, -2)),
+            ],
+          ),
+          child: Icon(icon, size: inner * .55, color: Colors.white),
+        ),
+      ],
+    );
+  }
+}
+
+// Préfixe luxe pour les TextFields (utilisé dans _inputDecoration, même nom conservé)
+class _LuxPrefixIcon extends StatelessWidget {
+  final IconData icon;
+  const _LuxPrefixIcon({super.key, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10),
+      child: _LuxMiniIcon.gold(icon: icon),
+    );
+  }
+}
+
+// Bouton “Activer” premium (pill gradient)
+class _LuxActionPill extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+  const _LuxActionPill({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = danger
+        ? const [Color(0xFFFF6B6B), Color(0xFFD24545)]
+        : const [Color(0xFFFFD700), Color(0xFFA87C00)];
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: colors),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black38, blurRadius: 10, offset: Offset(0, 3))
+          ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: danger ? Colors.white : Colors.black,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'PlayfairDisplay',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(viewportFraction: 0.9);
   final TextEditingController _fromController = TextEditingController();
@@ -186,6 +661,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final done = (trips - currentFloor).toDouble().clamp(0.0, span);
     final p = span == 0 ? 0.0 : (done / span);
     return p; // 0..1
+  }
+
+  Future<bool?> _confirmLogout(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text(
+          "Déconnexion",
+          style: TextStyle(
+            color: AppColors.gold,
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          "Souhaitez-vous vraiment vous déconnecter ?",
+          style:
+              TextStyle(color: Colors.white70, fontFamily: 'PlayfairDisplay'),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        actions: [
+          _LuxGhostButton(
+            label: "Annuler",
+            compact: true,
+            onTap: () => Navigator.pop(ctx, false),
+          ),
+          const SizedBox(width: 10),
+          _LuxDangerButton(
+            label: "Se déconnecter",
+            compact: true,
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _initWeather() async {
@@ -603,7 +1115,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _weatherSection() {
     if (_weatherLoading) {
-      return const _Shimmer(height: 74);
+      return const _Shimmer(height: 86);
     }
     if (_weather == null) return const SizedBox.shrink();
 
@@ -612,55 +1124,99 @@ class _HomeScreenState extends State<HomeScreen> {
     final wind = (_weather!['wind'] as double).toStringAsFixed(0);
     final code = _weather!['code'] as int;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.gold.withOpacity(0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Icon(_wmoIcon(code), color: AppColors.gold, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _wmoLabel(code),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'PlayfairDisplay',
+    // palette couleur + libellé
+    final palette = _paletteFor(code);
+    final condition = _wmoLabel(code);
+    final isClear = code == 0;
+
+    return _AnimatedLuxBorder(
+      colors: [palette.ringStart, palette.ringEnd],
+      radius: 18,
+      stroke: 1.4,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            // Icône anneau premium (animé)
+            _LuxWeatherIcon(
+              icon: _wmoIcon(code),
+              code: code,
+              size: 56,
+              thickness: 4,
+            ),
+            const SizedBox(width: 14),
+
+            // Informations
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titre + chip condition
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          condition,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isClear ? AppColors.gold : Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            fontFamily: 'PlayfairDisplay',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _ConditionChip(label: condition, palette: palette),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  "Ressenti $feels° • Vent $wind km/h",
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-              ],
+                  const SizedBox(height: 6),
+
+                  // Métriques
+                  Row(
+                    children: [
+                      _Metric(
+                        icon: Icons.thermostat_rounded,
+                        value: "$feels°",
+                        hint: "Ressenti",
+                      ),
+                      const SizedBox(width: 14),
+                      _Metric(
+                        icon: Icons.air_rounded,
+                        value: "$wind km/h",
+                        hint: "Vent",
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          Text(
-            "$t°",
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'PlayfairDisplay',
+
+            // Température principale
+            RichText(
+              text: TextSpan(
+                text: t,
+                style: const TextStyle(
+                  color: AppColors.gold,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'PlayfairDisplay',
+                ),
+                children: const [
+                  TextSpan(
+                    text: "°",
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -805,169 +1361,224 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── FUSION : Réputation + Avis + Progression ──
+// ── FUSION : Réputation + Avis + Progression (version hyper premium)
   Widget _reputationFusion(_Reputation rep) {
     final rank = _rankFromTrips(rep.completedTrips);
 
-    // Libellé + objectif (avec les nouveaux paliers : Or=250, Diamant=500)
-    String nextLabel;
+    // Paliers
     int nextTarget;
     if (rank == "Voyageur Diamant") {
-      nextLabel = "Rang maximum atteint";
       nextTarget = diamantMin; // 500
     } else if (rank == "Voyageur d'Or") {
-      nextLabel = "Progrès vers Voyageur Diamant ($diamantMin)";
       nextTarget = diamantMin; // 500
     } else if (rank == "Voyageur d'Argent") {
-      nextLabel = "Progrès vers Voyageur d'Or ($orMin)";
       nextTarget = orMin; // 250
     } else if (rank == "Voyageur de Bronze") {
-      nextLabel = "Progrès vers Voyageur d'Argent ($argentMin)";
-      nextTarget = argentMin; // ton palier Argent
+      nextTarget = argentMin;
     } else {
-      nextLabel = "Progrès vers Voyageur de Bronze ($bronzeMin)";
       nextTarget = bronzeMin; // 1
     }
-
-    final tooltipText = rank == "Voyageur Diamant"
-        ? "Félicitations ! Vous avez atteint le rang maximum."
-        : "Il vous reste ${nextTarget - rep.completedTrips} trajets pour atteindre le prochain rang.";
 
     final currency =
         NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 0);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white10),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.emoji_events_rounded,
-                  color: AppColors.gold, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(
+    return _AnimatedLuxBorder(
+      colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+      radius: 22,
+      stroke: 1.2,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // En-tête : Titre + jauge dorée
+            Row(
+              children: [
+                _LuxMiniIcon.gold(icon: Icons.emoji_events_rounded),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    "Voyageur d'excellence",
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      fontFamily: 'PlayfairDisplay',
+                    ),
+                  ),
+                ),
+                _LuxGauge(
+                  value: rep.progressToNext.clamp(0, 1),
+                  top: rep.avg.toStringAsFixed(1),
+                  bottom: "/5",
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // KPIs élégants en grille 2x2
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoKPI(
+                    icon: Icons.military_tech_rounded,
+                    label: "Distinction",
+                    value: rank,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _InfoKPI(
+                    icon: Icons.directions_car_filled_rounded,
+                    label: "Trajets",
+                    value: "${rep.completedTrips}",
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoKPI(
+                    icon: Icons.verified_rounded,
+                    label: "Respect trajets",
+                    value:
+                        "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %",
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _InfoKPI(
+                    icon: Icons.handshake_rounded,
+                    label: "Chauffeurs satisfaits",
+                    value: "${rep.satisfied} / ${rep.total}",
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+            _InfoKPI(
+              icon: Icons.account_balance_wallet_rounded,
+              label: "Cumul dépensé",
+              value: currency.format(rep.totalSpend),
+              compact: true,
+            ),
+
+            const SizedBox(height: 14),
+
+            // Barre de progression + détail
+            _progressBar(rep.progressToNext),
+            if (rank != "Voyageur Diamant") ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
                 child: Text(
-                  "Voyageur d'excellence",
+                  "${rep.completedTrips} / $nextTarget "
+                  "(${(rep.progressToNext * 100).clamp(0, 100).toStringAsFixed(0)} %)",
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+            Container(height: 1, color: Colors.white10),
+            const SizedBox(height: 12),
+
+            // Avis (même logique, carte premium)
+            Row(
+              children: const [
+                Icon(Icons.rate_review_outlined,
+                    color: AppColors.gold, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  "Avis des chauffeurs",
                   style: TextStyle(
                     color: AppColors.gold,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
                     fontFamily: 'PlayfairDisplay',
                   ),
                 ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.star_rounded,
-                      color: AppColors.gold, size: 18),
-                  const SizedBox(width: 6),
-                  Text("${rep.avg.toStringAsFixed(1)} / 5",
-                      style: const TextStyle(
-                          color: AppColors.gold, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Infos
-          _fusionInfoRow("Distinction", rank),
-          _fusionInfoRow("Trajets effectués", "${rep.completedTrips}"),
-          _fusionInfoRow("Respect des trajets",
-              "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %"),
-          _fusionInfoRow(
-              "Chauffeurs satisfaits", "${rep.satisfied} / ${rep.total}"),
-          _fusionInfoRow("Cumul dépensé", currency.format(rep.totalSpend)),
-
-          const SizedBox(height: 14),
-          Tooltip(
-            message: tooltipText,
-            preferBelow: true,
-            child: Text(
-              rank == "Voyageur Diamant"
-                  ? "Rang maximum atteint"
-                  : (rank == "Voyageur d'Or"
-                      ? "Progrès vers Voyageur Diamant ($diamantMin)"
-                      : (rank == "Voyageur d'Argent"
-                          ? "Progrès vers Voyageur d'Or ($orMin)"
-                          : (rank == "Voyageur de Bronze"
-                              ? "Progrès vers Voyageur d'Argent ($argentMin)"
-                              : "Progrès vers Voyageur de Bronze ($bronzeMin)"))),
-              style: const TextStyle(
-                  color: Colors.white70, fontFamily: 'PlayfairDisplay'),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          _progressBar(rep.progressToNext),
-          if (rank != "Voyageur Diamant") ...[
-            const SizedBox(height: 6),
-            Text(
-              "${rep.completedTrips} / $nextTarget "
-              "(${(rep.progressToNext * 100).clamp(0, 100).toStringAsFixed(0)} %)",
-              textAlign: TextAlign.right,
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
+            const SizedBox(height: 10),
 
-          const SizedBox(height: 14),
-          Container(height: 1, color: Colors.white10),
-          const SizedBox(height: 14),
+            if (rep.reviews.isEmpty)
+              const Text("Aucun avis de chauffeur pour le moment.",
+                  style: TextStyle(color: Colors.white38))
+            else
+              SizedBox(
+                height: 168,
+                child: PageView.builder(
+                  controller: PageController(viewportFraction: 0.9),
+                  itemCount: rep.reviews.length,
+                  itemBuilder: (context, index) {
+                    final r = rep.reviews[index];
+                    final rating = ((r['rating'] ?? 0) as num).toDouble();
+                    final comment = (r['comment'] ?? '') as String;
+                    final ts = r['timestamp'] as Timestamp?;
+                    final dateStr = ts != null ? _frShortDate(ts.toDate()) : "";
 
-          Row(
-            children: const [
-              Icon(Icons.rate_review_outlined, color: AppColors.gold, size: 18),
-              SizedBox(width: 8),
-              Text(
-                "Avis des chauffeurs",
-                style: TextStyle(
-                  color: AppColors.gold,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  fontFamily: 'PlayfairDisplay',
+                    return Container(
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border:
+                            Border.all(color: AppColors.gold.withOpacity(.25)),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.grey[900]!,
+                            Colors.grey[900]!.withOpacity(.85),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.gold.withOpacity(0.10),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _starRow(rating),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: Text(
+                              "“ $comment ”",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Text(
+                              dateStr.isEmpty ? "" : "• $dateStr",
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          if (rep.reviews.isEmpty)
-            const Text("Aucun avis de chauffeur pour le moment.",
-                style: TextStyle(color: Colors.white38))
-          else
-            SizedBox(
-              height: 160,
-              child: PageView.builder(
-                controller: PageController(viewportFraction: 0.9),
-                itemCount: rep.reviews.length,
-                itemBuilder: (context, index) {
-                  final r = rep.reviews[index];
-                  final rating = ((r['rating'] ?? 0) as num).toDouble();
-                  final comment = (r['comment'] ?? '') as String;
-                  final ts = r['timestamp'] as Timestamp?;
-                  final dateStr = ts != null ? _frShortDate(ts.toDate()) : "";
-                  return _reviewCard(
-                    stars: _starRow(rating),
-                    comment: comment,
-                    footer: dateStr.isEmpty ? "" : "• $dateStr",
-                  );
-                },
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1156,6 +1767,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final userProvider = Provider.of<UserProvider>(context);
     final userName = userProvider.userName;
     final greeting = _getGreeting();
+    final isSmall = MediaQuery.of(context).size.width < 370;
 
     return Scaffold(
       body: Container(
@@ -1174,22 +1786,11 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Accueil",
-                          style: TextStyle(
-                              color: AppColors.gold,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'PlayfairDisplay')),
-                      IconButton(
-                        icon: const Icon(Icons.person_outline,
-                            color: AppColors.gold),
-                        onPressed: () => context.go('/profile'),
-                        tooltip: 'Profil',
-                      ),
-                    ],
+                  // NEW (drop directly in the same place)
+                  PremiumHeader(
+                    greeting: greeting,
+                    userName: userName,
+                    onProfile: () => context.go('/profile'),
                   ),
                   const SizedBox(height: 8),
                   FadeInRight(
@@ -1202,26 +1803,51 @@ class _HomeScreenState extends State<HomeScreen> {
                               colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
                             ).createShader(bounds);
                           },
-                          child: Text(
-                            "$greeting $userName 👋",
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'PlayfairDisplay',
-                              color: Colors.white,
-                            ),
-                          ),
                         ),
                         const SizedBox(height: 12),
                         _weatherSection(),
                         const SizedBox(height: 6),
-                        const Text(
-                          "Préparez-vous à vivre un trajet d’exception. ✨",
-                          style: TextStyle(
-                              color: Colors.white60,
-                              fontSize: 14,
-                              fontStyle: FontStyle.italic,
-                              fontFamily: 'PlayfairDisplay'),
+
+// --- Texte + ligne animée ---
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Texte premium avec dégradé or
+                              ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFFD700),
+                                    Color(0xFFA87C00)
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ).createShader(bounds),
+                                child: const Text(
+                                  "Préparez-vous à vivre un trajet d’exception. ✨",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontStyle: FontStyle.italic,
+                                    fontFamily: 'PlayfairDisplay',
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                    shadows: [
+                                      Shadow(
+                                        color: Color(0xAA000000),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              // Ligne animée élégante
+                              _GoldLine(),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -1241,8 +1867,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.location_off,
-                              color: Colors.redAccent),
+                          _LuxMiniIcon.danger(icon: Icons.location_off),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
@@ -1250,10 +1875,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(color: Colors.white70),
                             ),
                           ),
-                          TextButton(
-                            onPressed: _openLocationSettings,
-                            child: const Text("Activer",
-                                style: TextStyle(color: Colors.redAccent)),
+                          _LuxActionPill(
+                            label: "Activer",
+                            onTap: _openLocationSettings,
+                            danger: true,
                           ),
                         ],
                       ),
@@ -1303,7 +1928,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     fetchCoordinates: true,
                     style: const TextStyle(color: Colors.white),
                     decoration: _inputDecoration(
-                        "Entrer une destination", Icons.search),
+                        "Entrer une destination", Icons.flag_rounded),
                     onSuggestionClicked: (prediction) {
                       _toController.text = prediction.description!;
                       _saveRecentDestination(prediction.description!);
@@ -1344,16 +1969,27 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ],
                         ),
-                        child: const Center(
-                          child: Text(
-                            "Trouver un véhicule",
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              fontFamily: 'PlayfairDisplay',
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            const Text(
+                              "Trouver un véhicule",
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                fontFamily: 'PlayfairDisplay',
+                              ),
                             ),
-                          ),
+                            Positioned(
+                              right: 16,
+                              child: Icon(
+                                Icons
+                                    .arrow_forward_rounded, // ou Icons.directions_car_rounded
+                                color: Colors.black,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1374,13 +2010,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     Column(
                       children: [
                         SizedBox(
-                          height: 200,
+                          height: isSmall ? 210 : 224,
                           child: PageView.builder(
                             controller: _pageController,
                             padEnds: false,
                             physics: const BouncingScrollPhysics(),
-                            // ❌ on retire ce setState global :
-                            // onPageChanged: (index) => setState(() => _currentPage = index),
                             itemCount: _trips.length,
                             itemBuilder: (context, index) {
                               final trip = _trips[index];
@@ -1397,6 +2031,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                           ),
                         ),
+
                         const SizedBox(height: 8),
 
                         // ✅ Indicateurs animés sans rebuild global
@@ -1474,7 +2109,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               message,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: AppColors.gold,
+                                color: Color.fromARGB(255, 255, 255, 255),
                                 fontSize: 16,
                                 fontFamily: 'PlayfairDisplay',
                                 fontWeight: FontWeight.w600,
@@ -1489,25 +2124,67 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
 
-                  const SizedBox(height: 28),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
                   Center(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Provider.of<UserProvider>(context, listen: false)
-                            .logout();
-                        context.go('/login');
+                    child: _LuxDangerButton(
+                      label: "Se déconnecter",
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: Colors.grey[900],
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22)),
+                            title: const Text(
+                              "Confirmation",
+                              style: TextStyle(
+                                color: AppColors.gold,
+                                fontFamily: 'PlayfairDisplay',
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            content: const Text(
+                              "Souhaitez-vous vraiment vous déconnecter ?",
+                              style: TextStyle(
+                                  color: Colors.white70,
+                                  fontFamily: 'PlayfairDisplay'),
+                            ),
+                            actionsPadding:
+                                const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            actions: [
+                              _LuxGhostButton(
+                                label: "Annuler",
+                                compact: true,
+                                onTap: () => Navigator.pop(ctx, false),
+                              ),
+                              const SizedBox(width: 10),
+                              _LuxDangerButton(
+                                label: "Se déconnecter",
+                                compact: true,
+                                onTap: () => Navigator.pop(ctx, true),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        const SizedBox(height: 32);
+                        _LogoutSection(
+                          onConfirm: () async {
+                            final ok = await _confirmLogout(context);
+                            if (ok == true) {
+                              Provider.of<UserProvider>(context, listen: false)
+                                  .logout();
+                              context.go('/login');
+                            }
+                          },
+                        );
+                        const SizedBox(height: 28);
                       },
-                      icon: const Icon(Icons.logout),
-                      label: const Text("Se déconnecter"),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        side: const BorderSide(color: Colors.redAccent),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20)),
-                      ),
                     ),
                   ),
+                  const SizedBox(height: 40),
+
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -1614,7 +2291,9 @@ class _HomeScreenState extends State<HomeScreen> {
           const TextStyle(color: Colors.white70, fontFamily: 'PlayfairDisplay'),
       filled: true,
       fillColor: Colors.grey[900],
-      prefixIcon: Icon(icon, color: AppColors.gold),
+      // — premium prefix (garde la signature existante)
+      prefixIcon: _LuxPrefixIcon(icon: icon),
+      prefixIconConstraints: const BoxConstraints(minWidth: 56, minHeight: 48),
       contentPadding: const EdgeInsets.symmetric(vertical: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1622,41 +2301,23 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
-        borderSide: BorderSide(color: AppColors.gold),
+        borderSide: BorderSide(color: AppColors.gold, width: 1.4),
       ),
     );
   }
 
   Widget _homeButton(
-      BuildContext context, IconData icon, String label, String route) {
-    return InkWell(
-      onTap: () => context.go(route),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.grey[900],
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.gold.withOpacity(0.15),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.gold),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      color: Colors.white, fontFamily: 'PlayfairDisplay')),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.white),
-          ],
-        ),
+    BuildContext context,
+    IconData icon,
+    String label,
+    String route,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _HomeButtonPremium(
+        icon: icon,
+        label: label,
+        onTap: () => context.go(route),
       ),
     );
   }
@@ -1690,87 +2351,1189 @@ class _TripCard extends StatelessWidget {
     this.onRebook,
   });
 
+  bool get _isRedirect => from.isEmpty && to.isEmpty;
+  bool get _isLastTrip => title == 'Dernier trajet';
+
   @override
   Widget build(BuildContext context) {
-    final isRedirect = from.isEmpty && to.isEmpty;
-    final isLastTrip = title == 'Dernier trajet';
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 370; // mode compact pour petits écrans
 
-    return Card(
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: isRedirect
-            ? Center(
-                child: OutlinedButton.icon(
-                  onPressed: () => context.go('/reservations'),
-                  icon: const Icon(Icons.directions_car, color: AppColors.gold),
-                  label: const Text(
+    if (_isRedirect) {
+      // --- Carte "Voir tous mes trajets" ---
+      return _AnimatedLuxBorder(
+        colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+        radius: 16,
+        stroke: 1.1,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => context.go('/reservations'),
+          child: Container(
+            padding: EdgeInsets.all(compact ? 14 : 16),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                _LuxMiniIcon.gold(icon: Icons.directions_car_rounded),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
                     "Voir tous mes trajets",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.gold,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      fontSize: compact ? 15 : 16,
                       fontFamily: 'PlayfairDisplay',
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.gold),
-                    foregroundColor: AppColors.gold,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
                     ),
                   ),
                 ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Titre
-                  Text(
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 12 : 14,
+                    vertical: compact ? 6 : 8,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    children: const [
+                      Text("Ouvrir",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'PlayfairDisplay',
+                          )),
+                      SizedBox(width: 6),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 18, color: Colors.black),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // --- Carte trajet premium ---
+    return _AnimatedLuxBorder(
+      colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+      radius: 16,
+      stroke: 1.1,
+      child: Container(
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min, // évite l’overflow vertical
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Titre + date
+            Row(
+              children: [
+                _LuxMiniIcon.gold(icon: Icons.star_rounded),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
                     title,
-                    style: const TextStyle(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       color: AppColors.gold,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w800,
+                      fontSize: compact ? 15 : 16,
                       fontFamily: 'PlayfairDisplay',
                     ),
                   ),
-                  const SizedBox(height: 8),
+                ),
+                const SizedBox(width: 8),
+                _DatePill(text: date, compact: compact),
+              ],
+            ),
+            SizedBox(height: compact ? 10 : 12),
 
-                  // Infos trajet
-                  Text(
-                    "$from ➔ $to",
+            // FROM
+            Row(
+              children: [
+                const Icon(Icons.fmd_good_rounded,
+                    color: Colors.white70, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    from,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
+                        color: Colors.white, fontWeight: FontWeight.w600),
                   ),
-                  Text(
-                    "Départ prévu : $date",
-                    style: const TextStyle(color: Colors.white60, fontSize: 13),
-                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
 
-                  // Bouton en bas à droite UNIQUEMENT pour le dernier trajet
-                  if (isLastTrip && onRebook != null) ...[
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: TextButton.icon(
-                        onPressed: onRebook,
-                        icon: const Icon(Icons.refresh,
-                            color: AppColors.gold, size: 18),
-                        label: const Text(
-                          "Refaire ce trajet",
-                          style: TextStyle(
-                            color: AppColors.gold,
-                            fontFamily: 'PlayfairDisplay',
-                          ),
-                        ),
+            // séparateur doré + flèche
+            Row(
+              children: [
+                Expanded(child: _goldLine(margin: compact ? 18 : 22)),
+                Icon(Icons.arrow_forward_rounded,
+                    color: AppColors.gold, size: compact ? 16 : 18),
+                Expanded(child: _goldLine(margin: compact ? 18 : 22)),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            // TO
+            Row(
+              children: [
+                const Icon(Icons.flag_rounded, color: Colors.white70, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    to,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+
+// CTA “Refaire ce trajet”  (never overflows)
+            if (_isLastTrip && onRebook != null) ...[
+              SizedBox(height: compact ? 6 : 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // FittedBox lets the pill scale down if space is tight
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: _LuxCta(
+                        icon: Icons.refresh_rounded,
+                        // shorter label on very small screens
+                        label: compact ? "Refaire" : "Refaire ce trajet",
+                        onTap: onRebook!,
+                        compact: compact,
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
+            ]
+          ],
+        ),
       ),
+    );
+  }
+}
+
+// ——— Helpers ———
+
+Widget _goldLine({required double margin}) => Container(
+      height: 1,
+      margin: EdgeInsets.symmetric(horizontal: margin),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0x22FFD700), Color(0x44FFD700), Color(0x22FFD700)],
+        ),
+      ),
+    );
+
+class _DatePill extends StatelessWidget {
+  final String text;
+  final bool compact;
+  const _DatePill({required this.text, this.compact = false});
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 160),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10, vertical: compact ? 4 : 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white10),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white.withOpacity(0.06), Colors.black12],
+          ),
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: compact ? 11 : 12,
+            fontFamily: 'PlayfairDisplay',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bouton pill premium (doré) pour les actions
+class _LuxCta extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool compact;
+
+  const _LuxCta({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // largeur cible (plus long) mais restera compressible via FittedBox parent
+    final minW = compact ? 140.0 : 200.0;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minW),
+        child: Container(
+          alignment: Alignment.center, // texte centré quand la largeur augmente
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 14 : 18, // un peu plus large
+            vertical: compact ? 7 : 10,
+          ),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+            ),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.black, size: compact ? 16 : 18),
+              if (label.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: compact ? 12 : 14,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeButtonPremium extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _HomeButtonPremium({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  State<_HomeButtonPremium> createState() => _HomeButtonPremiumState();
+}
+
+class _HomeButtonPremiumState extends State<_HomeButtonPremium>
+    with SingleTickerProviderStateMixin {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnimatedLuxBorder(
+      colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+      radius: 16,
+      stroke: 1.1,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 120),
+        scale: _down ? 0.985 : 1.0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onHighlightChanged: (v) => setState(() => _down = v),
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.gold.withOpacity(0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Icône anneau doré
+                _LuxMiniIcon.gold(icon: widget.icon),
+                const SizedBox(width: 12),
+
+                // Libellé
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontFamily: 'PlayfairDisplay',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+
+                // Pastille “verre fumé” + chevron
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Colors.white.withOpacity(0.06), Colors.black12],
+                    ),
+                    border: Border.all(color: Colors.white10),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 10,
+                        offset: Offset(2, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.chevron_right_rounded,
+                      color: Colors.white, size: 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Jauge circulaire dorée (progression → prochain rang)
+class _LuxGauge extends StatelessWidget {
+  final double value; // 0..1
+  final String top;
+  final String bottom;
+  final double size;
+  const _LuxGauge({
+    super.key,
+    required this.value,
+    required this.top,
+    required this.bottom,
+    this.size = 56,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value.clamp(0.0, 1.0);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // fond
+          SizedBox(
+            width: size,
+            height: size,
+            child: CircularProgressIndicator(
+              value: 1,
+              strokeWidth: 6,
+              valueColor:
+                  AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(.10)),
+            ),
+          ),
+          // arc doré (shader sweep)
+          ShaderMask(
+            shaderCallback: (rect) => const SweepGradient(
+              colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+            ).createShader(rect),
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: CircularProgressIndicator(
+                value: v,
+                strokeWidth: 6,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                backgroundColor: Colors.transparent,
+              ),
+            ),
+          ),
+          // centre
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                top,
+                style: const TextStyle(
+                  color: AppColors.gold,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  fontFamily: 'PlayfairDisplay',
+                ),
+              ),
+              Text(
+                bottom,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontFamily: 'PlayfairDisplay',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Ligne KPI premium (icône anneau + label + valeur)
+// Ligne KPI premium (icône anneau + label + valeur) — anti-overflow
+class _InfoKPI extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool compact;
+  const _InfoKPI({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.02),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          // Icône anneau (légèrement réduite pour gagner ~6–8 px)
+          Transform.scale(
+            scale: compact ? 0.84 : 0.9,
+            child: _LuxMiniIcon.gold(icon: icon),
+          ),
+          const SizedBox(width: 10),
+
+          // Le label occupe l’espace central et s’ellipsise si trop long
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: compact ? 12 : 13,
+                fontFamily: 'PlayfairDisplay',
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // La valeur ne déborde jamais : se réduit si nécessaire
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 13 : 14,
+                    fontFamily: 'PlayfairDisplay',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+// ====== Boutons hyper premium ======
+
+class _LuxButton extends StatefulWidget {
+  final String label;
+  final IconData? icon;
+  final VoidCallback onTap;
+  final bool danger; // rouge luxueux
+  final bool outlined; // style contour verre fumé
+  final bool compact; // petit bouton (dialog)
+  final double radius;
+
+  const _LuxButton({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.danger = false,
+    this.outlined = false,
+    this.compact = false,
+    this.radius = 20,
+  });
+
+  @override
+  State<_LuxButton> createState() => _LuxButtonState();
+}
+
+class _LuxButtonState extends State<_LuxButton>
+    with SingleTickerProviderStateMixin {
+  bool _down = false;
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hPad = widget.compact ? 14.0 : 22.0;
+    final vPad = widget.compact ? 10.0 : 12.0;
+
+    final List<Color> grad = widget.danger
+        ? const [Color(0xFFFF6B6B), Color(0xFFD24545)]
+        : const [Color(0xFFFFD700), Color(0xFFA87C00)];
+    final Color txt = widget.danger ? Colors.white : Colors.black;
+
+    // Style OUTLINED verre fumé + contour dégradé animé
+    final Widget outlined = AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.radius),
+            gradient: SweepGradient(
+              startAngle: _c.value * 6.28318,
+              endAngle: _c.value * 6.28318 + 6.28318,
+              colors: [
+                grad.first.withOpacity(.9),
+                grad.last.withOpacity(.9),
+                grad.first.withOpacity(.9)
+              ],
+              stops: const [0.0, .6, 1.0],
+            ),
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(1.2),
+            padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(widget.radius - 1.2),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Colors.white.withOpacity(0.06), Colors.black12],
+              ),
+              border: Border.all(color: Colors.white10),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 3)),
+              ],
+            ),
+            child: _content(
+                color: widget.danger ? grad.first : AppColors.gold,
+                textColor: Colors.white),
+          ),
+        );
+      },
+    );
+
+    // Style FILL (pill gradient)
+    final Widget filled = Container(
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: grad),
+        borderRadius: BorderRadius.circular(widget.radius),
+        boxShadow: [
+          BoxShadow(
+            color: (widget.danger ? Colors.redAccent : AppColors.gold)
+                .withOpacity(.35),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: _content(color: txt, textColor: txt),
+    );
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 110),
+      scale: _down ? 0.98 : 1.0,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(widget.radius),
+        onHighlightChanged: (v) => setState(() => _down = v),
+        onTap: widget.onTap,
+        child: widget.outlined ? outlined : filled,
+      ),
+    );
+  }
+
+  Widget _content({required Color color, required Color textColor}) {
+    final iconSize = widget.compact ? 16.0 : 18.0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.icon != null) ...[
+          // petit médaillon “verre fumé”
+          Container(
+            width: widget.compact ? 26 : 30,
+            height: widget.compact ? 26 : 30,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Colors.white.withOpacity(.14), Colors.black12],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Icon(widget.icon, size: iconSize, color: textColor),
+          ),
+        ],
+        Text(
+          widget.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: textColor,
+            fontWeight: FontWeight.w800,
+            fontFamily: 'PlayfairDisplay',
+            fontSize: widget.compact ? 13 : 14,
+            letterSpacing: .2,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Raccourcis pratiques
+// Bouton dangereux (dégradé rouge + halo + légère animation d’appui)
+class _LuxDangerButton extends StatefulWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool compact;
+  const _LuxDangerButton({
+    required this.label,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  @override
+  State<_LuxDangerButton> createState() => _LuxDangerButtonState();
+}
+
+class _LuxDangerButtonState extends State<_LuxDangerButton>
+    with SingleTickerProviderStateMixin {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final padH = widget.compact ? 16.0 : 22.0;
+    final padV = widget.compact ? 10.0 : 12.0;
+    final fs = widget.compact ? 13.0 : 15.0;
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 90),
+      scale: _down ? 0.985 : 1.0,
+      child: InkWell(
+        onHighlightChanged: (v) => setState(() => _down = v),
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF6B6B), Color(0xFFD24545)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x33FF6B6B),
+                  blurRadius: 24,
+                  offset: Offset(0, 10)),
+              BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 6)),
+            ],
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // pastille verre fumé
+              Container(
+                width: widget.compact ? 28 : 32,
+                height: widget.compact ? 28 : 32,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.white.withOpacity(0.18), Colors.black12],
+                  ),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Icon(Icons.logout_rounded,
+                    color: Colors.white, size: 18),
+              ),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'PlayfairDisplay',
+                  fontWeight: FontWeight.w800,
+                  fontSize: fs,
+                  letterSpacing: .2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Bouton secondaire “ghost” (verre fumé) — parfait pour Annuler
+class _LuxGhostButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool compact;
+  const _LuxGhostButton({
+    required this.label,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final padH = compact ? 14.0 : 18.0;
+    final padV = compact ? 8.0 : 10.0;
+    final fs = compact ? 13.0 : 14.0;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white.withOpacity(0.08), Colors.black12],
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white70,
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.w700,
+            fontSize: fs,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Section ancrée avec bordure luxe + contenu clair
+class _LogoutSection extends StatelessWidget {
+  final VoidCallback onConfirm;
+  const _LogoutSection({required this.onConfirm});
+
+  @override
+  Widget build(BuildContext context) {
+    return _AnimatedLuxBorder(
+      colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+      radius: 18,
+      stroke: 1.0,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.65),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // En-tête
+            Row(
+              children: const [
+                Icon(Icons.lock_person_rounded,
+                    color: AppColors.gold, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  "Sécurité du compte",
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontFamily: 'PlayfairDisplay',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Vous pouvez vous déconnecter de cet appareil à tout moment.",
+              style: TextStyle(
+                  color: Colors.white60, fontFamily: 'PlayfairDisplay'),
+            ),
+            const SizedBox(height: 14),
+
+            // Bouton danger aligné à droite (ou mets width: double.infinity pour plein-largeur)
+            Row(
+              children: [
+                const Spacer(),
+                _LuxDangerButton(
+                  label: "Se déconnecter",
+                  onTap: onConfirm,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GoldLine extends StatefulWidget {
+  const _GoldLine({super.key});
+
+  @override
+  State<_GoldLine> createState() => _GoldLineState();
+}
+
+class _GoldLineState extends State<_GoldLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 3),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final width = MediaQuery.sizeOf(context).width * 0.45;
+        final glowWidth = width * (0.3 + 0.2 * _controller.value);
+        return Container(
+          height: 2,
+          width: width,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0x22FFD700),
+                Color(0x66FFD700),
+                Color(0x22FFD700),
+              ],
+            ),
+          ),
+          child: Align(
+            alignment: Alignment(
+                -1.0 + 2.0 * _controller.value, Alignment.bottomCenter.y),
+            child: Container(
+              width: glowWidth * 0.1,
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFFFFD700),
+                    Color(0xFFA87C00),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x66FFD700),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// --- HEADER + GREETING ULTRA PREMIUM ----------------------------------------
+class PremiumHeader extends StatelessWidget {
+  final String greeting;
+  final String userName;
+  final VoidCallback onProfile;
+  const PremiumHeader({
+    super.key,
+    required this.greeting,
+    required this.userName,
+    required this.onProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Barre de titre + bouton profil verre fumé
+        Row(
+          children: [
+            const _GoldTitle("Accueil"),
+            const Spacer(),
+            _GlassIconButton(
+              icon: Icons.person_outline_rounded,
+              onTap: onProfile,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _GreetingLine(text: "$greeting $userName 👋"),
+      ],
+    );
+  }
+}
+
+/// Titre “Accueil” avec dégradé or + lueur discrète
+class _GoldTitle extends StatelessWidget {
+  final String text;
+  const _GoldTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // glow doux
+        Positioned.fill(
+          top: 6,
+          child: IgnorePointer(
+            child: Container(
+              decoration: const BoxDecoration(boxShadow: [
+                BoxShadow(
+                    color: Color(0x22FFD700), blurRadius: 20, spreadRadius: 2)
+              ]),
+            ),
+          ),
+        ),
+        ShaderMask(
+          shaderCallback: (r) => const LinearGradient(
+            colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(r),
+          child: const Text(
+            "Accueil",
+            style: TextStyle(
+              color: Colors.white, // requis par ShaderMask
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              fontFamily: 'PlayfairDisplay',
+              letterSpacing: .2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Bouton profil “verre fumé” + halo
+class _GlassIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _GlassIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          gradient: LinearGradient(
+            colors: [Colors.white.withOpacity(.06), Colors.black12],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: Colors.white10),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 6)),
+          ],
+        ),
+        child: const Icon(Icons.person_outline_rounded, color: AppColors.gold),
+      ),
+    );
+  }
+}
+
+/// Greeting centré gorgé d’or + underline animé
+class _GreetingLine extends StatefulWidget {
+  final String text;
+  const _GreetingLine({required this.text});
+
+  @override
+  State<_GreetingLine> createState() => _GreetingLineState();
+}
+
+class _GreetingLineState extends State<_GreetingLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 3))
+        ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ShaderMask(
+          shaderCallback: (r) => const LinearGradient(
+            colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+          ).createShader(r),
+          child: Text(
+            widget.text,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'PlayfairDisplay',
+                shadows: [
+                  Shadow(
+                      color: Color(0x88000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2))
+                ]),
+          ),
+        ),
+        const SizedBox(height: 6),
+        // trait doré animé (signature)
+        AnimatedBuilder(
+          animation: _c,
+          builder: (_, __) {
+            final base = MediaQuery.sizeOf(context).width * 0.34;
+            final w = base + base * .15 * _c.value;
+            return Stack(
+              children: [
+                Container(
+                  height: 2,
+                  width: base * 1.25,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0x22FFD700),
+                        Color(0x66FFD700),
+                        Color(0x22FFD700)
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  height: 2,
+                  width: w * .25,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Color(0x66FFD700),
+                          blurRadius: 10,
+                          spreadRadius: 2),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }

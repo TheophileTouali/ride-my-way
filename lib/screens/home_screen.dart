@@ -15,12 +15,75 @@ import 'package:http/http.dart' as http;
 
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
+import 'dart:math' as math; // AppColors.gold
 
 // ---- Config clé Google (évite le hardcode; fallback si non fournie) ----
 const String kGooglePlacesApiKey = String.fromEnvironment(
   'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI',
   defaultValue: 'AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI',
 );
+
+Future<void> performLogout(BuildContext context) async {
+  final confirm = await showDialog<bool>(
+        context: context,
+        useRootNavigator: true,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Text(
+            "Confirmation",
+            style: TextStyle(
+              color: AppColors.gold,
+              fontFamily: 'PlayfairDisplay',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text(
+            "Souhaitez-vous vraiment vous déconnecter ?",
+            style:
+                TextStyle(color: Colors.white70, fontFamily: 'PlayfairDisplay'),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          actions: [
+            _LuxGhostButton(
+              label: "Annuler",
+              compact: true,
+              onTap: () => Navigator.of(ctx, rootNavigator: true).pop(false),
+            ),
+            const SizedBox(width: 10),
+            _LuxDangerButton(
+              label: "Se déconnecter",
+              compact: true,
+              onTap: () => Navigator.of(ctx, rootNavigator: true).pop(true),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  if (!confirm) return;
+
+  try {
+    await FirebaseAuth.instance.signOut();
+    Provider.of<UserProvider>(context, listen: false).logout();
+
+    if (context.mounted) {
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (context.mounted) GoRouter.of(context).go('/login');
+      });
+    }
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.redAccent,
+        content: Text("Erreur lors de la déconnexion : $e",
+            style: const TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+}
 
 // --- Réputation passager (top-level) ---
 class _Reputation {
@@ -663,6 +726,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return p; // 0..1
   }
 
+  String _nextRankFromTrips(int trips) {
+    if (trips >= diamantMin) return "Rang max";
+    if (trips >= orMin) return "Voyageur Diamant";
+    if (trips >= argentMin) return "Voyageur d'Or";
+    if (trips >= bronzeMin) return "Voyageur d'Argent";
+    return "Voyageur de Bronze";
+  }
+
+  String _gaugeBottomLabelForTrips(int trips) {
+    final n = _nextRankFromTrips(trips);
+    return (n == "Rang max") ? "Atteint" : "vers ${n.split(' ').last}";
+  }
+
   Future<bool?> _confirmLogout(BuildContext context) {
     return showDialog<bool>(
       context: context,
@@ -692,8 +768,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 10),
           _LuxDangerButton(
             label: "Se déconnecter",
-            compact: true,
-            onTap: () => Navigator.pop(ctx, true),
+            onTap: () => performLogout(context),
           ),
         ],
       ),
@@ -1114,9 +1189,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _weatherSection() {
-    if (_weatherLoading) {
-      return const _Shimmer(height: 86);
-    }
+    if (_weatherLoading) return const _Shimmer(height: 86);
     if (_weather == null) return const SizedBox.shrink();
 
     final t = (_weather!['t'] as double).toStringAsFixed(1);
@@ -1124,64 +1197,60 @@ class _HomeScreenState extends State<HomeScreen> {
     final wind = (_weather!['wind'] as double).toStringAsFixed(0);
     final code = _weather!['code'] as int;
 
-    // palette couleur + libellé
     final palette = _paletteFor(code);
     final condition = _wmoLabel(code);
     final isClear = code == 0;
+
+    final screenW = MediaQuery.sizeOf(context).width;
+    final isNarrow = screenW < 380; // web mobile étroit / petits devices
 
     return _AnimatedLuxBorder(
       colors: [palette.ringStart, palette.ringEnd],
       radius: 18,
       stroke: 1.4,
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Icône anneau premium (animé)
+            // Icône météo (un peu plus petit si étroit)
             _LuxWeatherIcon(
               icon: _wmoIcon(code),
               code: code,
-              size: 56,
+              size: isNarrow ? 48 : 56,
               thickness: 4,
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
 
-            // Informations
+            // Infos (titre + métriques)
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Titre + chip condition
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          condition,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: isClear ? AppColors.gold : Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            fontFamily: 'PlayfairDisplay',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _ConditionChip(label: condition, palette: palette),
-                    ],
+                  // Titre seul (plus de chip => pas de doublon)
+                  Text(
+                    condition,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isClear ? AppColors.gold : Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: isNarrow ? 14 : 15,
+                      fontFamily: 'PlayfairDisplay',
+                    ),
                   ),
                   const SizedBox(height: 6),
 
-                  // Métriques
-                  Row(
+                  // Métriques : Wrap pour autoriser le retour ligne si très serré
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 4,
                     children: [
                       _Metric(
                         icon: Icons.thermostat_rounded,
                         value: "$feels°",
                         hint: "Ressenti",
                       ),
-                      const SizedBox(width: 14),
                       _Metric(
                         icon: Icons.air_rounded,
                         value: "$wind km/h",
@@ -1193,26 +1262,35 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Température principale
-            RichText(
-              text: TextSpan(
-                text: t,
-                style: const TextStyle(
-                  color: AppColors.gold,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'PlayfairDisplay',
-                ),
-                children: const [
-                  TextSpan(
-                    text: "°",
+            const SizedBox(width: 8),
+
+            // Température principale : compressible, jamais d’overflow
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 0),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: RichText(
+                  text: TextSpan(
+                    text: t,
                     style: TextStyle(
                       color: AppColors.gold,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontSize: isNarrow ? 22 : 24,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'PlayfairDisplay',
                     ),
+                    children: const [
+                      TextSpan(
+                        text: "°",
+                        style: TextStyle(
+                          color: AppColors.gold,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ],
@@ -1364,6 +1442,10 @@ class _HomeScreenState extends State<HomeScreen> {
 // ── FUSION : Réputation + Avis + Progression (version hyper premium)
   Widget _reputationFusion(_Reputation rep) {
     final rank = _rankFromTrips(rep.completedTrips);
+    final double gauge = rep.progressToNext.clamp(0, 1).toDouble();
+    final next =
+        _nextRankFromTrips(rep.completedTrips); // ex: "Voyageur d'Argent"
+    final nextLabel = _gaugeBottomLabelForTrips(rep.completedTrips);
 
     // Paliers
     int nextTarget;
@@ -1412,9 +1494,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 _LuxGauge(
-                  value: rep.progressToNext.clamp(0, 1),
-                  top: rep.avg.toStringAsFixed(1),
-                  bottom: "/5",
+                  value: gauge,
+                  top: "${(gauge * 100).round()}%",
+                  bottom: (next == "Voyageur Diamant")
+                      ? "Rang max"
+                      : "vers ${next.split(' ').last}", // "vers d'Argent", "vers d'Or", etc.
+                  size: 64, // 64–72 donne un rendu premium très propre
                 ),
               ],
             ),
@@ -1422,92 +1507,44 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
 
             // KPIs élégants en grille 2x2
-            Row(
+            // --- KPIs : 1 par ligne, pleine largeur -----------------
+            Column(
               children: [
-                Expanded(
-                  child: _InfoKPI(
-                    icon: Icons.military_tech_rounded,
-                    label: "Distinction",
-                    value: rank,
-                  ),
+                _InfoKPI(
+                  icon: Icons.military_tech_rounded,
+                  label: "Distinction",
+                  value: rank,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _InfoKPI(
-                    icon: Icons.directions_car_filled_rounded,
-                    label: "Trajets",
-                    value: "${rep.completedTrips}",
-                  ),
+                const SizedBox(height: 10),
+                _InfoKPI(
+                  icon: Icons.directions_car_filled_rounded,
+                  label: "Trajets",
+                  value: "${rep.completedTrips}",
+                ),
+                const SizedBox(height: 10),
+                _InfoKPI(
+                  icon: Icons.verified_rounded,
+                  label: "Respect trajets",
+                  value:
+                      "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %",
+                ),
+                const SizedBox(height: 10),
+                _InfoKPI(
+                  icon: Icons.handshake_rounded,
+                  label: "Chauffeurs satisfaits",
+                  value: "${rep.satisfied} / ${rep.total}",
+                ),
+                const SizedBox(height: 10),
+                _InfoKPI(
+                  icon: Icons.account_balance_wallet_rounded,
+                  label: "Cumul dépensé",
+                  value: currency.format(rep.totalSpend),
+                  compact: true,
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoKPI(
-                    icon: Icons.verified_rounded,
-                    label: "Respect trajets",
-                    value:
-                        "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %",
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _InfoKPI(
-                    icon: Icons.handshake_rounded,
-                    label: "Chauffeurs satisfaits",
-                    value: "${rep.satisfied} / ${rep.total}",
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-            _InfoKPI(
-              icon: Icons.account_balance_wallet_rounded,
-              label: "Cumul dépensé",
-              value: currency.format(rep.totalSpend),
-              compact: true,
-            ),
-
             const SizedBox(height: 14),
 
-            // Barre de progression + détail
-            _progressBar(rep.progressToNext),
-            if (rank != "Voyageur Diamant") ...[
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  "${rep.completedTrips} / $nextTarget "
-                  "(${(rep.progressToNext * 100).clamp(0, 100).toStringAsFixed(0)} %)",
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            Container(height: 1, color: Colors.white10),
-            const SizedBox(height: 12),
-
-            // Avis (même logique, carte premium)
-            Row(
-              children: const [
-                Icon(Icons.rate_review_outlined,
-                    color: AppColors.gold, size: 18),
-                SizedBox(width: 8),
-                Text(
-                  "Avis des chauffeurs",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                    fontFamily: 'PlayfairDisplay',
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 10),
 
             if (rep.reviews.isEmpty)
@@ -2128,58 +2165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Center(
                     child: _LuxDangerButton(
                       label: "Se déconnecter",
-                      onTap: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: Colors.grey[900],
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(22)),
-                            title: const Text(
-                              "Confirmation",
-                              style: TextStyle(
-                                color: AppColors.gold,
-                                fontFamily: 'PlayfairDisplay',
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            content: const Text(
-                              "Souhaitez-vous vraiment vous déconnecter ?",
-                              style: TextStyle(
-                                  color: Colors.white70,
-                                  fontFamily: 'PlayfairDisplay'),
-                            ),
-                            actionsPadding:
-                                const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            actions: [
-                              _LuxGhostButton(
-                                label: "Annuler",
-                                compact: true,
-                                onTap: () => Navigator.pop(ctx, false),
-                              ),
-                              const SizedBox(width: 10),
-                              _LuxDangerButton(
-                                label: "Se déconnecter",
-                                compact: true,
-                                onTap: () => Navigator.pop(ctx, true),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        const SizedBox(height: 32);
-                        _LogoutSection(
-                          onConfirm: () async {
-                            final ok = await _confirmLogout(context);
-                            if (ok == true) {
-                              Provider.of<UserProvider>(context, listen: false)
-                                  .logout();
-                              context.go('/login');
-                            }
-                          },
-                        );
-                        const SizedBox(height: 28);
-                      },
+                      onTap: () => performLogout(context),
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -2391,31 +2377,6 @@ class _TripCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: compact ? 12 : 14,
-                    vertical: compact ? 6 : 8,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    children: const [
-                      Text("Ouvrir",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'PlayfairDisplay',
-                          )),
-                      SizedBox(width: 6),
-                      Icon(Icons.chevron_right_rounded,
-                          size: 18, color: Colors.black),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -2451,7 +2412,7 @@ class _TripCard extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.gold,
                       fontWeight: FontWeight.w800,
-                      fontSize: compact ? 15 : 16,
+                      fontSize: compact ? 12 : 13,
                       fontFamily: 'PlayfairDisplay',
                     ),
                   ),
@@ -2751,85 +2712,173 @@ class _HomeButtonPremiumState extends State<_HomeButtonPremium>
       ),
     );
   }
-}
+} // AppColors.gold
 
-// Jauge circulaire dorée (progression → prochain rang)
+// Jauge circulaire premium (verre fumé + dégradé or + cap arrondi)
 class _LuxGauge extends StatelessWidget {
   final double value; // 0..1
-  final String top;
-  final String bottom;
+  final String top; // ex: "16%"
+  final String bottom; // ex: "vers d'Argent"
   final double size;
+
   const _LuxGauge({
     super.key,
     required this.value,
     required this.top,
     required this.bottom,
-    this.size = 56,
+    this.size = 64, // un peu plus grand pour la lisibilité
   });
 
   @override
   Widget build(BuildContext context) {
     final v = value.clamp(0.0, 1.0);
+
     return SizedBox(
       width: size,
       height: size,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // fond
+          // Halo doux autour de l’anneau
+          Container(
+            width: size + 14,
+            height: size + 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.gold.withOpacity(.12),
+                  blurRadius: 18,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+
+          // Piste + arc
+          CustomPaint(
+            size: Size.square(size),
+            painter: _GaugePainter(v),
+          ),
+
+          // Pastille “verre fumé” intérieure
+          Container(
+            width: size - 12,
+            height: size - 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(.06),
+                  Colors.black12,
+                ],
+              ),
+              border: Border.all(color: Colors.white10),
+            ),
+          ),
+
+          // Texte centre (s’adapte, jamais d’overflow)
           SizedBox(
-            width: size,
-            height: size,
-            child: CircularProgressIndicator(
-              value: 1,
-              strokeWidth: 6,
-              valueColor:
-                  AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(.10)),
-            ),
-          ),
-          // arc doré (shader sweep)
-          ShaderMask(
-            shaderCallback: (rect) => const SweepGradient(
-              colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-            ).createShader(rect),
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: CircularProgressIndicator(
-                value: v,
-                strokeWidth: 6,
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                backgroundColor: Colors.transparent,
-              ),
-            ),
-          ),
-          // centre
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                top,
-                style: const TextStyle(
-                  color: AppColors.gold,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  fontFamily: 'PlayfairDisplay',
+            width: size * .72,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    top,
+                    style: const TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'PlayfairDisplay',
+                      height: 1.05,
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                bottom,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontFamily: 'PlayfairDisplay',
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    bottom,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontFamily: 'PlayfairDisplay',
+                      height: 1.05,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class _GaugePainter extends CustomPainter {
+  final double value; // 0..1
+  _GaugePainter(this.value);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = 6.0;
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final radius = (size.width - stroke) / 2;
+
+    // Piste sombre
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0x26222222); // ~ blanc très atténué
+    canvas.drawCircle(center, radius, track);
+
+    // Arc doré
+    final sweep = value * 2 * math.pi;
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..shader = SweepGradient(
+        startAngle: -math.pi / 2,
+        endAngle: -math.pi / 2 + sweep,
+        colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+
+    final start = -math.pi / 2; // à 12h
+    final rectArc = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawArc(rectArc, start, sweep, false, arc);
+
+    // Petite gemme au bout de l’arc (si progression > 0)
+    if (value > 0) {
+      final endAngle = start + sweep;
+      final dx = center.dx + radius * math.cos(endAngle);
+      final dy = center.dy + radius * math.sin(endAngle);
+      final dot = Offset(dx, dy);
+
+      final glow = Paint()
+        ..color = const Color(0x80FFD700)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(dot, 4.5, glow);
+
+      final core = Paint()
+        ..color = const Color(0xFFFFD700)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(dot, 2.2, core);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) =>
+      oldDelegate.value != value;
 }
 
 // Ligne KPI premium (icône anneau + label + valeur)
@@ -3208,8 +3257,7 @@ class _LuxGhostButton extends StatelessWidget {
 
 // Section ancrée avec bordure luxe + contenu clair
 class _LogoutSection extends StatelessWidget {
-  final VoidCallback onConfirm;
-  const _LogoutSection({required this.onConfirm});
+  const _LogoutSection({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -3226,23 +3274,19 @@ class _LogoutSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête
-            Row(
-              children: const [
-                Icon(Icons.lock_person_rounded,
-                    color: AppColors.gold, size: 18),
-                SizedBox(width: 8),
-                Text(
-                  "Sécurité du compte",
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontFamily: 'PlayfairDisplay',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
+            Row(children: const [
+              Icon(Icons.lock_person_rounded, color: AppColors.gold, size: 18),
+              SizedBox(width: 8),
+              Text(
+                "Sécurité du compte",
+                style: TextStyle(
+                  color: AppColors.gold,
+                  fontFamily: 'PlayfairDisplay',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
                 ),
-              ],
-            ),
+              ),
+            ]),
             const SizedBox(height: 8),
             const Text(
               "Vous pouvez vous déconnecter de cet appareil à tout moment.",
@@ -3250,14 +3294,12 @@ class _LogoutSection extends StatelessWidget {
                   color: Colors.white60, fontFamily: 'PlayfairDisplay'),
             ),
             const SizedBox(height: 14),
-
-            // Bouton danger aligné à droite (ou mets width: double.infinity pour plein-largeur)
             Row(
               children: [
                 const Spacer(),
                 _LuxDangerButton(
                   label: "Se déconnecter",
-                  onTap: onConfirm,
+                  onTap: () => performLogout(context),
                 ),
               ],
             ),
@@ -3473,25 +3515,22 @@ class _GreetingLineState extends State<_GreetingLine>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ShaderMask(
-          shaderCallback: (r) => const LinearGradient(
-            colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-          ).createShader(r),
-          child: Text(
-            widget.text,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                fontFamily: 'PlayfairDisplay',
-                shadows: [
-                  Shadow(
-                      color: Color(0x88000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 2))
-                ]),
+        Text(
+          widget.text,
+          style: const TextStyle(
+            color: Colors.white, // <- blanc
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            fontFamily: 'PlayfairDisplay',
+            shadows: [
+              Shadow(
+                  color: Color(0x88000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2)),
+            ],
           ),
         ),
+
         const SizedBox(height: 6),
         // trait doré animé (signature)
         AnimatedBuilder(

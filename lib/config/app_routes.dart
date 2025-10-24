@@ -35,6 +35,7 @@ import '../screens/feedback_driver_screen.dart';
 import '../screens/edit_profile_screen.dart';
 import '../screens/payment_success_screen.dart';
 import '../screens/payment_cancel_screen.dart';
+import '../screens/payment_method_screen.dart';
 
 // 👈 ajoute ce fichier à ton projet
 
@@ -45,6 +46,10 @@ class AppRoutes {
       GoRoute(
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: '/payment-methods',
+        builder: (context, state) => const PaymentMethodsScreen(),
       ),
       GoRoute(
         path: '/login',

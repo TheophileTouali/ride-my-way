@@ -5,43 +5,40 @@ class AppColors {
   static const Color gold = Color(0xFFB78E45); // or prélevé du logo
   static const Color grey = Color(0xFFBDBDBD); // gris utilisé pour les labels
   static const Color texturedBlack = Color(0xFF0A0A0A);
-  static const Color deepGold = Color(0xFF8C6A2C); // ✅ or plus profond pour conducteurs
+  static const Color deepGold = Color(0xFF8C6A2C); // accent principal
+  static const Color softGold = Color(0xFFD4B67A); // texte doré doux
+  static const Color offWhite =
+      Color(0xFFE5E5E5); // ✅ or plus profond pour conducteurs
 }
-
 
 class AppTheme {
   static ThemeData lightTheme = ThemeData(
     scaffoldBackgroundColor: AppColors.texturedBlack,
     primaryColor: AppColors.gold,
     fontFamily: 'PlayfairDisplay',
-
     colorScheme: ColorScheme.fromSwatch().copyWith(
       primary: AppColors.gold,
       secondary: AppColors.grey,
       background: AppColors.black,
-      
     ),
-
     textTheme: const TextTheme(
       headlineLarge: TextStyle(
         fontSize: 32,
         fontWeight: FontWeight.bold,
-        color: Color(0xFFBDBDBD),
+        color: AppColors.offWhite,
         fontFamily: 'PlayfairDisplay',
       ),
       bodyMedium: TextStyle(
         fontSize: 16,
-        color: Color(0xFFBDBDBD),
+        color: AppColors.softGold,
         fontFamily: 'PlayfairDisplay',
       ),
     ),
-
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.black,
       foregroundColor: AppColors.gold,
       elevation: 0,
     ),
-
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.gold,
@@ -57,7 +54,6 @@ class AppTheme {
         ),
       ),
     ),
-
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: Color(0xFFBDBDBD),

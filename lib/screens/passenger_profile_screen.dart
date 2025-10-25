@@ -151,7 +151,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
       final newUrl = (await ref.getDownloadURL()).trim();
 
       // 🔥 Aperçu instantané : on met à jour l'UI tout de suite
-      if (mounted) setState(() => _tempPhotoUrl = newUrl);
+      if (mounted) {
+        context.read<UserProvider>().updateAvatarUrl(newUrl);
+        setState(() => _tempPhotoUrl = newUrl); // votre aperçu local conservé
+      }
 
       // Firestore + FirebaseAuth (photoURL)
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({

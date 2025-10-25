@@ -141,7 +141,9 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           final status = (doc['status'] ?? '').toString();
 
           // Si la date est passée et que ce n'est pas annulé/terminé => on termine.
-          if (status != 'Annulée' && date.isBefore(now) && status != 'Terminée') {
+          if (status != 'Annulée' &&
+              date.isBefore(now) &&
+              status != 'Terminée') {
             FirebaseFirestore.instance
                 .collection('reservations')
                 .doc(doc.id)
@@ -200,125 +202,149 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
           ),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          const SizedBox(height: 16),
-          _buildFilterChips(),
-          const SizedBox(height: 16),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _reservationsStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppColors.gold),
-                  );
-                }
+          // halo discret premium
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.85, -0.92),
+                    radius: 1.2,
+                    colors: [
+                      AppColors.gold.withOpacity(.06),
+                      Colors.transparent
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Column(
+            children: [
+              const SizedBox(height: 16),
+              _buildFilterChips(),
+              const SizedBox(height: 16),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _reservationsStream(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: AppColors.gold),
+                      );
+                    }
 
-                if (!snapshot.hasData) {
-                  return const Center(
-                    child: Text(
-                      "Chargement des réservations...",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  );
-                }
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: Text(
+                          "Chargement des réservations...",
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      );
+                    }
 
-                final docs = snapshot.data!.docs;
+                    final docs = snapshot.data!.docs;
 
-                // Redirection automatique vers la course active/en route
-                if (_redirectedReservationIds.isEmpty) {
-                  // 1) "En cours"
-                  final enCoursDocs =
-                      docs.where((doc) => doc['status'] == 'En cours').toList();
-                  if (enCoursDocs.isNotEmpty) {
-                    enCoursDocs.sort((a, b) {
-                      final aTime = (a['timestamp'] as Timestamp).toDate();
-                      final bTime = (b['timestamp'] as Timestamp).toDate();
-                      return bTime.compareTo(aTime);
-                    });
-                    final latestDoc = enCoursDocs.first;
-                    final id = latestDoc.id;
+                    // Redirection automatique vers la course active/en route
+                    if (_redirectedReservationIds.isEmpty) {
+                      // 1) "En cours"
+                      final enCoursDocs = docs
+                          .where((doc) => doc['status'] == 'En cours')
+                          .toList();
+                      if (enCoursDocs.isNotEmpty) {
+                        enCoursDocs.sort((a, b) {
+                          final aTime = (a['timestamp'] as Timestamp).toDate();
+                          final bTime = (b['timestamp'] as Timestamp).toDate();
+                          return bTime.compareTo(aTime);
+                        });
+                        final latestDoc = enCoursDocs.first;
+                        final id = latestDoc.id;
 
-                    _redirectedReservationIds.add(id);
-                    // ignore: avoid_print
-                    print("🚀 Redirection vers /tracking/$id");
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) context.go('/tracking/$id');
-                    });
-                    return const SizedBox.shrink();
-                  }
+                        _redirectedReservationIds.add(id);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) context.go('/tracking/$id');
+                        });
+                        return const SizedBox.shrink();
+                      }
 
-                  // 2) "En route"
-                  final enRouteDocs =
-                      docs.where((doc) => doc['status'] == 'En route').toList();
-                  if (enRouteDocs.isNotEmpty) {
-                    enRouteDocs.sort((a, b) {
-                      final aTime = (a['timestamp'] as Timestamp).toDate();
-                      final bTime = (b['timestamp'] as Timestamp).toDate();
-                      return bTime.compareTo(aTime);
-                    });
-                    final latestDoc = enRouteDocs.first;
-                    final id = latestDoc.id;
+                      // 2) "En route"
+                      final enRouteDocs = docs
+                          .where((doc) => doc['status'] == 'En route')
+                          .toList();
+                      if (enRouteDocs.isNotEmpty) {
+                        enRouteDocs.sort((a, b) {
+                          final aTime = (a['timestamp'] as Timestamp).toDate();
+                          final bTime = (b['timestamp'] as Timestamp).toDate();
+                          return bTime.compareTo(aTime);
+                        });
+                        final latestDoc = enRouteDocs.first;
+                        final id = latestDoc.id;
 
-                    _redirectedReservationIds.add(id);
-                    // ignore: avoid_print
-                    print("🛰️ Redirection vers /tracking/$id (En route)");
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) context.go('/tracking/$id');
-                    });
-                    return const SizedBox.shrink();
-                  }
-                }
+                        _redirectedReservationIds.add(id);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) context.go('/tracking/$id');
+                        });
+                        return const SizedBox.shrink();
+                      }
+                    }
 
-                final filtered = _filterReservations(docs);
-                if (filtered.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      "Aucune réservation pour ce filtre.",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  );
-                }
+                    final filtered = _filterReservations(docs);
+                    if (filtered.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          "Aucune réservation pour ce filtre.",
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      );
+                    }
 
-                return ListView.builder(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  itemCount: filtered.length,
-                  itemBuilder: (context, index) {
-                    final doc = filtered[index];
-                    return FadeInLeft(
-                      delay: Duration(milliseconds: index * 100),
-                      child: Column(
-                        children: [
-                          _reservationCard(
-                            docId: doc.id,
-                            from: doc['from'] ?? '',
-                            to: doc['to'] ?? '',
-                            date: _formatDate(doc['timestamp'] as Timestamp),
-                            status:
-                                _getFieldOrDefault(doc, 'status', 'En attente'),
-                            price: _getFieldOrDefault(doc, 'price', 'À définir'),
-                            vehicle: _getFieldOrDefault(
-                                doc, 'vehicle', 'Non assigné'),
-                            driver: _getFieldOrDefault(
-                                doc, 'driverName', 'Non assigné'),
-                            docSnapshot: doc,
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 8),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final doc = filtered[index];
+                        return FadeInLeft(
+                          delay: Duration(milliseconds: index * 100),
+                          child: Column(
+                            children: [
+                              _reservationCard(
+                                docId: doc.id,
+                                from: doc['from'] ?? '',
+                                to: doc['to'] ?? '',
+                                date:
+                                    _formatDate(doc['timestamp'] as Timestamp),
+                                status: _getFieldOrDefault(
+                                    doc, 'status', 'En attente'),
+                                price: _getFieldOrDefault(
+                                    doc, 'price', 'À définir'),
+                                vehicle: _getFieldOrDefault(
+                                    doc, 'vehicle', 'Non assigné'),
+                                driver: _getFieldOrDefault(
+                                    doc, 'driverName', 'Non assigné'),
+                                distanceOpt:
+                                    _getFieldOrDefault(doc, 'distance', ''),
+                                docSnapshot: doc,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                        ],
-                      ),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  // ------- Filtres premium -------
   Widget _buildFilterChips() {
     final statuses = [
       'À venir',
@@ -328,34 +354,67 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
       'Terminée',
       'Tous'
     ];
+
     return SizedBox(
-      height: 40,
-      child: ListView(
+      height: 44,
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        children: statuses.map((status) {
-          return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ChoiceChip(
-              label: Text(status),
-              selected: _filter == status,
-              selectedColor: AppColors.gold,
-              backgroundColor: Colors.grey[800],
-              labelStyle: TextStyle(
-                color: _filter == status ? Colors.black : Colors.white,
-                fontWeight: FontWeight.bold,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemCount: statuses.length,
+        itemBuilder: (_, i) {
+          final s = statuses[i];
+          final selected = _filter == s;
+
+          return GestureDetector(
+            onTap: () => setState(() => _filter = s),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: selected ? _GoldGrad.g : null,
+                color: selected ? null : const Color(0xFF1B1B1B),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                    color: selected ? const Color(0xFFFFE680) : Colors.white10),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                            color: AppColors.gold.withOpacity(.22),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6))
+                      ]
+                    : [
+                        BoxShadow(
+                            color: Colors.black.withOpacity(.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4))
+                      ],
               ),
-              onSelected: (_) => setState(() => _filter = status),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (selected) ...[
+                  const Icon(Icons.check_rounded,
+                      size: 16, color: Colors.black),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  s,
+                  style: TextStyle(
+                    color: selected ? Colors.black : Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 14.5,
+                  ),
+                ),
+              ]),
             ),
           );
-        }).toList(),
+        },
       ),
     );
   }
 
-  // --- UI helpers -----------------------------------------------------------
-
-  // Petit badge arrondi
+  // --- (ancienne) pastille simple — plus utilisée mais on la garde si besoin ---
   Widget _pill(
     String text, {
     Color bg = const Color(0xFF2A2A2A),
@@ -373,15 +432,13 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             Icon(icon, size: 16, color: fg),
             const SizedBox(width: 6),
           ],
-          Text(
-            text,
-            style: TextStyle(color: fg, fontWeight: FontWeight.w600),
-          ),
+          Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 
+  // ------- Carte premium -------
   Widget _reservationCard({
     required String docId,
     required String from,
@@ -392,133 +449,144 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     required String vehicle,
     required String driver,
     required QueryDocumentSnapshot docSnapshot,
+    String? distanceOpt, // km éventuels stockés dans le doc
   }) {
-    final Color statusColor = switch (status) {
-      "Confirmée" => AppColors.gold,
-      "En attente" => Colors.orangeAccent,
-      "Annulée" => Colors.redAccent,
-      "Terminée" => Colors.white54,
-      _ => Colors.white60,
-    };
-
-    // Statut de paiement (aligné Stripe)
-    // authorized => préautorisé ; succeeded => capturé/payé
-    final paymentStatus = (docSnapshot.data().toString().contains('paymentStatus'))
-        ? (docSnapshot['paymentStatus'] as String? ?? '')
-        : '';
+    // Statut paiement
+    final paymentStatus =
+        (docSnapshot.data().toString().contains('paymentStatus'))
+            ? (docSnapshot['paymentStatus'] as String? ?? '')
+            : '';
     final bool isAuthorized = paymentStatus == 'authorized';
     final bool isCaptured = paymentStatus == 'succeeded';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.gold.withOpacity(0.3)),
-      ),
+    final priceStr = (price.isEmpty) ? '—' : price;
+    final String? distanceStr = () {
+      final d = distanceOpt?.toString().trim();
+      if (d == null || d.isEmpty) return null;
+      // si c'est déjà "26.2" on ajoute " km"
+      return d.contains('km')
+          ? d
+          : "${double.tryParse(d)?.toStringAsFixed(1) ?? d} km";
+    }();
+
+    return _GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // En-tête + pilules
           Row(
             children: [
-              const Icon(Icons.location_on, color: Colors.white60, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "$from ➜ $to",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black,
+                  border: Border.all(color: AppColors.gold, width: 1.2),
                 ),
+                child: const Icon(Icons.location_on,
+                    size: 16, color: AppColors.gold),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text("Départ : $date", style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 6),
-          Text("Prix : $price", style: const TextStyle(color: Colors.white70)),
-          Text("Véhicule : $vehicle",
-              style: const TextStyle(color: Colors.white70)),
-          Text("Conducteur : $driver",
-              style: const TextStyle(color: Colors.white70)),
-
-          const SizedBox(height: 10),
-
-          // Statut + badge paiement
-          Row(
-            children: [
-              Text("Statut : $status", style: TextStyle(color: statusColor)),
               const SizedBox(width: 10),
+              const Expanded(child: _GoldTitle("Détails de la réservation")),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                if (distanceStr != null) ...[
+                  _DistancePill("~$distanceStr"),
+                  const SizedBox(width: 8),
+                ],
+                _PricePill("${priceStr.toString().replaceAll('.', ',')} €"),
+              ]),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Trajet (timeline)
+          _TimelineMini(from: from, to: to),
+          const SizedBox(height: 12),
+
+          // Infos lignes
+          Row(children: [
+            const Icon(Icons.event_rounded, color: Colors.white60, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text("Départ : $date",
+                    style: const TextStyle(color: Colors.white70))),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Icon(Icons.directions_car_filled_rounded,
+                color: Colors.white60, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text("Véhicule : $vehicle",
+                    style: const TextStyle(color: Colors.white70))),
+          ]),
+          Row(children: [
+            const Icon(Icons.person_outline_rounded,
+                color: Colors.white60, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text("Conducteur : $driver",
+                    style: const TextStyle(color: Colors.white70))),
+          ]),
+
+          const SizedBox(height: 12),
+
+          // Statuts
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              _StatusChip(status),
               if (isCaptured)
-                _pill(
-                  "Payé",
-                  bg: Colors.green.withOpacity(0.15),
-                  fg: Colors.greenAccent,
-                  icon: Icons.verified_rounded,
-                )
-              else if (isAuthorized)
-                _pill(
-                  "Préautorisé",
-                  bg: Colors.blueGrey.shade800,
-                  fg: Colors.white70,
-                  icon: Icons.lock_clock_rounded,
-                ),
+                const _Pill('Payé',
+                    icon: Icons.verified_rounded,
+                    fg: Colors.greenAccent,
+                    bg: Color(0x2228A745)),
+              if (isAuthorized && !isCaptured)
+                _Pill('Préautorisé',
+                    icon: Icons.lock_clock_rounded,
+                    fg: Colors.white70,
+                    bg: Colors.blueGrey.shade800),
             ],
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
 
+          // Actions
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Annuler : seulement si non terminée/annulée
               if (status != 'Annulée' && status != 'Terminée')
                 TextButton.icon(
                   onPressed: () => _cancelReservation(docId),
                   icon: const Icon(Icons.cancel, color: Colors.redAccent),
-                  label: const Text(
-                    "Annuler",
-                    style: TextStyle(color: Colors.redAccent),
+                  label: const Text("Annuler",
+                      style: TextStyle(color: Colors.redAccent)),
+                ),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () => _addToFavorites(
+                    from: from, to: to, frequency: 'Ponctuelle'),
+                icon: const Icon(Icons.favorite_border, color: Colors.black),
+                label: const Text(
+                  "Favori",
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Colors.black,
                   ),
                 ),
-
-              // (Le bouton "Payer maintenant" a été SUPPRIMÉ – capture automatique côté serveur)
-              if (isCaptured)
-                const Icon(Icons.verified_rounded,
-                    color: Colors.greenAccent, size: 28),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+              ),
             ],
-          ),
-
-          const SizedBox(height: 6),
-
-          // Favori
-          ElevatedButton.icon(
-            onPressed: () => _addToFavorites(
-              from: from,
-              to: to,
-              frequency: 'Ponctuelle',
-            ),
-            icon: const Icon(Icons.favorite_border, color: Colors.black),
-            label: const Text(
-              "Favori",
-              style: TextStyle(
-                fontFamily: 'PlayfairDisplay',
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: Colors.black,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.gold,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
           ),
 
           if (status == 'Arrivé') const SizedBox(height: 6),
@@ -546,8 +614,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
 
@@ -570,12 +637,240 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+/* ========= PREMIUM UI HELPERS ========= */
+
+class _GoldGrad {
+  static const LinearGradient g = LinearGradient(
+    colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  const _GlassCard(
+      {required this.child, this.padding = const EdgeInsets.all(16)});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.82),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.gold.withOpacity(0.18), width: 1),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(.45),
+              blurRadius: 24,
+              offset: const Offset(0, 16)),
+          BoxShadow(
+              color: Colors.black.withOpacity(.25),
+              blurRadius: 8,
+              spreadRadius: -6,
+              offset: const Offset(0, -2)),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _GoldTitle extends StatelessWidget {
+  final String text;
+  const _GoldTitle(this.text);
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (r) => _GoldGrad.g.createShader(r),
+      child: const Text(
+        "Détails de la réservation",
+        style: TextStyle(
+          color: Colors.white,
+          fontFamily: 'PlayfairDisplay',
+          fontWeight: FontWeight.w800,
+          fontSize: 18.5,
+          height: 1.15,
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String text;
+  final IconData? icon;
+  final Color fg;
+  final Gradient? gradient;
+  final Color? bg;
+  final EdgeInsets pad;
+  const _Pill(this.text,
+      {this.icon,
+      this.fg = Colors.white,
+      this.gradient,
+      this.bg,
+      this.pad = const EdgeInsets.symmetric(horizontal: 12, vertical: 7)});
+  @override
+  Widget build(BuildContext context) {
+    final deco = BoxDecoration(
+      color: gradient == null ? (bg ?? const Color(0xFF1A1A1A)) : null,
+      gradient: gradient,
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(
+          color: gradient == null ? Colors.white10 : const Color(0xFFFFE680),
+          width: 1),
+      boxShadow: gradient == null
+          ? [
+              BoxShadow(
+                  color: Colors.black.withOpacity(.24),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4))
+            ]
+          : [
+              BoxShadow(
+                  color: AppColors.gold.withOpacity(.22),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6))
+            ],
+    );
+    return Container(
+      padding: pad,
+      decoration: deco,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(width: 6),
+        ],
+        Text(text,
+            style: TextStyle(
+                color: fg,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'PlayfairDisplay')),
+      ]),
+    );
+  }
+}
+
+class _PricePill extends _Pill {
+  _PricePill(String v) : super(v, fg: Colors.black, gradient: _GoldGrad.g);
+}
+
+class _DistancePill extends _Pill {
+  _DistancePill(String v)
+      : super(
+          v,
+          fg: AppColors.gold,
+          bg: const Color(0xFF131313),
+          pad: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        );
+}
+
+class _StatusChip extends StatelessWidget {
+  final String status;
+  const _StatusChip(this.status);
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case 'Confirmée':
+        return const _Pill('Confirmée',
+            icon: Icons.verified_rounded,
+            fg: Colors.black,
+            gradient: _GoldGrad.g);
+      case 'En attente':
+        return _Pill('En attente',
+            icon: Icons.hourglass_bottom_rounded,
+            fg: Colors.amberAccent,
+            bg: Colors.amber.withOpacity(.12));
+      case 'Annulée':
+        return _Pill('Annulée',
+            icon: Icons.cancel,
+            fg: Colors.redAccent,
+            bg: Colors.red.withOpacity(.10));
+      case 'Terminée':
+        return _Pill('Terminée',
+            icon: Icons.check_circle,
+            fg: Colors.greenAccent,
+            bg: Colors.green.withOpacity(.10));
+      default:
+        return _Pill(status, fg: Colors.white70, bg: const Color(0xFF2A2A2A));
+    }
+  }
+}
+
+class _TimelineMini extends StatelessWidget {
+  final String from;
+  final String to;
+  const _TimelineMini({required this.from, required this.to});
+  @override
+  Widget build(BuildContext context) {
+    Widget dot() => Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: _GoldGrad.g,
+            border: Border.all(color: const Color(0xFFFFEAB0), width: 1),
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.gold.withOpacity(.35),
+                  blurRadius: 6,
+                  spreadRadius: 1)
+            ],
+          ),
+        );
+    final label = TextStyle(
+      color: AppColors.gold.withOpacity(.95),
+      fontWeight: FontWeight.w700,
+      fontSize: 12,
+      letterSpacing: .2,
+    );
+    const value = TextStyle(
+      color: Colors.white,
+      fontSize: 15.5,
+      fontFamily: 'PlayfairDisplay',
+      fontWeight: FontWeight.w700,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(children: [
+          dot(),
+          Container(
+              width: 2,
+              height: 22,
+              decoration: BoxDecoration(
+                  gradient: _GoldGrad.g,
+                  borderRadius: BorderRadius.circular(2))),
+          dot(),
+        ]),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Départ', style: label),
+              const SizedBox(height: 2),
+              Text(from, maxLines: 1, style: value),
+              const SizedBox(height: 8),
+              Text('Arrivée', style: label),
+              const SizedBox(height: 2),
+              Text(to, maxLines: 1, style: value),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

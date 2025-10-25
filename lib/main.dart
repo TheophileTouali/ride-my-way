@@ -14,12 +14,10 @@ import 'providers/user_provider.dart';
 import 'providers/driver_provider.dart';
 import 'package:provider/provider.dart';
 
-// Stripe (po garde comme avant)
+// Stripe
 import 'package:flutter_stripe/flutter_stripe.dart';
 
-// ─────────────────────────────────────────────
-// NOTIFS & FCM — entièrement NO-OP sur le Web
-// ─────────────────────────────────────────────
+// Notifs & FCM (NO-OP sur Web)
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,7 +39,7 @@ const AndroidNotificationChannel _nearbyChannel = AndroidNotificationChannel(
 );
 
 Future<void> _initLocalNotifications() async {
-  if (!_isMobile) return; // ← rien à faire sur le Web
+  if (!_isMobile) return;
 
   const iosInit = DarwinInitializationSettings(
     requestAlertPermission: true,
@@ -66,7 +64,7 @@ Future<void> _showNearbyHeadsUp({
   required String title,
   required String body,
 }) async {
-  if (!_isMobile) return; // ← pas de notif locale sur Web
+  if (!_isMobile) return;
   await _flnp.show(
     1001,
     title,
@@ -94,7 +92,6 @@ Future<void> _showNearbyHeadsUp({
   );
 }
 
-// Doit être top-level; sera enregistré uniquement sur mobile.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (!_isMobile) return;
@@ -165,6 +162,22 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // 🔒 1) Persistance Auth sur Web → garde la session après redirections
+  if (kIsWeb) {
+    await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+  }
+
+  // ⏳ 2) Attendre la 1ʳᵉ valeur d’authStateChanges avant de construire l’app
+  //    (évite que le router voie `currentUser == null` pendant un court instant)
+  try {
+    await FirebaseAuth.instance.authStateChanges().first.timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => null,
+        );
+  } catch (_) {
+    // pas grave : on continue, mais on a minimisé le risque de faux négatif
+  }
+
   // Stripe
   if (!kIsWeb) {
     Stripe.publishableKey = const String.fromEnvironment(
@@ -202,8 +215,8 @@ class RideMyWayApp extends StatelessWidget {
           fontFamily: 'PlayfairDisplay',
           scaffoldBackgroundColor: Colors.black,
         ),
-        routerConfig: AppRoutes.router,
-        localizationsDelegates: [
+        routerConfig: AppRoutes.router, // ← inchangé
+        localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,

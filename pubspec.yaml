@@ -67,6 +67,7 @@ dependencies:
 
   # Paiement
   flutter_stripe: ^11.5.0
+  share_plus: ^10.0.0
 
 dev_dependencies:
   flutter_test:

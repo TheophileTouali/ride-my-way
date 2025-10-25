@@ -117,7 +117,7 @@ class _PassengerPreferencesEditorScreenState
           children: [
             // ————————————————— Ambiance
             _PremiumCard(
-              title: "🚗 Ambiance & confort intérieur",
+              title: "Ambiance & confort intérieur",
               children: [
                 _buildDropdown(
                   label: "Ambiance sonore (niveau de musique)",
@@ -229,7 +229,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Confort
             _PremiumCard(
-              title: "🪑 Confort physique & ergonomique",
+              title: "Confort physique & ergonomique",
               children: [
                 _buildDropdown(
                   label: "Position du siège",
@@ -273,7 +273,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Environnement
             _PremiumCard(
-              title: "🚭 Environnement & hygiène",
+              title: "Environnement & hygiène",
               children: [
                 _buildSwitch("Véhicule non-fumeur", prefs.smokeFree,
                     (val) => setState(() => prefs.smokeFree = val)),
@@ -288,7 +288,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Conduite
             _PremiumCard(
-              title: "🏎️ Style de conduite",
+              title: "Style de conduite",
               children: [
                 _buildDropdown(
                   label: "Conduite",
@@ -315,7 +315,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Esthétique & premium
             _PremiumCard(
-              title: "🧥 Esthétique & premium",
+              title: "Esthétique & premium",
               children: [
                 _buildDropdown(
                   label: "Type de véhicule",
@@ -416,7 +416,7 @@ class _PassengerPreferencesEditorScreenState
             // ————————————————— Moto (uniquement si Moto)
             if (_isMoto)
               _PremiumCard(
-                title: "🏍️ Spécifiques moto",
+                title: "Spécifiques moto",
                 children: [
                   _buildDropdown(
                     label: "Type de casque",
@@ -456,7 +456,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Écologie
             _PremiumCard(
-              title: "🌍 Écologie & éthique",
+              title: "Écologie & éthique",
               children: [
                 _buildDropdown(
                   label: "Type d’énergie",
@@ -480,7 +480,7 @@ class _PassengerPreferencesEditorScreenState
 
             // ————————————————— Paiement
             _PremiumCard(
-              title: "💳 Paiement & réservation",
+              title: "Paiement & réservation",
               children: [
                 _buildDropdown(
                   label: "Mode de paiement",

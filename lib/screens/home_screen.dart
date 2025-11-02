@@ -1300,6 +1300,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _reputationCard(_Reputation rep) {
+    // Safeguards
+    final double avgRaw = (rep.avg ?? 0).toDouble();
+    final double avg = (avgRaw.isNaN || !avgRaw.isFinite) ? 0 : avgRaw;
+
+    final double respectRaw = (rep.respectPct ?? 0).toDouble();
+    final int respect =
+        (respectRaw.isNaN || !respectRaw.isFinite) ? 0 : respectRaw.round();
+
+    final int satisfied = rep.satisfied ?? 0;
+    final int total = rep.total ?? 0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.only(bottom: 12),
@@ -1315,27 +1326,54 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: const [
-          Icon(Icons.emoji_events_rounded, color: AppColors.gold, size: 20),
-          SizedBox(width: 8),
-          Text(
-            "Voyageur d'excellence",
-            style: TextStyle(
-              color: AppColors.gold,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: const [
+            Icon(Icons.emoji_events_rounded, color: AppColors.gold, size: 20),
+            SizedBox(width: 8),
+            Text(
+              "Voyageur d'excellence",
+              style: TextStyle(
+                color: AppColors.gold,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
             ),
-          ),
-        ]),
-        const SizedBox(height: 12),
-        _repRow("Note globale", "⭐ ${rep.avg.toStringAsFixed(1)} / 5"),
-        _repRow("Distinction", _medalFrom(rep.avg)),
-        _repRow("Respect des trajets",
-            "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %"),
-        _repRow("Chauffeurs satisfaits", "${rep.satisfied} / ${rep.total}"),
-      ]),
+          ]),
+          const SizedBox(height: 12),
+          _repRow("Note globale", "⭐ ${avg.toStringAsFixed(1)} / 5"),
+          _repRow("Distinction", _safeMedalFrom(avg)),
+          _repRow("Respect des trajets", "$respect %"),
+          _repRow("Chauffeurs satisfaits", "$satisfied / $total"),
+        ],
+      ),
     );
+  }
+
+// Version "safe" de la médaille
+  String _safeMedalFrom(double avg) {
+    if (avg.isNaN || !avg.isFinite) return "—";
+    if (avg >= 4.8) return "Voyageur Diamant";
+    if (avg >= 4.5) return "Voyageur d'Or";
+    if (avg >= 4.0) return "Voyageur d'Argent";
+    if (avg >= 3.5) return "Voyageur de Bronze";
+    return "En progression";
+  }
+
+// Si tu as un calcul côté modèle, blinde-le aussi :
+  double computeAverageRating(List<num>? ratings) {
+    final list = ratings ?? const [];
+    if (list.isEmpty) return 0;
+    final sum = list.fold<double>(0, (a, b) => a + b.toDouble());
+    final avg = sum / list.length;
+    return (avg.isNaN || !avg.isFinite) ? 0 : avg;
+  }
+
+  double computeRespectPct(int onTime, int total) {
+    if (total <= 0) return 0;
+    final pct = (onTime / total) * 100.0;
+    return (pct.isNaN || !pct.isFinite) ? 0 : pct;
   }
 
   Widget _repRow(String label, String value) => Padding(
@@ -1439,30 +1477,44 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-// ── FUSION : Réputation + Avis + Progression (version hyper premium)
   Widget _reputationFusion(_Reputation rep) {
     final rank = _rankFromTrips(rep.completedTrips);
-    final double gauge = rep.progressToNext.clamp(0, 1).toDouble();
-    final next =
-        _nextRankFromTrips(rep.completedTrips); // ex: "Voyageur d'Argent"
+    // Sécuriser la jauge (null/NaN → 0)
+    final double gauge = (rep.progressToNext ?? 0).toDouble().clamp(0, 1);
+    final String next = _nextRankFromTrips(rep.completedTrips) ?? ""; // ← SAFE
+    final String nextWord = () {
+      final trimmed = next.trim();
+      if (trimmed.isEmpty) return "prochain rang";
+      final parts =
+          trimmed.split(' ').where((s) => s.trim().isNotEmpty).toList();
+      return parts.isEmpty ? trimmed : parts.last; // évite RangeError
+    }();
     final nextLabel = _gaugeBottomLabelForTrips(rep.completedTrips);
 
-    // Paliers
+    // Paliers (inchangé)
     int nextTarget;
     if (rank == "Voyageur Diamant") {
-      nextTarget = diamantMin; // 500
+      nextTarget = diamantMin;
     } else if (rank == "Voyageur d'Or") {
-      nextTarget = diamantMin; // 500
+      nextTarget = diamantMin;
     } else if (rank == "Voyageur d'Argent") {
-      nextTarget = orMin; // 250
+      nextTarget = orMin;
     } else if (rank == "Voyageur de Bronze") {
       nextTarget = argentMin;
     } else {
-      nextTarget = bronzeMin; // 1
+      nextTarget = bronzeMin;
     }
 
-    final currency =
-        NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 0);
+    // Monnaie safe (évite exceptions si locale absente sur certaines plateformes)
+    final currency = NumberFormat.currency(
+      locale: 'fr_FR',
+      symbol: '€',
+      decimalDigits: 0,
+    );
+
+    // 👉 IMPORTANT : reviews safe
+    final List<Map<String, dynamic>> reviews =
+        (rep.reviews as List?)?.cast<Map<String, dynamic>>() ?? const [];
 
     return _AnimatedLuxBorder(
       colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
@@ -1477,7 +1529,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête : Titre + jauge dorée
+            // En-tête
             Row(
               children: [
                 _LuxMiniIcon.gold(icon: Icons.emoji_events_rounded),
@@ -1494,51 +1546,50 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 _LuxGauge(
-                  value: gauge,
-                  top: "${(gauge * 100).round()}%",
+                  value: gauge.isNaN ? 0 : gauge,
+                  top: "${((gauge.isNaN ? 0 : gauge) * 100).round()}%",
                   bottom: (next == "Voyageur Diamant")
                       ? "Rang max"
-                      : "vers ${next.split(' ').last}", // "vers d'Argent", "vers d'Or", etc.
-                  size: 64, // 64–72 donne un rendu premium très propre
+                      : "vers $nextWord", // ← SAFE
+                  size: 64,
                 ),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // KPIs élégants en grille 2x2
-            // --- KPIs : 1 par ligne, pleine largeur -----------------
+            // KPIs
             Column(
               children: [
                 _InfoKPI(
                   icon: Icons.military_tech_rounded,
                   label: "Distinction",
-                  value: rank,
+                  value: rank.isEmpty ? "—" : rank,
                 ),
                 const SizedBox(height: 10),
                 _InfoKPI(
                   icon: Icons.directions_car_filled_rounded,
                   label: "Trajets",
-                  value: "${rep.completedTrips}",
+                  value: "${rep.completedTrips ?? 0}",
                 ),
                 const SizedBox(height: 10),
                 _InfoKPI(
                   icon: Icons.verified_rounded,
                   label: "Respect trajets",
                   value:
-                      "${rep.respectPct.isNaN ? 0 : rep.respectPct.round()} %",
+                      "${(rep.respectPct ?? 0).isNaN ? 0 : (rep.respectPct ?? 0).round()} %",
                 ),
                 const SizedBox(height: 10),
                 _InfoKPI(
                   icon: Icons.handshake_rounded,
                   label: "Chauffeurs satisfaits",
-                  value: "${rep.satisfied} / ${rep.total}",
+                  value: "${rep.satisfied ?? 0} / ${rep.total ?? 0}",
                 ),
                 const SizedBox(height: 10),
                 _InfoKPI(
                   icon: Icons.account_balance_wallet_rounded,
                   label: "Cumul dépensé",
-                  value: currency.format(rep.totalSpend),
+                  value: currency.format((rep.totalSpend ?? 0)),
                   compact: true,
                 ),
               ],
@@ -1547,17 +1598,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 10),
 
-            if (rep.reviews.isEmpty)
-              const Text("Aucun avis de chauffeur pour le moment.",
-                  style: TextStyle(color: Colors.white38))
+            if (reviews.isEmpty)
+              const Text(
+                "Aucun avis de chauffeur pour le moment.",
+                style: TextStyle(color: Colors.white38),
+              )
             else
               SizedBox(
                 height: 168,
                 child: PageView.builder(
                   controller: PageController(viewportFraction: 0.9),
-                  itemCount: rep.reviews.length,
+                  itemCount: reviews.length,
                   itemBuilder: (context, index) {
-                    final r = rep.reviews[index];
+                    final r = reviews[index];
                     final rating = ((r['rating'] ?? 0) as num).toDouble();
                     final comment = (r['comment'] ?? '') as String;
                     final ts = r['timestamp'] as Timestamp?;
@@ -1593,7 +1646,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 8),
                           Expanded(
                             child: Text(
-                              "“ $comment ”",
+                              comment.trim().isEmpty ? "—" : "“ $comment ”",
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontStyle: FontStyle.italic,
@@ -2823,42 +2876,55 @@ class _LuxGauge extends StatelessWidget {
 }
 
 class _GaugePainter extends CustomPainter {
-  final double value; // 0..1
+  final double value; // attendu 0..1
   _GaugePainter(this.value);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = 6.0;
+    const stroke = 6.0;
     final rect = Offset.zero & size;
     final center = rect.center;
     final radius = (size.width - stroke) / 2;
 
-    // Piste sombre
+    // 1) Sanitize value (évite NaN/infini et <0 / >1)
+    final v = (value.isFinite ? value : 0).clamp(0.0, 1.0);
+
+    // 2) Piste sombre
     final track = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0x26222222); // ~ blanc très atténué
+      ..color = const Color(0x26222222);
     canvas.drawCircle(center, radius, track);
 
-    // Arc doré
-    final sweep = value * 2 * math.pi;
+    // 3) Angles
+    const start = -math.pi / 2; // 12h
+    final sweep = v * 2 * math.pi;
+
+    // ⚠️ CanvasKit exige startAngle < endAngle pour le shader
+    // Même si on va dessiner un arc de longueur 0, on crée le shader
+    // avec un end légèrement supérieur.
+    final shaderSweep = (sweep > 0 && sweep.isFinite) ? sweep : 1e-6;
+    final shaderStart = start;
+    final shaderEnd = start + shaderSweep;
+
+    // 4) Pinceau gradient sweep "safe"
     final arc = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
       ..shader = SweepGradient(
-        startAngle: -math.pi / 2,
-        endAngle: -math.pi / 2 + sweep,
+        startAngle: shaderStart,
+        endAngle: shaderEnd, // garanti > startAngle
         colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
       ).createShader(Rect.fromCircle(center: center, radius: radius));
 
-    final start = -math.pi / 2; // à 12h
+    // 5) Dessin de l’arc (si v == 0, sweep == 0 → rien ne se voit, et c’est OK)
     final rectArc = Rect.fromCircle(center: center, radius: radius);
     canvas.drawArc(rectArc, start, sweep, false, arc);
 
-    // Petite gemme au bout de l’arc (si progression > 0)
-    if (value > 0) {
+    // 6) Gemme finale uniquement si progression visible
+    if (v > 0) {
       final endAngle = start + sweep;
       final dx = center.dx + radius * math.cos(endAngle);
       final dy = center.dy + radius * math.sin(endAngle);
@@ -2877,8 +2943,7 @@ class _GaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GaugePainter oldDelegate) =>
-      oldDelegate.value != value;
+  bool shouldRepaint(covariant _GaugePainter old) => old.value != value;
 }
 
 // Ligne KPI premium (icône anneau + label + valeur)

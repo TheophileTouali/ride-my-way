@@ -42,9 +42,9 @@ class _LiveTrackingPassengerScreenState
   LatLng? _destination;
   BitmapDescriptor? _carIcon;
 
-  Timer? _refreshTimer;
   Timer? _reminderTimer;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _statusSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _driverLocSub;
 
   late AnimationController _haloController;
   late Animation<double> _haloAnimation;
@@ -84,7 +84,7 @@ class _LiveTrackingPassengerScreenState
 
     _loadCarIcon();
     _loadReservationData();
-    _startDriverLocationUpdates();
+    _attachDriverLocationStream();
     _attachStatusStream();
     _loadDriverInfo();
 
@@ -100,11 +100,11 @@ class _LiveTrackingPassengerScreenState
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
     _reminderTimer?.cancel();
     _statusSub?.cancel();
     _haloController.dispose();
     _audioPlayer.dispose();
+    _driverLocSub?.cancel();
     _markActiveTrip(false);
     WakelockPlus.disable();
     WidgetsBinding.instance.removeObserver(this);
@@ -114,14 +114,45 @@ class _LiveTrackingPassengerScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _startDriverLocationUpdates();
+      _driverLocSub?.resume();
       _attachStatusStream(recreate: true);
       _loadReservationData();
     } else if (state == AppLifecycleState.paused) {
-      _refreshTimer?.cancel();
-      _refreshTimer = null;
+      _driverLocSub?.pause();
       _statusSub?.pause();
     }
+  }
+
+  // 4) Ajoute cette méthode (remplace l’approche Timer par un stream temps réel)
+  void _attachDriverLocationStream() {
+    _driverLocSub?.cancel();
+    _driverLocSub = FirebaseFirestore.instance
+        .collection('reservations')
+        .doc(widget.reservationId)
+        .snapshots()
+        .listen((doc) {
+      final data = doc.data();
+      if (data == null) return;
+
+      final loc = data['driverLocation'];
+      if (loc is Map && loc['lat'] != null && loc['lng'] != null) {
+        final double lat =
+            (loc['lat'] is num) ? (loc['lat'] as num).toDouble() : 0.0;
+        final double lng =
+            (loc['lng'] is num) ? (loc['lng'] as num).toDouble() : 0.0;
+        final newPos = LatLng(lat, lng);
+
+        if (!mounted) return;
+        setState(() => _driverPosition = newPos);
+        _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
+
+        // 👉 met à jour distance + durée + polyline en temps réel
+        _updateDistanceAndDuration();
+        _getRoutePolyline();
+      }
+    }, onError: (e) {
+      debugPrint('❌ driverLocation stream error: $e');
+    });
   }
 
   // ---------------- Data helpers (inchangé) ----------------
@@ -229,38 +260,9 @@ class _LiveTrackingPassengerScreenState
           (location['lng'] is num) ? (location['lng'] as num).toDouble() : 0.0;
       if (!mounted) return;
       setState(() => _destination = LatLng(lat, lng));
+      _updateDistanceAndDuration();
+      _getRoutePolyline();
     }
-  }
-
-  void _startDriverLocationUpdates() {
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('reservations')
-            .doc(widget.reservationId)
-            .get();
-        final data = doc.data();
-        if (data == null) return;
-
-        final loc = data['driverLocation'];
-        if (loc is Map && loc['lat'] != null && loc['lng'] != null) {
-          final double lat =
-              (loc['lat'] is num) ? (loc['lat'] as num).toDouble() : 0.0;
-          final double lng =
-              (loc['lng'] is num) ? (loc['lng'] as num).toDouble() : 0.0;
-          final newPos = LatLng(lat, lng);
-
-          if (!mounted) return;
-          setState(() => _driverPosition = newPos);
-          _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
-          _updateDistanceAndDuration();
-          _getRoutePolyline();
-        }
-      } catch (e) {
-        debugPrint('⚠️ driver location refresh error: $e');
-      }
-    });
   }
 
   void _updateDistanceAndDuration() {
@@ -348,6 +350,8 @@ class _LiveTrackingPassengerScreenState
             ? (location['lng'] as num).toDouble()
             : 0.0;
         setState(() => _destination = LatLng(lat, lng));
+        _updateDistanceAndDuration();
+        _getRoutePolyline();
       }
 
       if (_status == 'Terminée') {

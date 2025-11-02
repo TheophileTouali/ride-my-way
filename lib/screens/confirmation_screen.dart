@@ -68,7 +68,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
         ),
       ),
 
-      // TimePicker (use simple Color fields for broad SDK compatibility)
+      // TimePicker
       timePickerTheme: TimePickerThemeData(
         backgroundColor: const Color(0xFF0D0D0D),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -77,14 +77,13 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           fontWeight: FontWeight.w800,
           color: Colors.white,
         ),
-        hourMinuteColor:
-            const Color(0xFF1A1A1A), // <-- Color, not *StateProperty
+        hourMinuteColor: const Color(0xFF1A1A1A),
         hourMinuteTextColor: Colors.white,
         dialHandColor: AppColors.gold,
         dialBackgroundColor: const Color(0xFF1A1A1A),
       ),
 
-      // Keep DatePicker theming minimal to avoid API diffs across SDKs
+      // DatePicker
       datePickerTheme: DatePickerThemeData(
         backgroundColor: const Color(0xFF101010),
         surfaceTintColor: Colors.transparent,
@@ -96,12 +95,11 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
   Widget _goldPickerTheme(Widget child) =>
       Theme(data: _goldPickerThemeData(), child: child);
 
-  // ---------- Paiement / réservation : inchangé ----------
+  // ---------- Paiement / réservation ----------
   String formatDateTime(DateTime dt) =>
       "${dt.day}/${dt.month}/${dt.year} à ${dt.hour}h${dt.minute.toString().padLeft(2, '0')}";
 
   Future<void> _selectAnotherTime() async {
-    final now = DateTime.now();
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -140,11 +138,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
   }
 
   Future<void> _confirmTrip() async {
-    // ---- toute ta logique existante (paiement / Firestore) INCHANGÉE ----
-    // Copie/colle intégralement ta méthode actuelle ici.
-    // (Je n’altère pas la partie réseau/paiement)
-    // ---------------------------------------------------------------------
-    // BEGIN: copie de ta version existante
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -171,11 +164,22 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     }
 
     try {
-      final coords = await getCoordinatesFromAddress(widget.from);
-      if (coords == null) {
+      // ✅ Geocode départ
+      final fromCoords = await getCoordinatesFromAddress(widget.from);
+      if (fromCoords == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text("Impossible de géolocaliser l'adresse.")),
+        );
+        return;
+      }
+
+      // ✅ Geocode arrivée (nouveau)
+      final toCoords = await getCoordinatesFromAddress(widget.to);
+      if (toCoords == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Impossible de géolocaliser l'adresse d’arrivée.")),
         );
         return;
       }
@@ -228,6 +232,7 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'from': widget.from,
           'to': widget.to,
           'vehicle': widget.vehicle,
+          'requestedVehicleType': widget.vehicle, // ✅ nouveau champ
           'price': widget.price,
           'distance': widget.distance,
           'userId': user.uid,
@@ -237,8 +242,15 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
           'paymentIntentId': data['paymentIntentId'],
           'createdAt': FieldValue.serverTimestamp(),
           'expiredSearch': false,
-          'fromLat': coords.lat,
-          'fromLng': coords.lng,
+
+          // ✅ Coords départ
+          'fromLat': fromCoords.lat,
+          'fromLng': fromCoords.lng,
+
+          // ✅ Coords arrivée
+          'toLat': toCoords.lat,
+          'toLng': toCoords.lng,
+
           'platform': 'mobile',
         };
 
@@ -274,7 +286,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-    // END: copie de ta version existante
   }
 
   // ---------- UI PREMIUM MOBILE-FIRST ----------

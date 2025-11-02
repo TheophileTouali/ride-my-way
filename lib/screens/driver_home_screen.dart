@@ -415,6 +415,61 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
   }
 
+  // ── Normalisation / compat véhicule ──────────────────────────────────────────
+
+  String _normType(String? raw) {
+    if (raw == null) return '';
+    final s = raw.trim().toLowerCase();
+    // petite table de synonymes si besoin
+    const map = {
+      'berline': 'berlines',
+      'berlines': 'berlines',
+      'moto': 'motos',
+      'motos': 'motos',
+      'van standing': 'vans standing',
+      'vans standing': 'vans standing',
+      'classe s': 'classe s',
+      'classe e': 'classe e',
+      // ajoute d’autres alias si tu en as
+    };
+    return map[s] ?? s;
+  }
+
+  /// Extrait tous les types demandés par la réservation, en gérant la rétro-compat.
+  Set<String> _requestedTypesFromReservation(Map<String, dynamic> data) {
+    final out = <String>{};
+
+    // 1) Champ canonique
+    final req = _normType(data['requestedVehicleType'] as String?);
+    if (req.isNotEmpty) out.add(req);
+
+    // 2) Liste alternative
+    final dynList = data['allowedVehicleTypes'];
+    if (dynList is List) {
+      for (final e in dynList) {
+        if (e is String && e.trim().isNotEmpty) out.add(_normType(e));
+      }
+    }
+
+    // 3) Rétro-compat (UI / anciens champs)
+    for (final key in const ['vehicleType', 'vehicle', 'category']) {
+      final v = _normType(data[key] as String?);
+      if (v.isNotEmpty) out.add(v);
+    }
+
+    // 4) Si rien trouvé → on retourne vide (pas de restriction explicite)
+    return out;
+  }
+
+  /// Renvoie true si le type véhicule du driver “matche” la demande de la résa.
+  /// Règle métier : si la réservation n’exprime AUCUNE préférence → on laisse passer.
+  bool _vehicleMatch(String? driverVehicleType, Set<String> requested) {
+    final d = _normType(driverVehicleType);
+    if (d.isEmpty) return false; // un driver sans type n’est pas éligible
+    if (requested.isEmpty) return true; // aucune contrainte côté résa → OK
+    return requested.contains(d);
+  }
+
   // ── Firestore fetchers ───────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchRecentFeedbacks() async {
@@ -737,39 +792,99 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final List<DocumentSnapshot> nearby = [];
 
     try {
-      final currentPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return [];
 
+      // 1) Contexte conducteur : visible + type véhicule
+      final driverDoc =
+          await FirebaseFirestore.instance.collection('drivers').doc(uid).get();
+      if (!driverDoc.exists) {
+        debugPrint("⛔ Driver introuvable");
+        return [];
+      }
+      final driver = driverDoc.data()!;
+      final bool isVisible = (driver['isVisible'] as bool?) ?? false;
+      if (!isVisible) {
+        debugPrint("🔕 Driver hors ligne → pas de suggestions");
+        return [];
+      }
+      final String? driverVehicleType =
+          (driver['vehicleType'] as String?)?.trim();
+
+      // 2) Position actuelle (si KO → on ne fait pas le filtre distance)
+      Position? currentPosition;
+      try {
+        currentPosition = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high)
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        debugPrint("⚠️ Géoloc indisponible (filtre distance désactivé) : $e");
+      }
+
+      // 3) Récup résas en attente
       final querySnapshot = await FirebaseFirestore.instance
           .collection('reservations')
           .where('status', isEqualTo: 'En attente')
+          .limit(100)
           .get();
 
+      // 4) Filtrage distance + véhicule (client-side)
       for (var doc in querySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        final fromLat = data['fromLat'] as num?;
-        final fromLng = data['fromLng'] as num?;
-        final from = data['from'] ?? 'Adresse inconnue';
 
-        if (fromLat == null || fromLng == null) {
-          debugPrint("⛔ Coordonnées manquantes pour $from → ignorée");
+// ---- Filtre véhicule (avec rétro-compat) ---------------------------------
+        final requested = _requestedTypesFromReservation(data);
+        final bool vehicleOk = _vehicleMatch(driverVehicleType, requested);
+
+        if (!vehicleOk) {
+          debugPrint("🚫 ${doc.id} filtrée (vehicule) — "
+              "requested=${requested.toList()} driver=$driverVehicleType");
           continue;
         }
 
-        final distanceKm = Geolocator.distanceBetween(
-              currentPosition.latitude,
-              currentPosition.longitude,
-              fromLat.toDouble(),
-              fromLng.toDouble(),
-            ) /
-            1000.0;
+        // ---- Filtre distance ---------------------------------------------------
+        final fromLat = data['fromLat'] as num?;
+        final fromLng = data['fromLng'] as num?;
+        if (currentPosition != null) {
+          if (fromLat == null || fromLng == null) {
+            debugPrint(
+                "⛔ Coordonnées manquantes pour ${data['from'] ?? 'Adresse'} → ignorée");
+            continue;
+          }
 
-        if (distanceKm <= 15.0) {
+          final distanceKm = Geolocator.distanceBetween(
+                currentPosition.latitude,
+                currentPosition.longitude,
+                fromLat.toDouble(),
+                fromLng.toDouble(),
+              ) /
+              1000.0;
+
+          if (distanceKm <= 15.0) {
+            nearby.add(doc);
+          }
+        } else {
+          // Pas de géoloc → on ne filtre pas à la distance (comme un fallback)
           nearby.add(doc);
         }
       }
-    } catch (e) {
-      debugPrint("❌ Erreur lors de la récupération des réservations : $e");
+
+      // 5) (Optionnel) Tri par timestamp si présent
+      nearby.sort((a, b) {
+        final ta =
+            (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+        final tb =
+            (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+        if (ta == null && tb == null) return 0;
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return ta.compareTo(tb);
+      });
+
+      debugPrint(
+          "✅ Nearby conservées: ${nearby.length} / total: ${querySnapshot.docs.length}");
+    } catch (e, st) {
+      debugPrint("❌ Erreur _fetchNearbyPendingReservations: $e\n$st");
     }
 
     return nearby;
@@ -780,28 +895,48 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (uid == null) throw Exception("Utilisateur non connecté");
 
     final driverRef = FirebaseFirestore.instance.collection('drivers').doc(uid);
-    final driverDoc = await driverRef.get();
-
-    if (!driverDoc.exists) {
+    final driverSnap = await driverRef.get();
+    if (!driverSnap.exists)
       throw Exception("Conducteur non trouvé dans Firestore");
-    }
 
-    final data = driverDoc.data();
-    if (data == null) throw Exception("Aucune donnée pour ce conducteur");
-
-    final firstName = data['firstName'] ?? 'Prénom';
-    final lastName = data['lastName'] ?? 'Nom';
+    final driver = driverSnap.data()!;
+    final firstName = (driver['firstName'] ?? 'Prénom').toString();
+    final lastName = (driver['lastName'] ?? 'Nom').toString();
     final driverName = "$firstName $lastName";
-    final vehicle = data['vehicle'] ?? 'Véhicule inconnu';
+    final vehicle =
+        (driver['vehicle'] ?? driver['vehicleName'] ?? 'Véhicule inconnu')
+            .toString();
+    final String? driverVehicleType =
+        (driver['vehicleType'] as String?)?.trim();
 
     final reservationRef =
         FirebaseFirestore.instance.collection('reservations').doc(docId);
 
-    await reservationRef.update({
-      'status': 'Confirmée',
-      'driverId': uid,
-      'driverName': driverName,
-      'vehicle': vehicle,
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snap = await tx.get(reservationRef);
+      if (!snap.exists) throw Exception("Réservation introuvable");
+
+      final data = snap.data() as Map<String, dynamic>;
+      final String status = (data['status'] ?? '').toString();
+      if (status != 'En attente') {
+        throw Exception("Réservation déjà prise (status=$status).");
+      }
+
+      // Revalider le type véhicule à l’acceptation
+      final requested = _requestedTypesFromReservation(data);
+      final bool vehicleOk = _vehicleMatch(driverVehicleType, requested);
+      if (!vehicleOk) {
+        throw Exception("Type de véhicule incompatible "
+            "(demandé=${requested.toList()}, driver=$driverVehicleType)");
+      }
+
+      tx.update(reservationRef, {
+        'status': 'Confirmée',
+        'driverId': uid,
+        'driverName': driverName,
+        'vehicle': vehicle,
+        'confirmedAt': FieldValue.serverTimestamp(),
+      });
     });
 
     debugPrint("✅ Course $docId acceptée par $driverName ($uid)");

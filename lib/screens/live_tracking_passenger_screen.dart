@@ -802,7 +802,37 @@ class _LiveTrackingPassengerScreenState
             ),
           ),
 
-          // Panneau infos + actions
+// ---------- SCRIM LISIBLE + PANNEAU INFOS & ACTIONS (PRÊT À L’EMPLOI) ----------
+
+// 1) SCRIM de lecture (place-le AVANT ce panneau dans le Stack, ou colle les deux blocs à la suite)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(
+                  height: 340, // couvre le panneau + la barre d’actions
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.80),
+                        Colors.black.withOpacity(0.60),
+                        Colors.black.withOpacity(0.32),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.35, 0.72, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+// 2) PANNEAU infos + actions (inchangé, posé au-dessus du scrim)
           Positioned(
             left: 16,
             right: 16,
@@ -841,7 +871,6 @@ class _LiveTrackingPassengerScreenState
                               ),
                             ],
                           ),
-                          // Shimmer ETA
                           const SizedBox(height: 4),
                           _shimmerBar(),
                           if (_infoExpanded) ...[

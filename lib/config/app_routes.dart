@@ -36,6 +36,7 @@ import '../screens/edit_profile_screen.dart';
 import '../screens/payment_success_screen.dart';
 import '../screens/payment_cancel_screen.dart';
 import '../screens/payment_method_screen.dart';
+import '../guards/require_auth_profile.dart';
 
 // 👈 ajoute ce fichier à ton projet
 
@@ -70,7 +71,10 @@ class AppRoutes {
       GoRoute(
         path: '/home',
         name: 'home',
-        builder: (context, state) => const HomeScreen(),
+        builder: (context, state) => const RequireAuthAndCompleteProfile(
+          requiredRole: 'passenger',
+          child: HomeScreen(),
+        ),
       ),
       GoRoute(
         path: '/permission',
@@ -113,7 +117,10 @@ class AppRoutes {
       GoRoute(
         path: '/profile',
         name: 'profile',
-        builder: (context, state) => const PassengerProfileScreen(),
+        builder: (context, state) => const RequireAuthAndCompleteProfile(
+          requiredRole: 'passenger',
+          child: PassengerProfileScreen(),
+        ),
       ),
       GoRoute(
         path: '/driver-profile',
@@ -132,11 +139,17 @@ class AppRoutes {
       ),
       GoRoute(
         path: '/reservations',
-        builder: (context, state) => const ReservationsScreen(),
+        builder: (context, state) => const RequireAuthAndCompleteProfile(
+          requiredRole: 'passenger',
+          child: ReservationsScreen(),
+        ),
       ),
       GoRoute(
         path: '/favorites',
-        builder: (context, state) => const FavoritesScreen(),
+        builder: (context, state) => const RequireAuthAndCompleteProfile(
+          requiredRole: 'passenger',
+          child: FavoritesScreen(),
+        ),
       ),
       GoRoute(
         path: '/signup',
@@ -151,19 +164,25 @@ class AppRoutes {
         builder: (context, state) {
           final from = state.uri.queryParameters['from'] ?? '';
           final to = state.uri.queryParameters['to'] ?? '';
-          return ResultsScreen(from: from, to: to);
+          return RequireAuthAndCompleteProfile(
+            requiredRole: 'passenger',
+            child: ResultsScreen(from: from, to: to),
+          );
         },
       ),
       GoRoute(
         path: '/confirmation',
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>;
-          return ConfirmationScreen(
-            from: extra['from'],
-            to: extra['to'],
-            vehicle: extra['vehicle'],
-            price: extra['price'],
-            distance: extra['distance'],
+          return RequireAuthAndCompleteProfile(
+            requiredRole: 'passenger',
+            child: ConfirmationScreen(
+              from: extra['from'],
+              to: extra['to'],
+              vehicle: extra['vehicle'],
+              price: extra['price'],
+              distance: extra['distance'],
+            ),
           );
         },
       ),

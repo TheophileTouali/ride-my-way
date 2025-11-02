@@ -18,8 +18,6 @@ class ReservationsScreen extends StatefulWidget {
 class _ReservationsScreenState extends State<ReservationsScreen> {
   final Set<String> _redirectedReservationIds = {};
   String _filter = 'À venir';
-  final Map<String, String> _vehicleCache =
-      {}; // driverId -> label mis en cache
 
   void _showPremiumFavoriteOverlay(String message) {
     final overlay = Overlay.of(context);
@@ -181,11 +179,7 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
     String key,
     String fallback,
   ) {
-    final data = doc.data() as Map<String, dynamic>;
-    final v = data[key];
-    if (v == null) return fallback;
-    if (v is String && v.trim().isEmpty) return fallback;
-    return v.toString();
+    return doc.data().toString().contains(key) ? doc[key].toString() : fallback;
   }
 
   @override
@@ -524,11 +518,8 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
                 color: Colors.white60, size: 18),
             const SizedBox(width: 8),
             Expanded(
-              child: _vehicleLine(
-                vehicleFromReservation: vehicle,
-                docSnapshot: docSnapshot,
-              ),
-            ),
+                child: Text("Véhicule : $vehicle",
+                    style: const TextStyle(color: Colors.white70))),
           ]),
           Row(children: [
             const Icon(Icons.person_outline_rounded,
@@ -651,72 +642,6 @@ class _ReservationsScreenState extends State<ReservationsScreen> {
             ),
         ],
       ),
-    );
-  }
-
-  Widget _vehicleLine({
-    required String vehicleFromReservation,
-    required QueryDocumentSnapshot docSnapshot,
-  }) {
-    final data = docSnapshot.data() as Map<String, dynamic>;
-    final driverId = (data['driverId'] ?? '').toString().trim();
-
-    // Considère ces valeurs comme "inconnues"
-    final v = vehicleFromReservation.trim();
-    final isUnknown =
-        v.isEmpty || v == 'Non assigné' || v == 'Véhicule inconnu';
-
-    // Si la réservation fournit déjà une valeur crédible → on l’utilise telle quelle
-    if (!isUnknown) {
-      return Text("Véhicule : $v",
-          style: const TextStyle(color: Colors.white70));
-    }
-
-    // Pas de driverId → on ne peut pas résoudre
-    if (driverId.isEmpty) {
-      return const Text("Véhicule : —",
-          style: TextStyle(color: Colors.white70));
-    }
-
-    // Cache mémoire (évite des relectures pendant le scroll)
-    final cached = _vehicleCache[driverId];
-    if (cached != null && cached.trim().isNotEmpty) {
-      return Text("Véhicule : $cached",
-          style: const TextStyle(color: Colors.white70));
-    }
-
-    // Fallback: on lit le profil du conducteur (collection "users")
-    return FutureBuilder<DocumentSnapshot>(
-      future:
-          FirebaseFirestore.instance.collection('users').doc(driverId).get(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Text("Véhicule : …",
-              style: TextStyle(color: Colors.white54));
-        }
-        if (!snap.hasData || !snap.data!.exists) {
-          return const Text("Véhicule : —",
-              style: TextStyle(color: Colors.white70));
-        }
-
-        final u = snap.data!.data() as Map<String, dynamic>;
-        final type = (u['vehicleType'] ?? '').toString().trim();
-        final brand =
-            (u['vehicleBrand'] ?? (u['carBrand'] ?? '')).toString().trim();
-        final year = (u['vehicleYear'] ?? '').toString().trim();
-
-        // Libellé premium compact
-        final parts = <String>[];
-        if (type.isNotEmpty) parts.add(type);
-        if (brand.isNotEmpty) parts.add(brand);
-        if (year.isNotEmpty) parts.add('($year)');
-        final label = parts.isEmpty ? '—' : parts.join(' ');
-
-        _vehicleCache[driverId] = label; // memoize
-
-        return Text("Véhicule : $label",
-            style: const TextStyle(color: Colors.white70));
-      },
     );
   }
 }

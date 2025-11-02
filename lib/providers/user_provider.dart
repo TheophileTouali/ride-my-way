@@ -11,9 +11,9 @@ class UserProvider with ChangeNotifier {
   String? _avatarUrl;
 
   // État login de base
-  bool get isLoggedIn => _userName != null;
-  String get userName => _userName ?? 'Invité';
-  String get userEmail => _email ?? 'inconnu@exemple.com';
+  bool get isLoggedIn => FirebaseAuth.instance.currentUser != null;
+  String get userName => _userName ?? '';
+  String get userEmail => _email ?? '';
   String? get avatarUrl => _avatarUrl;
 
   // ===================== Session =====================

@@ -146,7 +146,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
   Widget _buildHeader() {
     final user = context.watch<UserProvider>();
     final name = user.userName.trim();
-    final hasName = name.isNotEmpty && name != 'Invité';
+    final hasName = name.isNotEmpty; // plus de check "Invité"
+
     final avatarUrl = _bust(user.avatarUrl);
 
     final title = hasName

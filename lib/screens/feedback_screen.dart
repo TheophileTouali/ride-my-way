@@ -513,13 +513,17 @@ class _TripHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Icon(Icons.receipt_long_rounded, color: AppColors.gold, size: 22),
         const SizedBox(width: 10),
-        const Expanded(
-          child: _GoldText(
+        Expanded(
+          child: Text(
             "Résumé du trajet",
-            style: TextStyle(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18.5,
               fontFamily: 'PlayfairDisplay',
@@ -527,9 +531,22 @@ class _TripHeader extends StatelessWidget {
             ),
           ),
         ),
-        _DistancePill(text: date),
         const SizedBox(width: 8),
-        _PricePill(value: "${price.toStringAsFixed(2).replaceAll('.', ',')} €"),
+        // Les chips peuvent passer à la ligne si l’espace manque
+        Flexible(
+          fit: FlexFit.loose,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.end,
+            children: [
+              _DistancePill(text: date),
+              _PricePill(
+                  value: "${price.toStringAsFixed(2).replaceAll('.', ',')} €"),
+            ],
+          ),
+        ),
       ],
     );
   }

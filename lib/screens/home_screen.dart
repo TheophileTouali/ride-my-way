@@ -957,32 +957,55 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // A) Avis chauffeurs : unicité par driverId (dernier avis gardé)
+    // ---------- A) FEEDBACKS CHAUFFEURS ----------
+    // On charge assez large pour les stats uniques, mais
+    // on fournira au carrousel uniquement les 10 plus récents.
     final fbSnap = await FirebaseFirestore.instance
         .collection('feedbacks')
         .where('passengerId', isEqualTo: uid)
         .where('fromDriver', isEqualTo: true)
         .orderBy('timestamp', descending: true)
+        .limit(100) // marge pour stats uniques
         .get();
 
-    final allReviews =
-        fbSnap.docs.map((d) => Map<String, dynamic>.from(d.data())).toList();
+    // Liste brute ordonnée (DESC)
+    final List<Map<String, dynamic>> allReviews = fbSnap.docs.map((d) {
+      final data = Map<String, dynamic>.from(d.data());
+      // Ajoute un id stable pour stabiliser l’UI (PageView key)
+      data['reviewId'] = d.id;
+      return data;
+    }).toList();
 
+    // ✅ 10 derniers avis pour l’UI (carrousel)
+    final List<Map<String, dynamic>> reviewsForUi =
+        allReviews.take(10).toList();
+
+    // ✅ Stats sur le dernier avis de chaque chauffeur (unicité par driverId)
     final Map<String, Map<String, dynamic>> latestByDriver = {};
-    for (final review in allReviews) {
-      final driverId = (review['driverId'] ?? 'unknown').toString();
-      latestByDriver.putIfAbsent(driverId, () => review);
+    for (final r in allReviews) {
+      final driverId = (r['driverId'] ?? '').toString();
+      if (driverId.isEmpty) continue;
+      // allReviews est déjà trié DESC → le premier rencontré est le plus récent
+      latestByDriver.putIfAbsent(driverId, () => r);
     }
-    final reviews = latestByDriver.values.toList();
+    final List<Map<String, dynamic>> uniqueLatest =
+        latestByDriver.values.toList();
 
-    final total = reviews.length;
-    final sum = reviews.fold<double>(
-        0.0, (s, r) => s + ((r['rating'] ?? 0) as num).toDouble());
-    final double avg = total == 0 ? 0.0 : (sum / total).toDouble();
-    final satisfied =
-        reviews.where((r) => ((r['rating'] ?? 0) as num) >= 4).length;
+    // Moyenne (sur derniers avis par chauffeur)
+    final int totalUnique = uniqueLatest.length;
+    final double sumAvg = uniqueLatest.fold<double>(
+      0.0,
+      (s, r) => s + ((r['rating'] ?? 0) as num).toDouble(),
+    );
+    final double avg = totalUnique == 0 ? 0.0 : (sumAvg / totalUnique);
 
-    // B) Réservations : respect%, trajets, dernier chauffeur, dépenses
+    // Chauffeurs satisfaits (notation >= 4)
+    final int satisfied = uniqueLatest.where((r) {
+      final rating = ((r['rating'] ?? 0) as num).toDouble();
+      return rating >= 4.0;
+    }).length;
+
+    // ---------- B) RÉSERVATIONS (respect%, trajets, dépenses, dernier chauffeur) ----------
     final resSnap = await FirebaseFirestore.instance
         .collection('reservations')
         .where('userId', isEqualTo: uid)
@@ -991,7 +1014,6 @@ class _HomeScreenState extends State<HomeScreen> {
     int completed = 0;
     int canceledByPassenger = 0;
     double totalSpend = 0.0;
-
     Map<String, dynamic>? lastResData;
     DateTime? lastResDate;
 
@@ -1002,20 +1024,17 @@ class _HomeScreenState extends State<HomeScreen> {
           (data['canceledBy'] ?? data['cancelledBy'] ?? data['cancelBy'] ?? '')
               .toString()
               .toLowerCase();
-      if (by.contains('passager') ||
+      return by.contains('passager') ||
           by.contains('passenger') ||
           by.contains('user') ||
-          by.contains('client')) {
-        return true;
-      }
-      return false;
+          by.contains('client');
     }
 
     DateTime? _extractDate(Map<String, dynamic> m) {
-      for (final key in ['timestamp', 'endTime', 'startTime', 'createdAt']) {
-        final v = m[key];
-        if (v is Timestamp) return v.toDate();
-      }
+      final v =
+          m['timestamp'] ?? m['endTime'] ?? m['startTime'] ?? m['createdAt'];
+      if (v is Timestamp) return v.toDate();
+      if (v is DateTime) return v;
       return null;
     }
 
@@ -1037,7 +1056,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    final denom = completed + canceledByPassenger;
+    final int denom = completed + canceledByPassenger;
     final double respectPct = denom == 0 ? 100.0 : (completed / denom) * 100.0;
 
     final String? lastDriverId =
@@ -1045,20 +1064,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final String? lastDriverName =
         lastResData != null ? (lastResData!['driverName'] as String?) : null;
 
-    // C) Progression vers le prochain rang (basé trajets)
+    // ---------- C) PROGRESSION RANG ----------
     final double progressToNext = _progressToNextByTrips(completed);
 
+    // ---------- D) RETOUR ----------
     return _Reputation(
-      avg: avg,
+      avg: (avg.isNaN || !avg.isFinite) ? 0.0 : avg,
       satisfied: satisfied,
-      total: total,
-      reviews: reviews,
-      respectPct: respectPct,
+      total: totalUnique,
+      reviews: reviewsForUi, // ✅ 10 derniers pour l’UI
+      respectPct: (respectPct.isNaN || !respectPct.isFinite) ? 0.0 : respectPct,
       lastDriverId: lastDriverId,
       lastDriverName: lastDriverName,
       completedTrips: completed,
       totalSpend: totalSpend,
-      progressToNext: progressToNext,
+      progressToNext: (progressToNext.isNaN || !progressToNext.isFinite)
+          ? 0.0
+          : progressToNext,
     );
   }
 
@@ -1479,19 +1501,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _reputationFusion(_Reputation rep) {
     final rank = _rankFromTrips(rep.completedTrips);
-    // Sécuriser la jauge (null/NaN → 0)
+
+    // Jauge safe
     final double gauge = (rep.progressToNext ?? 0).toDouble().clamp(0, 1);
-    final String next = _nextRankFromTrips(rep.completedTrips) ?? ""; // ← SAFE
+
+    // Prochain rang
+    final String next = _nextRankFromTrips(rep.completedTrips) ?? "";
     final String nextWord = () {
       final trimmed = next.trim();
       if (trimmed.isEmpty) return "prochain rang";
       final parts =
           trimmed.split(' ').where((s) => s.trim().isNotEmpty).toList();
-      return parts.isEmpty ? trimmed : parts.last; // évite RangeError
+      return parts.isEmpty ? trimmed : parts.last;
     }();
-    final nextLabel = _gaugeBottomLabelForTrips(rep.completedTrips);
 
-    // Paliers (inchangé)
+    // Palier
     int nextTarget;
     if (rank == "Voyageur Diamant") {
       nextTarget = diamantMin;
@@ -1505,16 +1529,26 @@ class _HomeScreenState extends State<HomeScreen> {
       nextTarget = bronzeMin;
     }
 
-    // Monnaie safe (évite exceptions si locale absente sur certaines plateformes)
     final currency = NumberFormat.currency(
       locale: 'fr_FR',
       symbol: '€',
       decimalDigits: 0,
     );
 
-    // 👉 IMPORTANT : reviews safe
-    final List<Map<String, dynamic>> reviews =
-        (rep.reviews as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    // ✅✅  TOP 10 AVIS TRIÉS DESC
+    final List<Map<String, dynamic>> _reviewsProcessed = (() {
+      final raw =
+          (rep.reviews as List?)?.whereType<Map<String, dynamic>>().toList() ??
+              const [];
+      raw.sort((a, b) {
+        final ta = a['timestamp'] as Timestamp?;
+        final tb = b['timestamp'] as Timestamp?;
+        final ma = ta?.millisecondsSinceEpoch ?? 0;
+        final mb = tb?.millisecondsSinceEpoch ?? 0;
+        return mb.compareTo(ma);
+      });
+      return raw.take(10).toList();
+    })();
 
     return _AnimatedLuxBorder(
       colors: const [Color(0xFFFFD700), Color(0xFFA87C00)],
@@ -1529,7 +1563,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête
+            /// ✅ HEADER
             Row(
               children: [
                 _LuxMiniIcon.gold(icon: Icons.emoji_events_rounded),
@@ -1550,7 +1584,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   top: "${((gauge.isNaN ? 0 : gauge) * 100).round()}%",
                   bottom: (next == "Voyageur Diamant")
                       ? "Rang max"
-                      : "vers $nextWord", // ← SAFE
+                      : "vers $nextWord",
                   size: 64,
                 ),
               ],
@@ -1558,7 +1592,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 16),
 
-            // KPIs
+            /// ✅ KPI
             Column(
               children: [
                 _InfoKPI(
@@ -1594,11 +1628,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
 
+            const SizedBox(height: 14),
             const SizedBox(height: 10),
 
-            if (reviews.isEmpty)
+            /// ✅ AVIS
+            if (_reviewsProcessed.isEmpty)
               const Text(
                 "Aucun avis de chauffeur pour le moment.",
                 style: TextStyle(color: Colors.white38),
@@ -1607,10 +1642,14 @@ class _HomeScreenState extends State<HomeScreen> {
               SizedBox(
                 height: 168,
                 child: PageView.builder(
-                  controller: PageController(viewportFraction: 0.9),
-                  itemCount: reviews.length,
+                  key: ValueKey(_reviewsProcessed
+                      .map((r) => r['reviewId'] ?? r['timestamp'] ?? '')
+                      .join(',')),
+                  controller:
+                      PageController(viewportFraction: 0.9, keepPage: false),
+                  itemCount: _reviewsProcessed.length,
                   itemBuilder: (context, index) {
-                    final r = reviews[index];
+                    final r = _reviewsProcessed[index];
                     final rating = ((r['rating'] ?? 0) as num).toDouble();
                     final comment = (r['comment'] ?? '') as String;
                     final ts = r['timestamp'] as Timestamp?;
@@ -1651,6 +1690,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Colors.white70,
                                 fontStyle: FontStyle.italic,
                               ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Align(

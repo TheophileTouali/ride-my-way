@@ -1,38 +1,25 @@
-// LiveTrackingPassengerScreen — Ultra Premium Edition (no-regression)
-// - Verre dépoli (glassmorphism) + bordure or animée
-// - Titre à dégradé or + légère lueur (avec AnimatedSwitcher)
-// - Barre ETA scintillante (shimmer) + micro-animations
-// - Boutons "bijou" (pills) avec glow / hover doux
-// - Contrôles carte glossy, halo amélioré
-// - TOUTE la logique existante conservée à l’identique
-//
-// + Optimisations sûres (sans régression) :
-//   - Throttle Directions API (polyline) + seuil de distance
-//   - Suivi caméra moins intrusif (désactivé si l’utilisateur manipule la carte)
-//   - Pré-chargement du son de confirmation
-//   - Blur haute qualité activable/désactivable par flag (par défaut ON)
-//   - Guards supplémentaires sur la boîte de dialogue d’embarquement
-//
-// NOTE: Pense à restreindre la clé Google côté console (SHA-1 / domaines) ou proxy côté Functions.
+// LiveTrackingPassengerScreen — Ultra Premium Edition (responsive, no-regression)
 
 import 'dart:async';
+import 'dart:math' as math; // <-- pour ETA plancher & arrondis
 import 'dart:ui' as ui;
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, HapticFeedback, rootBundle;
 import 'package:geolocator/geolocator.dart';
-import '../themes/app_theme.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
-import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../themes/app_theme.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 class LiveTrackingPassengerScreen extends StatefulWidget {
   final String reservationId;
@@ -61,8 +48,8 @@ class _LiveTrackingPassengerScreenState
   late AnimationController _haloController;
   late Animation<double> _haloAnimation;
 
-  double _remainingDistance = 0;
-  double _estimatedDuration = 0;
+  double _remainingDistance = 0; // en km
+  double _estimatedDuration = 0; // en minutes
   String? _status;
   bool _hasConfirmedBoarding = false;
   bool _boardingDialogVisible = false;
@@ -85,23 +72,31 @@ class _LiveTrackingPassengerScreenState
   bool _infoExpanded = true;
   MapType _mapType = MapType.normal;
 
-  // --------- Optimisations "no-regression" ----------
-  // Throttle recalcul polyline (Directions) + seuil de distance
+  // Throttle Directions + seuil
   Timer? _routeThrottle;
   LatLng? _lastRouteOrigin;
-  static const _recalcMinMoveMeters =
-      100.0; // recalcul si le chauffeur a bougé > 100m
-  static const _recalcDebounce =
-      Duration(seconds: 20); // pas plus d’un recalcul / 20s
+  static const _recalcMinMoveMeters = 100.0;
+  static const _recalcDebounce = Duration(seconds: 20);
 
-  // Suivi caméra non intrusif (désactivé si l’utilisateur manipule la carte)
   bool _followDriver = true;
-
-  // Blur haute qualité (panel) – ON par défaut, peut être coupé si besoin
   final bool _highQualityBlur = true;
 
   @override
   bool get wantKeepAlive => true;
+
+  // ---------- Helpers responsive ----------
+  double _panelHeight(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    // Mobile-first : panel 34–42% de l’écran en portrait, plus bas en paysage
+    final target = isLandscape ? h * 0.28 : h * 0.38;
+    return target.clamp(260.0, 420.0);
+  }
+
+  EdgeInsets _safeInsets(BuildContext context) => EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom,
+      );
 
   @override
   void initState() {
@@ -109,8 +104,6 @@ class _LiveTrackingPassengerScreenState
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
 
-    // Pré-charger l’asset audio pour éliminer le micro-lag
-    // (sans await pour ne pas bloquer l’init)
     _audioPlayer.setAsset('assets/sounds/confirmed.mp3');
 
     _loadCarIcon();
@@ -155,11 +148,10 @@ class _LiveTrackingPassengerScreenState
     }
   }
 
+  // ---------- Actions Smart (mobile + fallback web) ----------
   Future<void> _callDriverSmart() async {
     if (_driverPhone == null || _driverPhone!.trim().isEmpty) return;
     final raw = _driverPhone!.trim();
-
-    // Sur mobile: tente l’appel natif
     final uri = Uri(scheme: 'tel', path: raw);
     try {
       if (await canLaunchUrl(uri)) {
@@ -167,11 +159,7 @@ class _LiveTrackingPassengerScreenState
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         return;
       }
-    } catch (_) {
-      // ignore -> fallback
-    }
-
-    // Fallback (Web ou refus) : copie dans le presse-papiers
+    } catch (_) {}
     await Clipboard.setData(ClipboardData(text: raw));
     if (!mounted) return;
     _toast("Numéro du chauffeur copié");
@@ -182,27 +170,19 @@ class _LiveTrackingPassengerScreenState
     final link = kIsWeb
         ? '$base/tracking/${widget.reservationId}'
         : 'ride-my-way://tracking/${widget.reservationId}';
-
     try {
-      // Sur mobile, propose la feuille de partage
       if (!kIsWeb) {
         await HapticFeedback.selectionClick();
         await Share.share(link, subject: 'Suivi de mon trajet');
         return;
       }
-    } catch (_) {
-      // ignore -> fallback
-    }
-
-    // Fallback Web (ou si share indisponible)
+    } catch (_) {}
     await Clipboard.setData(ClipboardData(text: link));
     if (!mounted) return;
     _toast("Lien de suivi copié");
   }
 
-  // ============== Streams (conservés, mais optimisés) ==============
-
-  // Stream temps réel driverPosition (inchangé côté source, ajout de protections locales)
+  // ---------- Streams ----------
   void _attachDriverLocationStream() {
     _driverLocSub?.cancel();
     _driverLocSub = FirebaseFirestore.instance
@@ -220,19 +200,17 @@ class _LiveTrackingPassengerScreenState
         final double lng =
             (loc['lng'] is num) ? (loc['lng'] as num).toDouble() : 0.0;
         final newPos = LatLng(lat, lng);
-
         if (!mounted) return;
 
         final moved = (_driverPosition == null)
             ? double.infinity
             : _distance2dMeters(_driverPosition!, newPos);
 
-        // MàJ position uniquement si mouvement significatif (> 10m) pour limiter les rebuilds
         if (_driverPosition == null || moved > 10) {
           setState(() => _driverPosition = newPos);
           _maybeFollowCamera(newPos);
           _updateDistanceAndDuration();
-          _scheduleRouteRefresh(); // throttle Directions
+          _scheduleRouteRefresh();
         }
       }
     }, onError: (e) {
@@ -240,7 +218,6 @@ class _LiveTrackingPassengerScreenState
     });
   }
 
-  // Status + destination cible (pickup vs dropoff) – inchangé fonctionnellement
   void _attachStatusStream({bool recreate = false}) {
     if (recreate) {
       _statusSub?.cancel();
@@ -276,7 +253,7 @@ class _LiveTrackingPassengerScreenState
             : 0.0;
         setState(() => _destination = LatLng(lat, lng));
         _updateDistanceAndDuration();
-        _scheduleRouteRefresh(); // laisse le throttle gérer Directions
+        _scheduleRouteRefresh();
       }
 
       if (_status == 'Terminée') {
@@ -298,7 +275,7 @@ class _LiveTrackingPassengerScreenState
       } else if (_status == 'Arrivé' &&
           !_hasConfirmedBoarding &&
           !_boardingDialogVisible) {
-        _showBoardingDialog(); // guard interne
+        _showBoardingDialog();
         _reminderTimer?.cancel();
         _reminderTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
           if (_hasConfirmedBoarding || _status == 'En cours') {
@@ -313,8 +290,7 @@ class _LiveTrackingPassengerScreenState
     });
   }
 
-  // ---------------- Data helpers (inchangé) ----------------
-
+  // ---------- Data helpers ----------
   Future<void> _loadDriverInfo() async {
     try {
       final resRef = FirebaseFirestore.instance
@@ -423,24 +399,30 @@ class _LiveTrackingPassengerScreenState
     }
   }
 
+  // ---------- Calcul distance/ETA (labels responsifs & jolis) ----------
   void _updateDistanceAndDuration() {
     if (_driverPosition == null || _destination == null) return;
 
-    final distanceInMeters = Geolocator.distanceBetween(
+    final meters = Geolocator.distanceBetween(
       _driverPosition!.latitude,
       _driverPosition!.longitude,
       _destination!.latitude,
       _destination!.longitude,
     );
 
-    // Durée heuristique identique dans l’esprit, mais un brin plus réaliste selon le statut
-    final km = distanceInMeters / 1000;
+    final km = meters / 1000.0;
+
     final double avgKmh = switch (_status) {
-      'En cours' => 28, // ~trafic urbain
+      'En cours' => 28,
       'Arrivé' || 'En route' => 18,
       _ => 22,
     };
-    final minutes = (km / (avgKmh / 60)).clamp(1, 9999).toDouble();
+
+    final minutesRaw = km / (avgKmh / 60.0);
+
+    final minutes = (_status == 'Terminée')
+        ? 0.0
+        : math.max(1.0, minutesRaw.ceilToDouble());
 
     setState(() {
       _remainingDistance = km;
@@ -479,20 +461,14 @@ class _LiveTrackingPassengerScreenState
   }
 
   Future<void> _setMapStyle() async {
-    // setMapStyle pas toujours supporté côté web selon plateformes
     if (kIsWeb) return;
     final style = await rootBundle.loadString('assets/map_style_dark.json');
     _mapController?.setMapStyle(style);
   }
 
-  // ============== Optimisations locales (sans changer la logique) ==============
-
+  // ---------- Optimisations locales ----------
   double _distance2dMeters(LatLng a, LatLng b) => Geolocator.distanceBetween(
-        a.latitude,
-        a.longitude,
-        b.latitude,
-        b.longitude,
-      );
+      a.latitude, a.longitude, b.latitude, b.longitude);
 
   void _maybeFollowCamera(LatLng pos) {
     if (!_followDriver) return;
@@ -501,12 +477,10 @@ class _LiveTrackingPassengerScreenState
 
   void _scheduleRouteRefresh() {
     if (_driverPosition == null || _destination == null) return;
-
     final movedEnough = _lastRouteOrigin == null
         ? true
         : _distance2dMeters(_lastRouteOrigin!, _driverPosition!) >
             _recalcMinMoveMeters;
-
     if (!movedEnough) return;
 
     _routeThrottle?.cancel();
@@ -529,118 +503,22 @@ class _LiveTrackingPassengerScreenState
     } catch (_) {}
   }
 
-  // ---------------- Actions (identiques) ----------------
-
-  void _copyPhoneOrNotify() async {
-    if (_driverPhone == null || _driverPhone!.trim().isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _driverPhone!));
-    if (!mounted) return;
-    _toast("Numéro du chauffeur copié");
-  }
-
+  // ---------- UI helpers ----------
   void _openChat() => context.push('/chat/${widget.reservationId}');
 
-  Future<void> _shareTrackingLink() async {
-    final base = kIsWeb ? Uri.base.origin : '';
-    final link = kIsWeb
-        ? '$base/tracking/${widget.reservationId}'
-        : 'ride-my-way://tracking/${widget.reservationId}';
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    _toast("Lien de suivi copié");
-  }
-
-  Future<void> _openProblemSheet() async {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0B0B0B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Stack(
-            children: [
-              // halo or
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        colors: [
-                          AppColors.gold.withOpacity(.06),
-                          Colors.transparent
-                        ],
-                        radius: 1.2,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _goldHeading("Assistance & problèmes"),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Signale un souci, notre équipe peut te recontacter.",
-                      style: TextStyle(color: Colors.white60),
-                    ),
-                    const SizedBox(height: 16),
-                    _issueTile("Le chauffeur ne bouge plus", "driver_idle"),
-                    _issueTile("Problème de sécurité (SOS)", "sos"),
-                    _issueTile("Conflit sur l’itinéraire", "route_conflict"),
-                    _issueTile("Autre problème…", "other"),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _issueTile(String label, String code) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: _glassBoxDecoration(),
-      child: ListTile(
-        leading: const Icon(Icons.report, color: Colors.redAccent),
-        title: Text(label,
-            style: const TextStyle(color: Colors.white, fontSize: 14)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-        onTap: () async {
-          Navigator.of(context).pop();
-          await FirebaseFirestore.instance.collection('incidents').add({
-            'reservationId': widget.reservationId,
-            'type': code,
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-            'from': 'passenger',
-          });
-          if (!mounted) return;
-          _toast("Incident signalé. Nous prenons le relais.");
-        },
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.black.withOpacity(.9),
+        behavior: SnackBarBehavior.floating,
+        content: Text(msg, style: const TextStyle(color: Colors.white)),
       ),
     );
   }
 
   void _recenter() {
     if (_driverPosition != null) {
-      _followDriver = true; // re-active le suivi lors du recentrage manuel
+      _followDriver = true;
       _mapController?.animateCamera(
         CameraUpdate.newLatLngZoom(_driverPosition!, 15),
       );
@@ -653,18 +531,7 @@ class _LiveTrackingPassengerScreenState
     });
   }
 
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: Colors.black.withOpacity(.9),
-        behavior: SnackBarBehavior.floating,
-        content: Text(msg, style: const TextStyle(color: Colors.white)),
-      ),
-    );
-  }
-
-  // ---------------- Dialog boarding (inchangé, peaufiné) ----------------
-
+  // ---------- Boarding dialog ----------
   void _showBoardingDialog() {
     if (_hasConfirmedBoarding || _boardingDialogVisible || !mounted) return;
     _boardingDialogVisible = true;
@@ -736,9 +603,9 @@ class _LiveTrackingPassengerScreenState
                                         horizontal: 10, vertical: 6),
                                     foregroundColor: AppColors.gold,
                                   ),
-                                  onPressed: _copyPhoneOrNotify,
-                                  icon: const Icon(Icons.copy, size: 14),
-                                  label: const Text("Copier",
+                                  onPressed: _callDriverSmart,
+                                  icon: const Icon(Icons.call, size: 14),
+                                  label: const Text("Appeler",
                                       style: TextStyle(fontSize: 12)),
                                 ),
                               ],
@@ -787,10 +654,7 @@ class _LiveTrackingPassengerScreenState
             ),
         ],
       ),
-    ).then((_) {
-      // Si fermée autrement, libère le flag proprement
-      _boardingDialogVisible = false;
-    });
+    ).then((_) => _boardingDialogVisible = false);
   }
 
   String get statusMessage {
@@ -814,10 +678,12 @@ class _LiveTrackingPassengerScreenState
   }
 
   // ----------------------------- BUILD ---------------------------------
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final panelH = _panelHeight(context);
+    final scrimH = panelH + 100; // couvre panneau + barre d’actions
+
     return Scaffold(
       backgroundColor: AppColors.black,
       body: Stack(
@@ -835,10 +701,7 @@ class _LiveTrackingPassengerScreenState
                 _mapController = controller;
                 _setMapStyle();
               },
-              onCameraMoveStarted: () {
-                // L’utilisateur prend la main -> on coupe le suivi automatique
-                _followDriver = false;
-              },
+              onCameraMoveStarted: () => _followDriver = false,
               markers: {
                 Marker(
                   markerId: const MarkerId('driver'),
@@ -857,7 +720,7 @@ class _LiveTrackingPassengerScreenState
               },
             ),
 
-          // Halo or doux au centre
+          // Halo or doux
           if (_driverPosition != null)
             AnimatedBuilder(
               animation: _haloAnimation,
@@ -884,7 +747,6 @@ class _LiveTrackingPassengerScreenState
               ),
             ),
 
-          // Check visuel
           if (_showCheckmark)
             Center(
               child: AnimatedOpacity(
@@ -895,7 +757,6 @@ class _LiveTrackingPassengerScreenState
               ),
             ),
 
-          // Message fin de course (plein écran)
           if (_showTripEndedMessage)
             AnimatedOpacity(
               opacity: 1.0,
@@ -927,7 +788,7 @@ class _LiveTrackingPassengerScreenState
               ),
             ),
 
-          // Contrôles carte glossy
+          // Contrôles carte
           Positioned(
             right: 16,
             top: MediaQuery.of(context).padding.top + 16,
@@ -944,8 +805,7 @@ class _LiveTrackingPassengerScreenState
             ),
           ),
 
-          // ---------- SCRIM LISIBLE + PANNEAU INFOS & ACTIONS ----------
-          // 1) SCRIM de lecture (place-le AVANT ce panneau dans le Stack, ou colle les deux blocs à la suite)
+          // SCRIM de lecture
           Positioned(
             left: 0,
             right: 0,
@@ -954,7 +814,7 @@ class _LiveTrackingPassengerScreenState
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                 child: Container(
-                  height: 340, // couvre le panneau + la barre d’actions
+                  height: scrimH,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
@@ -973,29 +833,30 @@ class _LiveTrackingPassengerScreenState
             ),
           ),
 
-          // 2) PANNEAU infos + actions
+          // Panneau + actions (responsive)
           Positioned(
             left: 16,
             right: 16,
-            bottom: 16 + MediaQuery.of(context).padding.bottom,
+            bottom: 16 + _safeInsets(context).bottom,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // GLASS PANEL
                 ClipRRect(
                   borderRadius: BorderRadius.circular(18),
-                  child: _highQualityBlur
-                      ? BackdropFilter(
-                          filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                          child: _goldPanel(),
-                        )
-                      : _goldPanel(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: panelH),
+                    child: _highQualityBlur
+                        ? BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                            child: _goldPanel(),
+                          )
+                        : _goldPanel(),
+                  ),
                 ),
-
                 const SizedBox(height: 12),
 
-                // Barre d’actions "bijou"
-                // Barre d’actions "bijou"
+                // --- Barre d’actions : WRAP (responsive, no overflow) ---
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1011,40 +872,46 @@ class _LiveTrackingPassengerScreenState
                       ),
                     ],
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _gemPill(
-                        icon: Icons.call,
-                        label: "Appeler",
-                        onTap: (_canShowDriverPhone && _driverPhone != null)
-                            ? _callDriverSmart
-                            : null,
-                        tooltip: _canShowDriverPhone
-                            ? "Appeler / copier le numéro"
-                            : "Numéro disponible à l’arrivée/à bord",
-                      ),
-                      _gemPill(
-                        icon: Icons.chat_bubble_outline,
-                        label: "Chat",
-                        onTap: _openChat,
-                        tooltip: "Envoyer un message",
-                      ),
-                      _gemPill(
-                        icon: Icons.ios_share,
-                        label: "Partager",
-                        onTap: _shareTrackingLinkSmart, // ⇦ remplace l’ancien
-                        tooltip: "Partager le lien de suivi",
-                      ),
-                      _gemPill(
-                        icon: Icons.report_gmailerrorred_outlined,
-                        label: "SOS",
-                        onTap: _openProblemSheet,
-                        tooltip: "Signaler un problème",
-                        danger: true,
-                      ),
-                    ],
-                  ),
+                  child: LayoutBuilder(builder: (ctx, cons) {
+                    return Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: cons.maxWidth < 340
+                          ? WrapAlignment.center
+                          : WrapAlignment.spaceBetween,
+                      children: [
+                        _gemPill(
+                          icon: Icons.call,
+                          label: "Appeler",
+                          onTap: (_canShowDriverPhone && _driverPhone != null)
+                              ? _callDriverSmart
+                              : null,
+                          tooltip: _canShowDriverPhone
+                              ? "Appeler / copier le numéro"
+                              : "Numéro disponible à l’arrivée/à bord",
+                        ),
+                        _gemPill(
+                          icon: Icons.chat_bubble_outline,
+                          label: "Chat",
+                          onTap: _openChat,
+                          tooltip: "Envoyer un message",
+                        ),
+                        _gemPill(
+                          icon: Icons.ios_share,
+                          label: "Partager",
+                          onTap: _shareTrackingLinkSmart,
+                          tooltip: "Partager le lien de suivi",
+                        ),
+                        _gemPill(
+                          icon: Icons.report_gmailerrorred_outlined,
+                          label: "SOS",
+                          onTap: _openProblemSheet,
+                          tooltip: "Signaler un problème",
+                          danger: true,
+                        ),
+                      ],
+                    );
+                  }),
                 ),
               ],
             ),
@@ -1054,8 +921,19 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // ------------ Panneau or (avec AnimatedSwitcher sur le titre) ------------
+  // ------------ Panneau or ------------
   Widget _goldPanel() {
+    // Labels robustes et lisibles
+    final distanceLabel = (_driverPosition == null || _destination == null)
+        ? "—"
+        : (_remainingDistance < 0.05
+            ? "< 50 m"
+            : "${_remainingDistance.toStringAsFixed(1)} km");
+
+    final etaLabel = (_driverPosition == null || _destination == null)
+        ? "—"
+        : "${_estimatedDuration.toStringAsFixed(0)} min";
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1072,7 +950,6 @@ class _LiveTrackingPassengerScreenState
                   transitionBuilder: (c, a) =>
                       FadeTransition(opacity: a, child: c),
                   child: KeyedSubtree(
-                    // key différente lorsque le message change pour déclencher l’animation
                     key: ValueKey(statusMessage),
                     child: _goldHeading(statusMessage),
                   ),
@@ -1088,21 +965,21 @@ class _LiveTrackingPassengerScreenState
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           _shimmerBar(),
           if (_infoExpanded) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Text(
-              "Distance restante : ${_remainingDistance.toStringAsFixed(1)} km",
+              "Distance restante : $distanceLabel",
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             Text(
-              "Durée estimée : ${_estimatedDuration.toStringAsFixed(0)} min",
+              "Durée estimée : $etaLabel",
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             if (_driverName != null || _driverPhone != null)
               Padding(
-                padding: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.only(top: 12),
                 child: Row(
                   children: [
                     CircleAvatar(
@@ -1130,7 +1007,7 @@ class _LiveTrackingPassengerScreenState
                     ),
                     if (_driverPhone != null && _canShowDriverPhone)
                       GestureDetector(
-                        onTap: _copyPhoneOrNotify,
+                        onTap: _callDriverSmart,
                         child: const Text(
                           "Copier le numéro",
                           style: TextStyle(color: AppColors.gold, fontSize: 12),
@@ -1146,8 +1023,6 @@ class _LiveTrackingPassengerScreenState
   }
 
   // -------------------- Widgets premium helpers --------------------
-
-  // Titre dégradé or + légère lueur
   Widget _goldHeading(String text) {
     return ShaderMask(
       shaderCallback: (bounds) => const LinearGradient(
@@ -1158,7 +1033,7 @@ class _LiveTrackingPassengerScreenState
       child: Text(
         text,
         style: const TextStyle(
-          color: Colors.white, // masqué par ShaderMask
+          color: Colors.white,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           fontFamily: 'PlayfairDisplay',
@@ -1168,7 +1043,6 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // Panneau verre + bordure or animée subtile
   BoxDecoration _goldGlassDecoration() {
     return BoxDecoration(
       color: Colors.white.withOpacity(0.04),
@@ -1192,7 +1066,6 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // Carte “verre” générique
   BoxDecoration _glassBoxDecoration() {
     return BoxDecoration(
       color: Colors.white.withOpacity(0.04),
@@ -1201,45 +1074,41 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // Barre ETA scintillante
   Widget _shimmerBar() {
-    return LayoutBuilder(builder: (ctx, c) {
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 900),
-        height: 8,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Colors.white.withOpacity(.12),
-              Colors.white.withOpacity(.06),
-            ],
-          ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 900),
+      height: 8,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.white.withOpacity(.12),
+            Colors.white.withOpacity(.06),
+          ],
         ),
-        child: Stack(children: [
-          Positioned.fill(
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: .35 + .05 * (_haloAnimation.value / 44), // micro-vie
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-                  ),
+      ),
+      child: Stack(children: [
+        Positioned.fill(
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: .35 + .05 * (_haloAnimation.value / 44),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
                 ),
               ),
             ),
           ),
-        ]),
-      );
-    });
+        ),
+      ]),
+    );
   }
 
-  // Bouton circulaire glossy
   Widget _roundFab(
       {required IconData icon, required VoidCallback onTap, String? tooltip}) {
     return Material(
@@ -1260,7 +1129,6 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // Bouton “bijou” (pill) avec glow
   Widget _gemPill({
     required IconData icon,
     required String label,
@@ -1283,10 +1151,7 @@ class _LiveTrackingPassengerScreenState
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               gradient: LinearGradient(
-                colors: [
-                  Colors.black,
-                  Colors.black.withOpacity(.85),
-                ],
+                colors: [Colors.black, Colors.black.withOpacity(.85)],
               ),
               border: Border.all(
                 color: enabled ? glow.withOpacity(.55) : Colors.white12,
@@ -1302,6 +1167,7 @@ class _LiveTrackingPassengerScreenState
                   : [],
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon,
                     size: 18,
@@ -1325,7 +1191,6 @@ class _LiveTrackingPassengerScreenState
     );
   }
 
-  // Gros CTA or
   Widget _gemButton({
     required IconData icon,
     required String label,
@@ -1343,7 +1208,7 @@ class _LiveTrackingPassengerScreenState
           BorderSide(color: AppColors.gold.withOpacity(.65), width: 1.2),
         ),
         shadowColor: MaterialStateProperty.all(AppColors.gold.withOpacity(.35)),
-        elevation: MaterialStateProperty.resolveWith((states) => 10),
+        elevation: MaterialStateProperty.resolveWith((_) => 10),
       )),
       onPressed: onPressed,
       icon: Icon(icon, color: AppColors.gold),
@@ -1352,7 +1217,7 @@ class _LiveTrackingPassengerScreenState
           colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
         ).createShader(r),
         child: Text(
-          label, // conserve le label passé en paramètre
+          label,
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
@@ -1360,6 +1225,94 @@ class _LiveTrackingPassengerScreenState
             fontFamily: 'PlayfairDisplay',
           ),
         ),
+      ),
+    );
+  }
+
+  // ---------- Support ----------
+  Future<void> _openProblemSheet() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0B0B0B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.gold.withOpacity(.06),
+                          Colors.transparent
+                        ],
+                        radius: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _goldHeading("Assistance & problèmes"),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Signale un souci, notre équipe peut te recontacter.",
+                      style: TextStyle(color: Colors.white60),
+                    ),
+                    const SizedBox(height: 16),
+                    _issueTile("Le chauffeur ne bouge plus", "driver_idle"),
+                    _issueTile("Problème de sécurité (SOS)", "sos"),
+                    _issueTile("Conflit sur l’itinéraire", "route_conflict"),
+                    _issueTile("Autre problème…", "other"),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _issueTile(String label, String code) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: _glassBoxDecoration(),
+      child: ListTile(
+        leading: const Icon(Icons.report, color: Colors.redAccent),
+        title: Text(label,
+            style: const TextStyle(color: Colors.white, fontSize: 14)),
+        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+        onTap: () async {
+          Navigator.of(context).pop();
+          await FirebaseFirestore.instance.collection('incidents').add({
+            'reservationId': widget.reservationId,
+            'type': code,
+            'status': 'open',
+            'createdAt': FieldValue.serverTimestamp(),
+            'from': 'passenger',
+          });
+          if (!mounted) return;
+          _toast("Incident signalé. Nous prenons le relais.");
+        },
       ),
     );
   }

@@ -1,6 +1,7 @@
 // lib/screens/driver_home_screen.dart
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:animate_do/animate_do.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -23,6 +24,300 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 String _formatEuroFr(double v) =>
     NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 2)
         .format(v); // ex: 604,01 €
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lux UI – helpers visuels premium (sans impact logique)
+// ─────────────────────────────────────────────────────────────────────────────
+class Lux {
+  static const gold1 = Color(0xFFFFD700);
+  static const gold2 = Color(0xFFA87C00);
+
+  static TextStyle title([double fs = 18]) => TextStyle(
+        fontFamily: 'PlayfairDisplay',
+        fontWeight: FontWeight.w800,
+        fontSize: fs,
+        letterSpacing: .2,
+        color: Colors.white,
+        shadows: const [
+          Shadow(color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 2))
+        ],
+      );
+
+  static TextStyle goldLabel([double fs = 12]) => TextStyle(
+        color: Lux.gold1,
+        fontWeight: FontWeight.w700,
+        fontSize: fs,
+        letterSpacing: .5,
+      );
+
+  static BoxDecoration glass({double r = 16, Color? stroke}) => BoxDecoration(
+        borderRadius: BorderRadius.circular(r),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white.withOpacity(.06), Colors.black12],
+        ),
+        // léger contour pour la lecture
+        border: Border.all(color: stroke ?? Colors.white12),
+      );
+
+  static Widget goldGradientText(String text, {double fs = 22}) {
+    return ShaderMask(
+      shaderCallback: (r) => const LinearGradient(
+        colors: [Lux.gold1, Lux.gold2],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(r),
+      child: Text(text, style: Lux.title(fs).copyWith(color: Colors.white)),
+    );
+  }
+
+  static Widget heroEarningCapsule(String amount, {bool center = false}) {
+    return Container(
+      padding: const EdgeInsets.all(2.2),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF9C7A23), Color(0xFFFFE29F), Color(0xFF9C7A23)],
+        ),
+        borderRadius: BorderRadius.circular(40),
+        boxShadow: [
+          BoxShadow(
+            color: Lux.gold1.withOpacity(0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E0E0E),
+          borderRadius: BorderRadius.circular(38),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          children: [
+            Text("Votre gain du jour", style: Lux.goldLabel(10)),
+            const SizedBox(height: 6),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(amount, style: Lux.title(28)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget goldSwitchChip({
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: Lux.glass(r: 999),
+      child: Row(
+        children: [
+          Text(value ? "🟢 En ligne" : "🔴 Hors ligne",
+              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(width: 6),
+          Transform.scale(
+            scale: .9,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: Colors.black,
+              activeTrackColor: Lux.gold1,
+              inactiveThumbColor: Colors.white,
+              inactiveTrackColor: Colors.white24,
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget glassCard({
+    required String title,
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(16),
+    double radius = 16,
+  }) {
+    return Container(
+      padding: padding,
+      decoration: Lux.glass(r: radius),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Lux.goldLabel(13)),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  static Widget countdownChip(Duration d, {bool urgent = false}) {
+    final str =
+        d.inMinutes < 60 ? "dans ${d.inMinutes} min" : "dans ${d.inHours} h";
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: urgent ? Colors.redAccent : Colors.white10,
+        border: Border.all(
+          color: urgent ? Colors.redAccent : Colors.white24,
+        ),
+      ),
+      child: Text(
+        str.toUpperCase(),
+        style: TextStyle(
+          color: urgent ? Colors.white : Colors.white70,
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+          letterSpacing: .6,
+        ),
+      ),
+    );
+  }
+
+  // Dégradé de fond noir premium
+  static const _darkGrad = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF0C0C0C), Color(0xFF141414)],
+  );
+
+  /// Carte verre fumé + bordure dégradée or + halo interne
+  static Widget goldGlass({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(16),
+    double radius = 20,
+  }) {
+    return Stack(
+      children: [
+        // halo externe doux
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius + 4),
+            boxShadow: [
+              BoxShadow(
+                color: Lux.gold1.withOpacity(.10),
+                blurRadius: 30,
+                spreadRadius: 2,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+        ),
+        // bordure dégradée or
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius + 2),
+            gradient: const LinearGradient(
+              colors: [Color(0x33FFD700), Color(0x338A6A0A)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        // fond verre (très sombre) + stroke intérieur
+        Container(
+          margin: const EdgeInsets.all(1.2),
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: _darkGrad,
+            border: Border.all(color: Colors.white10, width: 1),
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+
+  /// Bouton premium noir & or avec micro-hover/press
+  static Widget premiumButton({
+    required String label,
+    required VoidCallback onPressed,
+    IconData? icon,
+    bool danger = false,
+    EdgeInsets padding =
+        const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+  }) {
+    final bg = danger ? Colors.redAccent : Lux.gold1;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(40),
+        gradient: LinearGradient(
+          colors: danger
+              ? [Colors.redAccent.shade400, Colors.redAccent.shade200]
+              : [const Color(0xFFE7C65C), Lux.gold2],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: bg.withOpacity(.28),
+            blurRadius: 26,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(40),
+          onTap: onPressed,
+          splashColor: Colors.black12,
+          child: Padding(
+            padding: padding,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, color: Colors.black, size: 20),
+                  const SizedBox(width: 10),
+                ],
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    letterSpacing: .2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ligne méteo “icône + texte” avec typographie lux
+  static Widget metric(String emoji, String text) {
+    return Row(
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 20)),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilitaires
@@ -129,7 +424,7 @@ class DriverHomeScreen extends StatefulWidget {
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   // 🔔 suivi des courses proches (pour détecter les nouvelles)
   Set<String> _nearbyIds = {};
-// 🎧 sonnerie en boucle
+  // 🎧 sonnerie en boucle
   final AudioPlayer _ringer = AudioPlayer();
   bool _isRinging = false;
 
@@ -155,6 +450,392 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (h >= 12 && h < 18) return "Bon après-midi";
     if (h >= 18 && h < 22) return "Bonsoir";
     return "Bonne nuit";
+  }
+
+  Widget _buildReviewTile({
+    required String name,
+    required double rating,
+    required String comment,
+    DateTime? date,
+    String? from,
+    String? to,
+  }) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 450), // ✅ au lieu de 450.ms
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: 0, end: 1),
+      builder: (_, v, __) {
+        return Opacity(
+          opacity: v,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - v)),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF111111), Color(0xFF0A0A0A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: AppColors.gold.withOpacity(.20)),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.gold.withOpacity(0.12),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _nameAvatar(name),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                            if (from != null && to != null)
+                              Text(
+                                "$from ➜ $to",
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        date != null ? _formatFrenchDate(date) : "",
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _stars(rating),
+                  const SizedBox(height: 8),
+                  Text(
+                    comment,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      height: 1.32,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+// Badges & legend — ultra premium
+// ──────────────────────────────────────────────────────────────
+
+  Widget _goldBadge(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFEED27A), Color(0xFFA87C00)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Lux.gold1.withOpacity(.20),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .2,
+        ),
+      ),
+    );
+  }
+
+  Widget _statusLegendDot({
+    required Color color,
+    required String label,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(.35),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white60,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+// Trajets classés par statut — ULTRA PREMIUM (dans _DriverHomeScreenState)
+// ────────────────────────────────────────────────────────────────────────────
+  Widget _buildTripsSection() {
+    return FutureBuilder<List<Trip>>(
+      future: fetchDriverTrips(), // ← méthode existante de ta classe
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: CircularProgressIndicator(color: AppColors.gold),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return _infoCard(
+            // ← méthode existante (garde ta version)
+            title: "Trajets",
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text("Aucun trajet trouvé.",
+                    style: TextStyle(color: Colors.white54)),
+              ),
+            ),
+          );
+        }
+
+        final trips = snapshot.data!;
+        final now = DateTime.now();
+
+        final upcoming = trips
+            .where(
+                (t) => t.status == 'Confirmée' && t.departureTime.isAfter(now))
+            .toList();
+        final done = trips.where((t) => t.status == 'Terminée').toList();
+        final canceled = trips.where((t) => t.status == 'Annulée').toList();
+
+        final pages = {
+          'À venir': upcoming,
+          'Effectués': done,
+          'Annulés': canceled,
+        };
+
+        return Lux.goldGlass(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Header lux ──────────────────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                      child: Lux.goldGradientText("Trajets classés par statut",
+                          fs: 18)),
+                  const SizedBox(width: 12),
+                  _goldBadge("${trips.length} trajets"),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // ── Légende statuts ─────────────────────────────────────────────────
+              Row(
+                children: [
+                  _statusLegendDot(color: AppColors.gold, label: "À venir"),
+                  const SizedBox(width: 12),
+                  _statusLegendDot(color: Colors.white70, label: "Effectués"),
+                  const SizedBox(width: 12),
+                  _statusLegendDot(color: Colors.white38, label: "Annulés"),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // ── Onglets + contenu ───────────────────────────────────────────────
+              DefaultTabController(
+                length: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Barre segmentée premium
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: const Color(0x12121212),
+                        border: Border.all(color: Colors.white12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Lux.gold1.withOpacity(.10),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: TabBar(
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        dividerColor: Colors.transparent,
+                        indicator: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Lux.gold1.withOpacity(.35),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        labelColor: Colors.black,
+                        unselectedLabelColor: Colors.white70,
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          letterSpacing: .2,
+                        ),
+                        unselectedLabelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                        tabs: [
+                          _luxTab("À venir", upcoming.length),
+                          _luxTab("Effectués", done.length),
+                          _luxTab("Annulés", canceled.length),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Contenu
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.45,
+                      child: TabBarView(
+                        children: pages.entries.map((entry) {
+                          final label = entry.key;
+                          final list = entry.value;
+
+                          if (list.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.inbox_rounded,
+                                      color: Colors.white24, size: 36),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Aucun trajet $label.",
+                                    style:
+                                        const TextStyle(color: Colors.white54),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF0D0D0D), Color(0xFF151515)],
+                              ),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 12),
+                              itemCount: list.length,
+                              itemBuilder: (context, i) => FadeInUp(
+                                from: 12,
+                                duration: const Duration(milliseconds: 300),
+                                child: _tripCard(context, list[i]),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Tab _luxTab(String label, int count) {
+    return Tab(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: Colors.black.withOpacity(.10),
+              border: Border.all(color: Colors.black.withOpacity(.15)),
+            ),
+            child: Text(
+              "$count",
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.black, // lisible quand l’onglet est sélectionné
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   final FlutterLocalNotificationsPlugin _flnp =
@@ -299,7 +980,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         final dt = ts
             .toDate(); // UTC → converti automatiquement en DateTime local pour les comparaisons
         if (dt.isBefore(start) || !dt.isBefore(end))
-          continue; // garder uniquement "aujourd'hui"
+          continue; // garder aujourd'hui
 
         // 2) choisir le bon champ prix
         final price = (data['price'] ?? data['amount'] ?? data['fare']) as num?;
@@ -382,7 +1063,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       // 1) si nouvelle(s) course(s) → heads-up + démarre sonnerie en boucle
       if (newlyAdded.isNotEmpty) {
-        // anti-spam (tu as déjà _lastNearbyAlertAt / _nearbyAlertCooldown)
         final now = DateTime.now();
         final canAlert = _lastNearbyAlertAt == null ||
             now.difference(_lastNearbyAlertAt!) > _nearbyAlertCooldown;
@@ -420,7 +1100,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   String _normType(String? raw) {
     if (raw == null) return '';
     final s = raw.trim().toLowerCase();
-    // petite table de synonymes si besoin
     const map = {
       'berline': 'berlines',
       'berlines': 'berlines',
@@ -430,12 +1109,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       'vans standing': 'vans standing',
       'classe s': 'classe s',
       'classe e': 'classe e',
-      // ajoute d’autres alias si tu en as
     };
     return map[s] ?? s;
   }
 
-  /// Extrait tous les types demandés par la réservation, en gérant la rétro-compat.
   Set<String> _requestedTypesFromReservation(Map<String, dynamic> data) {
     final out = <String>{};
 
@@ -457,12 +1134,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (v.isNotEmpty) out.add(v);
     }
 
-    // 4) Si rien trouvé → on retourne vide (pas de restriction explicite)
     return out;
   }
 
-  /// Renvoie true si le type véhicule du driver “matche” la demande de la résa.
-  /// Règle métier : si la réservation n’exprime AUCUNE préférence → on laisse passer.
   bool _vehicleMatch(String? driverVehicleType, Set<String> requested) {
     final d = _normType(driverVehicleType);
     if (d.isEmpty) return false; // un driver sans type n’est pas éligible
@@ -477,13 +1151,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (uid == null) return [];
 
     try {
-      // ── 1) Base query
+      // 1) Base query
       Query<Map<String, dynamic>> baseQ = FirebaseFirestore.instance
           .collection('feedbacks')
           .where('driverId', isEqualTo: uid)
           .where('fromDriver', isEqualTo: false);
 
-      // ── 2) Tente avec orderBy (rapide si index dispo) ; sinon fallback sans index
+      // 2) orderBy si index, sinon fallback
       List<QueryDocumentSnapshot<Map<String, dynamic>>> fbDocs;
       try {
         fbDocs =
@@ -501,7 +1175,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       if (fbDocs.isEmpty) return [];
 
-      // ── 3) Prépare IDs (<= 10 → ok pour whereIn)
+      // 3) Prépare IDs
       final passengerIds = <String>{};
       final reservationIds = <String>{};
       for (final d in fbDocs) {
@@ -512,7 +1186,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (rid != null && rid.isNotEmpty) reservationIds.add(rid);
       }
 
-      // Helper: fetch par lot sur __name__ (documentId)
+      // helper fetchByIds
       Future<Map<String, Map<String, dynamic>>> _fetchByIds(
         String collection,
         Set<String> ids,
@@ -525,7 +1199,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         return {for (final d in snap.docs) d.id: d.data()};
       }
 
-      // ── 4) Chargement passagers + réservations (users → fallback passengers)
+      // 4) Chargements liés
       Map<String, Map<String, dynamic>> usersById = {};
       try {
         usersById = await _fetchByIds('users', passengerIds);
@@ -539,7 +1213,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final reservationsById =
           await _fetchByIds('reservations', reservationIds);
 
-      // ── 5) Construit la liste enrichie
+      // 5) Construit liste enrichie
       final result = <Map<String, dynamic>>[];
       for (final doc in fbDocs) {
         final fb = doc.data();
@@ -549,7 +1223,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         final user = (pid != null) ? usersById[pid] : null;
         final res = (rid != null) ? reservationsById[rid] : null;
 
-        // Nom passager: first/last → displayName → "Passager"
         final firstName =
             (user?['firstName'] ?? user?['prenom'] ?? '') as String;
         final lastName = (user?['lastName'] ?? user?['nom'] ?? '') as String;
@@ -562,7 +1235,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ? combined
             : (displayName.isNotEmpty ? displayName : 'Passager');
 
-        // Trajet (compat origin/destination)
         final from = (res?['from'] ?? res?['origin'] ?? '') as String? ?? '';
         final to = (res?['to'] ?? res?['destination'] ?? '') as String? ?? '';
 
@@ -583,17 +1255,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Widget _buildNearbyButton() {
-    return ElevatedButton.icon(
-      onPressed: () => showNearbyCoursesDialog(context),
-      icon: const Icon(Icons.map, color: Colors.black),
-      label: const Text("Voir les courses proches"),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.gold,
-        foregroundColor: Colors.black,
-        minimumSize: const Size.fromHeight(50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
+    return _LuxNearbyButton(
+      onTap: () => showNearbyCoursesDialog(context),
+      label: "Voir les courses proches",
+      icon: Icons.map_rounded,
     );
   }
 
@@ -712,25 +1377,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           ),
                                         ),
                                       ),
-                                      if (isUrgent)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.redAccent,
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: const Text(
-                                            "URGENT",
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 1,
-                                            ),
-                                          ),
-                                        ),
+                                      // Nouveau : chip countdown (sans changer la logique)
+                                      Lux.countdownChip(duration,
+                                          urgent: isUrgent),
                                     ],
                                   ),
                                   const SizedBox(height: 8),
@@ -832,7 +1481,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       for (var doc in querySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
 
-// ---- Filtre véhicule (avec rétro-compat) ---------------------------------
+        // ---- Filtre véhicule (avec rétro-compat)
         final requested = _requestedTypesFromReservation(data);
         final bool vehicleOk = _vehicleMatch(driverVehicleType, requested);
 
@@ -842,7 +1491,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           continue;
         }
 
-        // ---- Filtre distance ---------------------------------------------------
+        // ---- Filtre distance
         final fromLat = data['fromLat'] as num?;
         final fromLng = data['fromLng'] as num?;
         if (currentPosition != null) {
@@ -864,12 +1513,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             nearby.add(doc);
           }
         } else {
-          // Pas de géoloc → on ne filtre pas à la distance (comme un fallback)
+          // Pas de géoloc → on ne filtre pas à la distance (fallback)
           nearby.add(doc);
         }
       }
 
-      // 5) (Optionnel) Tri par timestamp si présent
+      // 5) Tri par timestamp si présent
       nearby.sort((a, b) {
         final ta =
             (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
@@ -896,8 +1545,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
     final driverRef = FirebaseFirestore.instance.collection('drivers').doc(uid);
     final driverSnap = await driverRef.get();
-    if (!driverSnap.exists)
+    if (!driverSnap.exists) {
       throw Exception("Conducteur non trouvé dans Firestore");
+    }
 
     final driver = driverSnap.data()!;
     final firstName = (driver['firstName'] ?? 'Prénom').toString();
@@ -997,14 +1647,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        duration: const Duration(milliseconds: 260), // ✅ au lieu de 260.ms
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AppColors.gold : const Color(0xFF111111),
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppColors.gold : Colors.black,
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: selected ? AppColors.gold : Colors.white24,
-            width: 1,
+            color: selected ? AppColors.gold : Colors.white12,
+            width: selected ? 1.6 : 1,
           ),
         ),
         child: Text(
@@ -1180,33 +1830,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         titleSpacing: 8,
         title: Row(
           children: [
-            const Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Espace conducteur',
-                  style: TextStyle(
-                    color: AppColors.gold,
-                    fontFamily: 'PlayfairDisplay',
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+            Expanded(child: Lux.goldGradientText('Espace conducteur', fs: 22)),
             const SizedBox(width: 8),
-            Text(
-              _isVisible ? "🟢 En ligne" : "🔴 Hors ligne",
-              style: TextStyle(
-                color: _isVisible ? Colors.greenAccent : Colors.redAccent,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Switch(
+            Lux.goldSwitchChip(
               value: _isVisible,
               onChanged: _toggleVisibility,
-              activeColor: AppColors.gold,
             ),
             IconButton(
               icon: const Icon(Icons.logout, color: AppColors.gold),
@@ -1267,139 +1895,45 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-// ── Header responsive : 2 colonnes à parts égales, wrap en 2 lignes si étroit
+            // ── Header mobile-first : salutation + capsule gains
             LayoutBuilder(
               builder: (context, c) {
                 final isNarrow = c.maxWidth < 420; // breakpoint mobile étroit
-                final double itemW =
-                    isNarrow ? c.maxWidth : (c.maxWidth / 2) - 8;
-
-                return Wrap(
-                  spacing: 16, // espace horizontal entre colonnes
-                  runSpacing: 14, // espace vertical si ça wrap
-                  alignment: WrapAlignment.spaceBetween,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Colonne gauche : salutation
-                    SizedBox(
-                      width: itemW,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            greeting,
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                          Text(
-                            "${user?.firstName ?? 'Conducteur'} 👋",
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.gold,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // ── Colonne droite : capsule montant du jour
-                    SizedBox(
-                      width: itemW,
-                      child: Align(
-                        alignment: isNarrow
-                            ? Alignment.centerLeft
-                            : Alignment.centerRight,
-                        child: Container(
-                          padding: const EdgeInsets.all(2.4),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                Color(0xFF9C7A23),
-                                Color(0xFFFFE29F),
-                                Color(0xFF9C7A23)
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(40),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.gold.withOpacity(0.18),
-                                blurRadius: 18,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: Stack(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Positioned.fill(
-                                child: IgnorePointer(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(38),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.white.withOpacity(0.04),
-                                          Colors.transparent
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                              Text(
+                                greeting,
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 18, vertical: 14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0E0E0E),
-                                  borderRadius: BorderRadius.circular(38),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      "Votre gain du jour",
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: AppColors.gold,
-                                        fontSize: 10, // petit descriptif doré
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: .6,
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    FittedBox(
-                                      fit: BoxFit
-                                          .scaleDown, // évite tout overflow
-                                      child: Text(
-                                        _formatEuroFr(_todayEarnings),
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontFamily: 'PlayfairDisplay',
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1.1,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
+                              const SizedBox(height: 4),
+                              Lux.goldGradientText(
+                                "${user?.firstName ?? 'Conducteur'} 👋",
+                                fs: 22,
+                              ),
                             ],
                           ),
                         ),
-                      ),
+                        if (!isNarrow) const SizedBox(width: 12),
+                        if (!isNarrow)
+                          Lux.heroEarningCapsule(_formatEuroFr(_todayEarnings)),
+                      ],
                     ),
+                    if (isNarrow) ...[
+                      const SizedBox(height: 12),
+                      Lux.heroEarningCapsule(_formatEuroFr(_todayEarnings),
+                          center: true),
+                    ],
                   ],
                 );
               },
@@ -1412,13 +1946,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             // Courses proches
             const SizedBox(height: 24),
             ...(_hasNewNearbyCourse
-                ? [
-                    Pulse(infinite: true, child: _buildNearbyButton()),
-                  ]
+                ? [Pulse(infinite: true, child: _buildNearbyButton())]
                 : _nearbyReservations.isEmpty
-                    ? [
-                        _buildNearbyButton(),
-                      ]
+                    ? [_buildNearbyButton()]
                     : [
                         _infoCard(
                           title: "Courses proches à accepter 🛰️",
@@ -1471,14 +2001,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Row(
-                                        children: const [
-                                          Icon(Icons.route,
+                                        children: [
+                                          const Icon(Icons.route,
                                               color: AppColors.gold, size: 18),
-                                          SizedBox(width: 6),
-                                          Text("Trajet",
+                                          const SizedBox(width: 6),
+                                          const Text("Trajet",
                                               style: TextStyle(
                                                   color: AppColors.gold,
                                                   fontWeight: FontWeight.bold)),
+                                          const Spacer(),
+                                          Lux.countdownChip(diff,
+                                              urgent: isUrgent),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
@@ -1567,88 +2100,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             const SizedBox(height: 24),
 
-            // Trajets classés par statut
-            DefaultTabController(
-              length: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const TabBar(
-                    labelColor: AppColors.gold,
-                    unselectedLabelColor: Colors.white54,
-                    indicatorColor: AppColors.gold,
-                    tabs: [
-                      Tab(text: "À venir"),
-                      Tab(text: "Effectués"),
-                      Tab(text: "Annulés"),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.45,
-                    child: FutureBuilder<List<Trip>>(
-                      future: fetchDriverTrips(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator(
-                                  color: AppColors.gold));
-                        }
-
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const Center(
-                            child: Text("Aucun trajet trouvé.",
-                                style: TextStyle(color: Colors.white54)),
-                          );
-                        }
-
-                        final trips = snapshot.data!;
-                        final now = DateTime.now();
-
-                        final Map<String, List<Trip>> categorizedTrips = {
-                          'À venir': trips
-                              .where((t) =>
-                                  t.status == 'Confirmée' &&
-                                  t.departureTime.isAfter(now))
-                              .toList(),
-                          'Effectués': trips
-                              .where((t) => t.status == 'Terminée')
-                              .toList(),
-                          'Annulés': trips
-                              .where((t) => t.status == 'Annulée')
-                              .toList(),
-                        };
-
-                        return TabBarView(
-                          children: categorizedTrips.entries.map((entry) {
-                            final status = entry.key;
-                            final filtered = entry.value;
-
-                            if (filtered.isEmpty) {
-                              return Center(
-                                child: Text("Aucun trajet $status.",
-                                    style:
-                                        const TextStyle(color: Colors.white54)),
-                              );
-                            }
-
-                            return ListView.builder(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
-                              itemCount: filtered.length,
-                              itemBuilder: (context, i) =>
-                                  _tripCard(context, filtered[i]),
-                            );
-                          }).toList(),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+// ── Trajets classés par statut — ULTRA PREMIUM
+            _buildTripsSection(),
+            const SizedBox(height: 24),
 
             const SizedBox(height: 24),
             _buildStatsSection(),
@@ -1657,150 +2111,88 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             const SizedBox(height: 24),
 
-            // Avis passagers
+            // ⭐️ — AVIS PASSAGERS PREMIUM
             FutureBuilder<List<Map<String, dynamic>>>(
               future: fetchRecentFeedbacks(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(
-                      child: CircularProgressIndicator(color: AppColors.gold));
+                    child: CircularProgressIndicator(color: AppColors.gold),
+                  );
                 }
+
+                final feedbacks = _getFilteredFeedbacks();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
-                    _infoCard(
-                      title: "Avis récents — Ce que disent vos passagers",
+                    const SizedBox(height: 28),
+                    Lux.glassCard(
+                      title: "Avis de vos passagers ✨",
+                      padding: const EdgeInsets.all(18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Filtres
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _reviewFilterChip(
-                                  label: "Tous",
-                                  selected: _starFilter == null,
-                                  onTap: () =>
-                                      setState(() => _starFilter = null)),
-                              _reviewFilterChip(
-                                  label: "5 étoiles",
-                                  selected: _starFilter == 5,
-                                  onTap: () => setState(() => _starFilter = 5)),
-                              _reviewFilterChip(
-                                  label: "4 étoiles",
-                                  selected: _starFilter == 4,
-                                  onTap: () => setState(() => _starFilter = 4)),
-                              _reviewFilterChip(
-                                  label: "3 étoiles",
-                                  selected: _starFilter == 3,
-                                  onTap: () => setState(() => _starFilter = 3)),
-                              _reviewFilterChip(
-                                  label: "2 étoiles",
-                                  selected: _starFilter == 2,
-                                  onTap: () => setState(() => _starFilter = 2)),
-                              _reviewFilterChip(
-                                  label: "1 étoile",
-                                  selected: _starFilter == 1,
-                                  onTap: () => setState(() => _starFilter = 1)),
-                            ],
+                          // Sous-titre (on le place dans le child ici)
+                          const Text(
+                            "Votre réputation se construit ici",
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: .2,
+                            ),
                           ),
                           const SizedBox(height: 12),
 
-                          // Répartition
+                          // 🔸 FILTRES
+                          AnimatedSwitcher(
+                            duration: const Duration(
+                                milliseconds: 400), // ✅ au lieu de 400.ms
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final n in [null, 5, 4, 3, 2, 1])
+                                  _reviewFilterChip(
+                                    label: n == null
+                                        ? "Tous"
+                                        : "$n étoile${n > 1 ? "s" : ""}",
+                                    selected: _starFilter == n,
+                                    onTap: () =>
+                                        setState(() => _starFilter = n),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
                           _ratingDistribution(_feedbacks),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 20),
 
-                          // Liste des avis
-                          ..._getFilteredFeedbacks()
-                              .asMap()
-                              .entries
-                              .map((entry) {
-                            final i = entry.key;
+                          // LISTE DES AVIS
+                          ...feedbacks.asMap().entries.map((entry) {
                             final fb = entry.value;
-
-                            // 🔹 Déclarations ici (avant tout widget)
-                            final passengerName =
-                                (fb['passengerName'] as String?) ?? 'Passager';
-                            final fromAddr = (fb['from'] as String?)?.trim();
-                            final toAddr = (fb['to'] as String?)?.trim();
-
-                            final date =
-                                (fb['timestamp'] as Timestamp?)?.toDate();
+                            final passenger =
+                                (fb['passengerName'] ?? "Passager").toString();
+                            final comment = fb['comment'] ?? "";
                             final rating =
                                 (fb['rating'] as num?)?.toDouble() ?? 0.0;
-                            final comment = (fb['comment'] as String?) ?? '';
+                            final date =
+                                (fb['timestamp'] as Timestamp?)?.toDate();
+                            final from = fb['from']?.toString();
+                            final to = fb['to']?.toString();
 
-                            // 🔹 Partie UI ensuite
-                            return Container(
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF141414),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                    color: AppColors.gold.withOpacity(0.15)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      _nameAvatar(
-                                          passengerName), // ✅ variable dynamique ici
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              passengerName, // ✅ plus de "const" ici
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 15,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (fromAddr != null &&
-                                                toAddr != null)
-                                              Text(
-                                                "$fromAddr ➜ $toAddr",
-                                                style: const TextStyle(
-                                                  color: Colors.white54,
-                                                  fontSize: 12,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                      Text(
-                                        date != null
-                                            ? _formatFrenchDate(date)
-                                            : "",
-                                        style: const TextStyle(
-                                            color: Colors.white38,
-                                            fontSize: 12),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  _stars(rating),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    comment,
-                                    style: const TextStyle(
-                                        color: Colors.white70, height: 1.4),
-                                  ),
-                                ],
-                              ),
+                            return _buildReviewTile(
+                              name: passenger,
+                              rating: rating,
+                              comment: comment,
+                              date: date,
+                              from: from,
+                              to: to,
                             );
-                          }).toList(),
+                          }),
                         ],
                       ),
                     ),
@@ -1812,20 +2204,88 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(height: 32),
 
             // Voir profil
-            ElevatedButton.icon(
-              onPressed: () => context.go('/driver-profile'),
-              icon: const Icon(Icons.person, color: AppColors.black),
-              label: const Text("Voir mon profil"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.gold,
-                foregroundColor: AppColors.black,
-                minimumSize: const Size.fromHeight(56),
-                textStyle:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            _viewProfileButton(),
+
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _viewProfileButton() {
+    return GestureDetector(
+      onTap: () => context.go('/driver-profile'),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutCubic,
+        height: 60,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFFFFE08A), // Gold soft
+              Color(0xFFA87C00), // Gold deep
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.gold.withOpacity(.35),
+              blurRadius: 26,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Halo
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.gold.withOpacity(.25),
+                      Colors.transparent
+                    ],
+                    radius: .85,
+                  ),
+                ),
               ),
             ),
 
-            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Icon capsule
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(.15),
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    color: Colors.black,
+                    size: 22,
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                const Text(
+                  "Voir mon profil",
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    letterSpacing: .3,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -1893,52 +2353,106 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           return _loadingCard("Chargement météo...");
         }
 
-        final weather = snapshot.data!;
-        return _infoCard(
-          title: "Météo à ${weather.city}",
-          child: Row(
-            children: [
-              // Bloc gauche
-              Container(
-                width: 100,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white24),
+        final w = snapshot.data!;
+
+        final leftCapsule = TweenAnimationBuilder<double>(
+          tween: Tween(begin: .0, end: 1.0),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) {
+            return Container(
+              width: 132,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF111111), Color(0xFF171717)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                child: Column(
-                  children: [
-                    Image.network(weather.iconUrl, width: 36),
-                    const SizedBox(height: 8),
-                    Text(weather.city,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 13)),
-                    Text(
-                      "${weather.temperature.toStringAsFixed(1)}°C",
+                border: Border.all(color: Colors.white12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Lux.gold1.withOpacity(.12 * t),
+                    blurRadius: 24 * t,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 10),
+                  )
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.network(
+                    w.iconUrl,
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.wb_cloudy, color: Colors.white38),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    w.city,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ShaderMask(
+                    shaderCallback: (r) => const LinearGradient(
+                      colors: [Lux.gold1, Lux.gold2],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(r),
+                    child: Text(
+                      "${w.temperature.toStringAsFixed(1)}°C",
                       style: const TextStyle(
-                        color: AppColors.gold,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 28,
                         fontFamily: 'PlayfairDisplay',
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                        letterSpacing: .2,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              // Bloc droit
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _weatherDetailRow("🌥️", weather.condition),
-                    const SizedBox(height: 6),
-                    _weatherDetailRow("💨", "${weather.windSpeed} km/h"),
-                    const SizedBox(height: 6),
-                    _weatherDetailRow("💧", "${weather.humidity} %"),
-                  ],
-                ),
+            );
+          },
+        );
+
+        final rightMetrics = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Lux.metric("🌥️", w.condition),
+            const SizedBox(height: 12),
+            Lux.metric("💨", "${w.windSpeed} km/h"),
+            const SizedBox(height: 12),
+            Lux.metric("💧", "${w.humidity} %"),
+          ],
+        );
+
+        // ✅ Correct (pas d’argument "title")
+        return Lux.goldGlass(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Météo à ${w.city}",
+                style: Lux.goldLabel(14),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  leftCapsule,
+                  const SizedBox(width: 18),
+                  Expanded(child: rightMetrics),
+                ],
               ),
             ],
           ),
@@ -1993,17 +2507,48 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return _loadingCard("Chargement stats...");
         final stats = snapshot.data!;
-        return _infoCard(
-          title: "Mes statistiques",
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+        return Lux.goldGlass(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _statColumn(
-                  Icons.directions_car, "${stats.nbTrajets}", "Trajets"),
-              _statColumn(
-                  Icons.map_rounded, "${stats.totalKm} km", "Kilomètres"),
-              _statColumn(
-                  Icons.star_rounded, stats.note.toStringAsFixed(1), "Note"),
+              // Titre premium
+              Row(
+                children: [
+                  Expanded(
+                      child: Lux.goldGradientText("Mes statistiques", fs: 18)),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Tuiles stats ultra premium
+              Row(
+                children: [
+                  Expanded(
+                    child: _luxStatTile(
+                      icon: Icons.directions_car,
+                      label: "Trajets",
+                      value: _countUpInt(stats.nbTrajets),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _luxStatTile(
+                      icon: Icons.map_rounded,
+                      label: "Kilomètres",
+                      value: _countUpInt(stats.totalKm, suffix: " km"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _luxStatTile(
+                      icon: Icons.star_rounded,
+                      label: "Note",
+                      value: _countUpDouble(stats.note, digits: 1),
+                      highlight: true,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         );
@@ -2049,6 +2594,264 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  /// Tuile stat luxueuse : verre fumé + bordure or + médaillon d’icône
+  // Remplace ta version de _luxStatTile par celle-ci
+  Widget _luxStatTile({
+    required IconData icon,
+    required String label,
+    required Widget value,
+    bool highlight = false,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 140;
+
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF0E0E0E), Color(0xFF161616)],
+            ),
+            border: Border.all(color: Colors.white10),
+            boxShadow: [
+              BoxShadow(
+                color: Lux.gold1.withOpacity(.12),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Médaillon icône — taille plus petite en compact
+              Container(
+                width: compact ? 38 : 44,
+                height: compact ? 38 : 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: highlight
+                        ? [const Color(0xFFFFE08A), Lux.gold2]
+                        : [const Color(0xFFE7C65C), const Color(0xFFB18C2D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Lux.gold1.withOpacity(.30),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child:
+                      Icon(icon, size: compact ? 18 : 22, color: Colors.black),
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Valeur + label — prennent tout l’espace restant
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // value est déjà un widget animé : on l’empêche d’overflow ici
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: value,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white60,
+                        fontSize: compact ? 12 : 12.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (highlight && !compact)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: Lux.gold1,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Lux.gold1.withOpacity(.7),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Compteur entier animé (ex: 0 → nbTrajets)
+  /// Compteur entier animé (anti-overflow)
+// Remplace tes _countUpInt / _countUpDouble par ces versions
+
+  /// Compteur entier animé – s’adapte à la largeur (cache suffixe si nécessaire)
+  Widget _countUpInt(int target, {String suffix = ""}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showSuffix = constraints.maxWidth > 90 && suffix.isNotEmpty;
+
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: target.toDouble()),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (_, value, __) {
+            final v = value.round();
+            return Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: "$v",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .2,
+                    ),
+                  ),
+                  if (showSuffix) const TextSpan(text: " "),
+                  if (showSuffix)
+                    TextSpan(
+                      text: suffix,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Compteur décimal animé – adaptatif (anti-overflow, étoile masquée si étroit)
+  Widget _countUpDouble(double target, {int digits = 1}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showStar =
+            constraints.maxWidth > 90; // cache l'étoile si trop serré
+
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: target),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (_, value, __) {
+            final txt = value.toStringAsFixed(digits);
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      txt,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .2,
+                      ),
+                    ),
+                  ),
+                ),
+                if (showStar) const SizedBox(width: 6),
+                if (showStar)
+                  const Icon(Icons.star_rounded, size: 18, color: Colors.amber),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Format court premium (k€) — ex: 7330 -> "7.3 k€"
+  String _formatEuroShort(double value, {bool noSymbol = false}) {
+    if (value >= 1000) {
+      final v = (value / 1000);
+      final s = v.toStringAsFixed(v < 10 ? 1 : 0);
+      return noSymbol ? "$s k" : "$s k€";
+    }
+    final s = value.toStringAsFixed(0);
+    return noSymbol ? s : "$s€";
+  }
+
+// Capsule tendance (mois courant vs mois précédent)
+  Widget _trendChip({required double current, required double previous}) {
+    double pct;
+    if (previous <= 0 && current <= 0) {
+      pct = 0;
+    } else if (previous <= 0) {
+      pct = 100;
+    } else {
+      pct = ((current - previous) / previous) * 100.0;
+    }
+
+    final up = pct >= 0;
+    final txt =
+        "${up ? "+" : ""}${pct.isFinite ? pct.toStringAsFixed(0) : '0'}%";
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: up ? const Color(0xFF143C2B) : const Color(0xFF3C1A1A),
+        border: Border.all(
+            color: up ? const Color(0xFF1DBE74) : const Color(0xFFE05E5E)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(up ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+              size: 16,
+              color: up ? const Color(0xFF1DBE74) : const Color(0xFFE05E5E)),
+          const SizedBox(width: 6),
+          Text(
+            txt,
+            style: TextStyle(
+              color: up ? const Color(0xFF86F0C0) : const Color(0xFFFF9A9A),
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: .2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRevenueChart() {
     final months = [
       'Jan',
@@ -2080,109 +2883,146 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           return (maxRevenue * 1.2).clamp(200.0, 5000.0).toDouble();
         })();
 
-        return _infoCard(
-          title: "Mes revenus (mois) 💸",
-          child: SizedBox(
-            height: 200,
-            child: BarChart(
-              BarChartData(
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    tooltipPadding: const EdgeInsets.all(8),
-                    tooltipMargin: 8,
-                    getTooltipItem: (group, _, rod, __) {
-                      final idx = group.x.toInt().clamp(0, 11);
-                      return BarTooltipItem(
-                        "${months[idx]} : ${rod.toY.toInt()}€",
-                        const TextStyle(
-                            color: AppColors.gold, fontWeight: FontWeight.w600),
-                      );
-                    },
+        return Lux.goldGlass(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Header luxe : titre + total annuel + tendance
+              Row(
+                children: [
+                  Expanded(
+                      child: Lux.goldGradientText("Mes revenus (12 mois)",
+                          fs: 18)),
+                  const SizedBox(width: 10),
+                  _goldBadge(_formatEuroShort(
+                    revenues.values.fold<double>(0.0, (a, b) => a + b),
+                  )),
+                  const SizedBox(width: 8),
+                  _trendChip(
+                    current: revenues[DateTime.now().month] ?? 0.0,
+                    previous: revenues[(DateTime.now().month - 1) == 0
+                            ? 12
+                            : (DateTime.now().month - 1)] ??
+                        0.0,
                   ),
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (value, _) => Text(
-                        "${value.toInt()}€",
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 10),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // ── Graphique
+              SizedBox(
+                height: 220,
+                child: BarChart(
+                  BarChartData(
+                    backgroundColor: Colors.transparent,
+                    maxY: bgMaxY,
+                    barTouchData: BarTouchData(
+                      enabled: true,
+                      touchTooltipData: BarTouchTooltipData(
+                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                          final i = group.x.toInt().clamp(0, 11);
+                          return BarTooltipItem(
+                            "${months[i]} • ${rod.toY.toStringAsFixed(0)}€",
+                            const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: (value, _) {
-                        final i = value.toInt().clamp(0, 11);
-                        return Text(
-                          months[i],
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500),
-                        );
-                      },
-                    ),
-                  ),
-                  topTitles:
-                      AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles:
-                      AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: false),
-                gridData: FlGridData(show: false),
-                barGroups: List.generate(12, (index) {
-                  final revenue = revenues[index + 1] ?? 0.0;
-                  return BarChartGroupData(
-                    x: index,
-                    barRods: [
-                      BarChartRodData(
-                        toY: revenue,
-                        width: 18,
-                        color: AppColors.gold,
-                        borderRadius: BorderRadius.circular(6),
-                        backDrawRodData: BackgroundBarChartRodData(
-                          show: true,
-                          toY: bgMaxY, // ← use the computed double
-                          color: Colors.white12,
+                    titlesData: FlTitlesData(
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          getTitlesWidget: (value, _) => Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Text(
+                              _formatEuroShort(value, noSymbol: true),
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 11),
+                            ),
+                          ),
                         ),
                       ),
-                    ],
-                  );
-                }),
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (value, _) {
+                            final i = value.toInt().clamp(0, 11);
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                months[i],
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      topTitles:
+                          AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles:
+                          AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: false,
+                      getDrawingHorizontalLine: (v) => FlLine(
+                        color: Colors.white10,
+                        strokeWidth: 1,
+                      ),
+                    ),
+                    borderData: FlBorderData(show: false),
+                    barGroups: List.generate(12, (i) {
+                      final revenue = revenues[i + 1] ?? 0.0;
+                      return BarChartGroupData(
+                        x: i,
+                        barsSpace: 2,
+                        barRods: [
+                          BarChartRodData(
+                            toY: revenue,
+                            width: 18,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0xFFFFE08A), // gold clair
+                                Color(0xFFA87C00), // gold profond
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                                color: Colors.black.withOpacity(.20), width: 1),
+                            backDrawRodData: BackgroundBarChartRodData(
+                              show: true,
+                              toY: bgMaxY,
+                              color: Colors.white10,
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                  swapAnimationDuration: const Duration(milliseconds: 650),
+                  swapAnimationCurve: Curves.easeOutExpo,
+                ),
               ),
-              swapAnimationDuration: const Duration(milliseconds: 600),
-              swapAnimationCurve: Curves.easeOutExpo,
-            ),
+            ],
           ),
         );
       },
     );
   }
 
+  // refonte “verre fumé” sans changer la signature
   Widget _infoCard({required String title, required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade800),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  color: AppColors.gold, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
+    return Lux.glassCard(title: title, child: child);
   }
 
   Widget _loadingCard(String title) {
@@ -2389,4 +3229,106 @@ Future<DriverStats> fetchDriverStats() async {
     totalKm: totalKm,
     note: nbRatings > 0 ? (totalRating / nbRatings) : 0.0,
   );
+}
+
+class _LuxNearbyButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final String label;
+  final IconData icon;
+
+  const _LuxNearbyButton({
+    required this.onTap,
+    required this.label,
+    required this.icon,
+  });
+
+  @override
+  State<_LuxNearbyButton> createState() => _LuxNearbyButtonState();
+}
+
+class _LuxNearbyButtonState extends State<_LuxNearbyButton>
+    with SingleTickerProviderStateMixin {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        Future.delayed(const Duration(milliseconds: 120),
+            () => setState(() => _pressed = false));
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(42),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFF6D96B), // gold 1
+                Color(0xFFB18C2D), // gold 2
+              ],
+            ),
+            boxShadow: [
+              // Halo externe
+              BoxShadow(
+                color: const Color(0xFFF6D96B).withOpacity(.28),
+                blurRadius: 26,
+                offset: const Offset(0, 12),
+              ),
+              // Glow interne
+              BoxShadow(
+                color: Colors.black.withOpacity(.30),
+                blurRadius: 14,
+                spreadRadius: -4,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ShaderMask(
+                shaderCallback: (rect) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.black,
+                    Colors.black87,
+                  ],
+                ).createShader(rect),
+                blendMode: BlendMode.srcATop,
+                child: Icon(
+                  widget.icon,
+                  size: 22,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Text Luxe
+              Text(
+                widget.label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .3,
+                  color: Colors.black,
+                  fontFamily: "Poppins",
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

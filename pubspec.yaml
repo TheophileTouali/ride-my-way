@@ -101,6 +101,8 @@ flutter:
     - assets/map_style_dark.json
     - assets/icons/car_gold.png
     - assets/images/user_placeholder.png
+    - assets/icons/car_gold.png
+    - assets/sounds/urgent_alert.mp3
   fonts:
     - family: PlayfairDisplay
       fonts:

@@ -654,8 +654,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             .where(
                 (t) => t.status == 'Confirmée' && t.departureTime.isAfter(now))
             .toList();
+
         final done = trips.where((t) => t.status == 'Terminée').toList();
         final canceled = trips.where((t) => t.status == 'Annulée').toList();
+
+// ✅ tri décroissant (plus récents → plus anciens)
+        final cmpDesc =
+            (Trip a, Trip b) => b.departureTime.compareTo(a.departureTime);
+
+        upcoming.sort(cmpDesc);
+        done.sort(cmpDesc);
+        canceled.sort(cmpDesc);
 
         final pages = {
           'À venir': upcoming,
@@ -668,27 +677,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // ── Header lux ──────────────────────────────────────────────────────
-              Row(
+              // ── Header lux (anti-overflow)
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Expanded(
-                      child: Lux.goldGradientText("Trajets classés par statut",
-                          fs: 18)),
-                  const SizedBox(width: 12),
-                  _goldBadge("${trips.length} trajets"),
+                    child: Lux.goldGradientText("Trajets classés par statut",
+                        fs: 18),
+                  ),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _goldBadge("${trips.length} trajets"),
+                  ),
                 ],
               ),
-              const SizedBox(height: 14),
 
-              // ── Légende statuts ─────────────────────────────────────────────────
-              Row(
-                children: [
-                  _statusLegendDot(color: AppColors.gold, label: "À venir"),
-                  const SizedBox(width: 12),
-                  _statusLegendDot(color: Colors.white70, label: "Effectués"),
-                  const SizedBox(width: 12),
-                  _statusLegendDot(color: Colors.white38, label: "Annulés"),
-                ],
-              ),
               const SizedBox(height: 14),
 
               // ── Onglets + contenu ───────────────────────────────────────────────
@@ -698,8 +703,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Barre segmentée premium
+                    // Barre segmentée premium (ajuste les espacements)
                     Container(
-                      padding: const EdgeInsets.all(6),
+                      // ← un poil moins de padding à gauche/droite
+                      padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         color: const Color(0x12121212),
@@ -712,40 +719,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           ),
                         ],
                       ),
-                      child: TabBar(
-                        indicatorSize: TabBarIndicatorSize.tab,
-                        dividerColor: Colors.transparent,
-                        indicator: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Lux.gold1.withOpacity(.35),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
+                      child: Align(
+                        alignment:
+                            Alignment.centerLeft, // ← évite le centrage initial
+                        child: TabBar(
+                          isScrollable: true,
+                          tabAlignment:
+                              TabAlignment.start, // ← colle au bord gauche
+                          padding: EdgeInsets
+                              .zero, // ← supprime le padding global du TabBar
+                          labelPadding: const EdgeInsets.symmetric(
+                              horizontal: 8), // ← resserre chaque onglet
+                          indicatorPadding: EdgeInsets
+                              .zero, // ← l’indicateur n’ajoute pas d’espace
+                          dividerColor: Colors.transparent,
+                          indicator: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Lux.gold1.withOpacity(.35),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          labelColor: Colors.black,
+                          unselectedLabelColor: Colors.white70,
+                          tabs: [
+                            _luxTab("À venir", upcoming.length),
+                            _luxTab("Effectués", done.length),
+                            _luxTab("Annulés", canceled.length),
                           ],
                         ),
-                        labelColor: Colors.black,
-                        unselectedLabelColor: Colors.white70,
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13.5,
-                          letterSpacing: .2,
-                        ),
-                        unselectedLabelStyle: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                        tabs: [
-                          _luxTab("À venir", upcoming.length),
-                          _luxTab("Effectués", done.length),
-                          _luxTab("Annulés", canceled.length),
-                        ],
                       ),
                     ),
 
@@ -813,27 +823,55 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Tab _luxTab(String label, int count) {
     return Tab(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(label),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              color: Colors.black.withOpacity(.10),
-              border: Border.all(color: Colors.black.withOpacity(.15)),
-            ),
-            child: Text(
-              "$count",
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                color: Colors.black, // lisible quand l’onglet est sélectionné
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Colors.white,
+                ),
               ),
-            ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFFFE08A),
+                      Color(0xFFA87C00),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amberAccent.withOpacity(.35),
+                      blurRadius: 8,
+                      spreadRadius: 0.8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  "$count",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1464,8 +1502,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       Position? currentPosition;
       try {
         currentPosition = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.high)
-            .timeout(const Duration(seconds: 5));
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 12),
+        );
       } catch (e) {
         debugPrint("⚠️ Géoloc indisponible (filtre distance désactivé) : $e");
       }
@@ -1610,9 +1649,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final snapshot = await FirebaseFirestore.instance
           .collection('reservations')
           .where('driverId', isEqualTo: uid)
+          // (optionnel si ton index est prêt) : .orderBy('timestamp', descending: true)
           .get();
 
-      return snapshot.docs.map((doc) {
+      final trips = snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
         return Trip(
           id: doc.id,
@@ -1623,6 +1663,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           status: data['status'] ?? '',
         );
       }).toList();
+
+      // ✅ tri décroissant (plus récents → plus anciens)
+      trips.sort((a, b) => b.departureTime.compareTo(a.departureTime));
+      return trips;
     } catch (e) {
       debugPrint("❌ ERREUR fetchDriverTrips: $e");
       return [];
@@ -1783,6 +1827,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Widget build(BuildContext context) {
     final user = Provider.of<DriverProvider>(context).user;
     final greeting = _greetingFor(DateTime.now());
+    final w = MediaQuery.of(context).size.width;
+    final small = w < 380; // breakpoint mobile étroit
 
     return Scaffold(
       backgroundColor: AppColors.black,
@@ -1790,6 +1836,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         backgroundColor: AppColors.black,
         elevation: 0,
         automaticallyImplyLeading: false,
+        toolbarHeight: small ? 88 : 64, // +hauteur si 2 lignes
         leading: IconButton(
           tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
@@ -1808,87 +1855,75 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     style: TextStyle(color: Colors.white70)),
                 actions: [
                   TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Annuler',
-                          style: TextStyle(color: Colors.white70))),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Annuler',
+                        style: TextStyle(color: Colors.white70)),
+                  ),
                   TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Oui',
-                          style: TextStyle(color: AppColors.gold))),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Oui',
+                        style: TextStyle(color: AppColors.gold)),
+                  ),
                 ],
               ),
             );
-
             if (confirm != true) return;
-
             try {
               await FirebaseAuth.instance.signOut();
             } catch (_) {}
             if (context.mounted) context.go('/login-driver');
           },
         ),
-        titleSpacing: 8,
-        title: Row(
-          children: [
-            Expanded(child: Lux.goldGradientText('Espace conducteur', fs: 22)),
-            const SizedBox(width: 8),
-            Lux.goldSwitchChip(
-              value: _isVisible,
-              onChanged: _toggleVisibility,
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout, color: AppColors.gold),
-              tooltip: 'Déconnexion',
-              onPressed: () async {
-                try {
-                  await FirebaseFirestore.instance
-                      .collection('drivers')
-                      .doc(FirebaseAuth.instance.currentUser?.uid)
-                      .update({
-                    'isLoggedIn': false,
-                    'lastActive': Timestamp.now(),
-                  });
-
-                  await FirebaseAuth.instance.signOut();
-
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: Colors.grey.shade900,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        content: const Row(
-                          children: [
-                            Icon(Icons.logout, color: AppColors.gold),
-                            SizedBox(width: 12),
-                            Text('Déconnexion réussie. À bientôt 👋',
-                                style: TextStyle(color: Colors.white70)),
-                          ],
-                        ),
+        // ▼ Titre responsive
+        title: _buildResponsiveAppBarTitle(small),
+        // ▼ Déplace le logout ici pour libérer la largeur du titre
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: AppColors.gold),
+            tooltip: 'Déconnexion',
+            onPressed: () async {
+              try {
+                await FirebaseFirestore.instance
+                    .collection('drivers')
+                    .doc(FirebaseAuth.instance.currentUser?.uid)
+                    .update(
+                        {'isLoggedIn': false, 'lastActive': Timestamp.now()});
+                await FirebaseAuth.instance.signOut();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Colors.grey.shade900,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      content: const Row(
+                        children: [
+                          Icon(Icons.logout, color: AppColors.gold),
+                          SizedBox(width: 12),
+                          Text('Déconnexion réussie. À bientôt 👋',
+                              style: TextStyle(color: Colors.white70)),
+                        ],
                       ),
-                    );
-
-                    await Future.delayed(const Duration(milliseconds: 600));
-                    context.go('/login-driver');
-                  }
-                } catch (e) {
-                  debugPrint('Erreur déconnexion: $e');
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: Colors.red.shade800,
-                        content: const Text(
-                            'Erreur lors de la déconnexion. Réessaie.',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    );
-                  }
+                    ),
+                  );
+                  await Future.delayed(const Duration(milliseconds: 600));
+                  context.go('/login-driver');
                 }
-              },
-            ),
-          ],
-        ),
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: Colors.red.shade800,
+                      content: const Text(
+                          'Erreur lors de la déconnexion. Réessaie.',
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -2213,6 +2248,36 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
+  Widget _buildResponsiveAppBarTitle(bool small) {
+    if (small) {
+      // Mobile étroit → 2 lignes + switch dessous
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Lux.goldGradientText('Espace\nconducteur', fs: 22),
+          const SizedBox(height: 8),
+          Lux.goldSwitchChip(
+            value: _isVisible,
+            onChanged: _toggleVisibility,
+          ),
+        ],
+      );
+    }
+
+    // Écrans plus larges → sur une ligne + switch à droite
+    return Row(
+      children: [
+        Expanded(child: Lux.goldGradientText('Espace conducteur', fs: 12)),
+        const SizedBox(width: 8),
+        Lux.goldSwitchChip(
+          value: _isVisible,
+          onChanged: _toggleVisibility,
+        ),
+      ],
+    );
+  }
+
   Widget _viewProfileButton() {
     return GestureDetector(
       onTap: () => context.go('/driver-profile'),
@@ -2506,53 +2571,256 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       future: fetchDriverStats(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return _loadingCard("Chargement stats...");
-        final stats = snapshot.data!;
-        return Lux.goldGlass(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Titre premium
-              Row(
-                children: [
-                  Expanded(
-                      child: Lux.goldGradientText("Mes statistiques", fs: 18)),
-                ],
-              ),
-              const SizedBox(height: 14),
 
-              // Tuiles stats ultra premium
-              Row(
-                children: [
-                  Expanded(
-                    child: _luxStatTile(
-                      icon: Icons.directions_car,
-                      label: "Trajets",
-                      value: _countUpInt(stats.nbTrajets),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _luxStatTile(
-                      icon: Icons.map_rounded,
-                      label: "Kilomètres",
-                      value: _countUpInt(stats.totalKm, suffix: " km"),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _luxStatTile(
-                      icon: Icons.star_rounded,
-                      label: "Note",
-                      value: _countUpDouble(stats.note, digits: 1),
-                      highlight: true,
-                    ),
-                  ),
-                ],
+        final s = snapshot.data!;
+        return Lux.glassCard(
+          title: "Mes statistiques",
+          child: Row(
+            children: [
+              Expanded(
+                child: _statTile(
+                  icon: Icons.directions_car_rounded,
+                  value: s.nbTrajets.toDouble(),
+                  label: "Trajets",
+                  format: (v) => v.toStringAsFixed(0),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _statTile(
+                  icon: Icons.map_rounded,
+                  value: s.totalKm.toDouble(),
+                  label: "Kilomètres",
+                  format: (v) => "${v.toStringAsFixed(0)} km",
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _statTileRating(
+                  value: s.note,
+                  label: "Note",
+                ),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _statTile({
+    required IconData icon,
+    required double value,
+    required String label,
+    String Function(double v)? format,
+  }) {
+    final text = (format ?? (v) => v.toStringAsFixed(0))(value);
+
+    return Container(
+      height: 126, // ← +6px vs 120 pour la marge de descente
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF151515), Color(0xFF0E0E0E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.gold.withOpacity(.18),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Pastille icône
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.gold.withOpacity(.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.black, size: 22),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Valeur — hauteur réservée (évite le 1 px overflow)
+          SizedBox(
+            height: 28, // ← réserve stable
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: Text(
+                text,
+                maxLines: 1,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .2,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          // Label — hauteur réservée
+          SizedBox(
+            height: 18,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.0,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statTileRating({
+    required double value,
+    required String label,
+  }) {
+    return Container(
+      height: 126,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF151515), Color(0xFF0E0E0E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.gold.withOpacity(.18),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Pastille étoile
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.gold.withOpacity(.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child:
+                const Icon(Icons.star_rounded, color: Colors.black, size: 22),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Valeur + étoiles — hauteur réservée
+          SizedBox(
+            height: 28,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    value.toStringAsFixed(1),
+                    textHeightBehavior: const TextHeightBehavior(
+                      applyHeightToFirstAscent: false,
+                      applyHeightToLastDescent: false,
+                    ),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .2,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _stars(value), // ton widget existant
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          // Label — hauteur réservée
+          SizedBox(
+            height: 18,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.0,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2578,19 +2846,78 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Widget _statColumn(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: AppColors.gold, size: 30),
-        const SizedBox(height: 6),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(fontSize: 13, color: Colors.white54)),
-      ],
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: Colors.white12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.amber.withOpacity(0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            /// Icône
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFFFFE382), Color(0xFFA47200)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds),
+              child: Icon(icon, size: 28, color: Colors.white),
+            ),
+            const SizedBox(height: 8),
+
+            /// Valeur
+            FittedBox(
+              child: Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            /// ✅ Intitulé → 1 ligne
+            SizedBox(
+              height: 16,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2888,25 +3215,31 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // ── Header luxe : titre + total annuel + tendance
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
-                      child: Lux.goldGradientText("Mes revenus (12 mois)",
-                          fs: 18)),
-                  const SizedBox(width: 10),
-                  _goldBadge(_formatEuroShort(
+                  SizedBox(
+                    width: double.infinity,
+                    child:
+                        Lux.goldGradientText("Mes revenus (12 mois)", fs: 18),
+                  ),
+                  FittedBox(
+                      child: _goldBadge(_formatEuroShort(
                     revenues.values.fold<double>(0.0, (a, b) => a + b),
-                  )),
-                  const SizedBox(width: 8),
-                  _trendChip(
+                  ))),
+                  FittedBox(
+                      child: _trendChip(
                     current: revenues[DateTime.now().month] ?? 0.0,
                     previous: revenues[(DateTime.now().month - 1) == 0
                             ? 12
                             : (DateTime.now().month - 1)] ??
                         0.0,
-                  ),
+                  )),
                 ],
               ),
+
               const SizedBox(height: 12),
 
               // ── Graphique
@@ -2935,30 +3268,47 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: 40,
-                          getTitlesWidget: (value, _) => Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Text(
-                              _formatEuroShort(value, noSymbol: true),
+                          reservedSize: 36,
+                          getTitlesWidget: (v, _) {
+                            return Text(
+                              "${v.toInt()}",
                               style: const TextStyle(
-                                  color: Colors.white38, fontSize: 11),
-                            ),
-                          ),
+                                color: Colors.white24,
+                                fontSize: 10.5,
+                              ),
+                            );
+                          },
                         ),
                       ),
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          getTitlesWidget: (value, _) {
-                            final i = value.toInt().clamp(0, 11);
+                          reservedSize: 32,
+                          getTitlesWidget: (v, _) {
+                            final months = [
+                              "Jan",
+                              "Fév",
+                              "Mar",
+                              "Avr",
+                              "Mai",
+                              "Juin",
+                              "Juil",
+                              "Août",
+                              "Sep",
+                              "Oct",
+                              "Nov",
+                              "Déc"
+                            ];
+                            final i = v.toInt().clamp(0, 11);
                             return Padding(
-                              padding: const EdgeInsets.only(top: 6),
+                              padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 months[i],
                                 style: const TextStyle(
                                   color: Colors.white70,
-                                  fontSize: 12,
+                                  fontSize: 11.5,
                                   fontWeight: FontWeight.w600,
+                                  letterSpacing: .2,
                                 ),
                               ),
                             );
@@ -2988,21 +3338,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           BarChartRodData(
                             toY: revenue,
                             width: 18,
+                            borderRadius: BorderRadius.circular(10),
+                            color: null, // ← on remplace par gradient
                             gradient: const LinearGradient(
+                              colors: [Color(0xFFFFE382), Color(0xFFA47200)],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              colors: [
-                                Color(0xFFFFE08A), // gold clair
-                                Color(0xFFA87C00), // gold profond
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(
-                                color: Colors.black.withOpacity(.20), width: 1),
-                            backDrawRodData: BackgroundBarChartRodData(
-                              show: true,
-                              toY: bgMaxY,
-                              color: Colors.white10,
                             ),
                           ),
                         ],

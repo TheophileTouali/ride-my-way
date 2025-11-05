@@ -114,24 +114,68 @@ class Lux {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
+    // Capsule premium compacte, texte + interrupteur alignés au centre
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: Lux.glass(r: 999),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        // verre fumé + fin liseré
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF121212), Color(0xFF0D0D0D)],
+        ),
+        border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: Lux.gold1.withOpacity(.12),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(value ? "🟢 En ligne" : "🔴 Hors ligne",
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          const SizedBox(width: 6),
+          // pastille d’état
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: value ? const Color(0xFF45E27A) : Colors.redAccent,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: (value ? const Color(0xFF45E27A) : Colors.redAccent)
+                      .withOpacity(.5),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                )
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value ? "En ligne" : "Hors ligne",
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          // switch compact, parfaitement centré verticalement
           Transform.scale(
-            scale: .9,
+            scale: .90,
             child: Switch(
               value: value,
               onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               activeColor: Colors.black,
               activeTrackColor: Lux.gold1,
               inactiveThumbColor: Colors.white,
               inactiveTrackColor: Colors.white24,
-              materialTapTargetSize: MaterialTapTargetSize.padded,
             ),
           ),
         ],
@@ -1646,25 +1690,37 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Future<List<Trip>> fetchDriverTrips() async {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final snapshot = await FirebaseFirestore.instance
-          .collection('reservations')
-          .where('driverId', isEqualTo: uid)
-          // (optionnel si ton index est prêt) : .orderBy('timestamp', descending: true)
-          .get();
+
+      // Tentative tri serveur si index (meilleur perf)
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await FirebaseFirestore.instance
+            .collection('reservations')
+            .where('driverId', isEqualTo: uid)
+            .orderBy('timestamp', descending: true) // ✅ tri côté serveur
+            .get();
+      } on FirebaseException {
+        // Fallback si index manquant
+        snapshot = await FirebaseFirestore.instance
+            .collection('reservations')
+            .where('driverId', isEqualTo: uid)
+            .get();
+      }
 
       final trips = snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
+        final ts = data['timestamp'] as Timestamp?;
         return Trip(
           id: doc.id,
-          from: data['from'] ?? '',
-          to: data['to'] ?? '',
-          departureTime: (data['timestamp'] as Timestamp).toDate(),
+          from: (data['from'] ?? '').toString(),
+          to: (data['to'] ?? '').toString(),
+          departureTime: (ts ?? Timestamp(0, 0)).toDate(), // null-safe
           price: (data['price'] as num?)?.toDouble() ?? 0.0,
-          status: data['status'] ?? '',
+          status: (data['status'] ?? '').toString(),
         );
       }).toList();
 
-      // ✅ tri décroissant (plus récents → plus anciens)
+      // Tri local (garantie en cas de fallback)
       trips.sort((a, b) => b.departureTime.compareTo(a.departureTime));
       return trips;
     } catch (e) {
@@ -1836,7 +1892,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         backgroundColor: AppColors.black,
         elevation: 0,
         automaticallyImplyLeading: false,
-        toolbarHeight: small ? 88 : 64, // +hauteur si 2 lignes
+        centerTitle: false,
+        titleSpacing: 0,
+        leadingWidth: 56, // évite que le back empiète sur le titre
+        toolbarHeight: 64, // +hauteur si 2 lignes
         leading: IconButton(
           tooltip: 'Retour',
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
@@ -2248,28 +2307,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
-  Widget _buildResponsiveAppBarTitle(bool small) {
-    if (small) {
-      // Mobile étroit → 2 lignes + switch dessous
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Lux.goldGradientText('Espace\nconducteur', fs: 22),
-          const SizedBox(height: 8),
-          Lux.goldSwitchChip(
-            value: _isVisible,
-            onChanged: _toggleVisibility,
-          ),
-        ],
-      );
-    }
+  Widget _buildResponsiveAppBarTitle(bool _) {
+    final w = MediaQuery.of(context).size.width;
+    final bool compact = w < 360; // très petit
+    final bool narrow = w < 420; // petit
 
-    // Écrans plus larges → sur une ligne + switch à droite
     return Row(
       children: [
-        Expanded(child: Lux.goldGradientText('Espace conducteur', fs: 12)),
-        const SizedBox(width: 8),
+        // Titre gradient — taille adaptative
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Lux.goldGradientText(
+              'Espace conducteur',
+              fs: compact ? 18 : (narrow ? 20 : 22),
+            ),
+          ),
+        ),
+        // Switch à droite, jamais à la ligne
         Lux.goldSwitchChip(
           value: _isVisible,
           onChanged: _toggleVisibility,

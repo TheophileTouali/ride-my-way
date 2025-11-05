@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'dart:ui'; // pour ImageFilter.blur
 
 import 'package:animate_do/animate_do.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -495,6 +496,58 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (h >= 18 && h < 22) return "Bonsoir";
     return "Bonne nuit";
   }
+
+// Pastille or premium (texte court + icône optionnelle)
+  Widget _goldPill(String text, {IconData? icon}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Lux.gold1.withOpacity(.30),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: Colors.black),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Fine séparation verre fumé
+  Widget _glassDivider() => Container(
+        height: 1,
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Colors.white12, Colors.white10, Colors.transparent],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
+      );
 
   Widget _buildReviewTile({
     required String name,
@@ -1345,173 +1398,328 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void showNearbyCoursesDialog(BuildContext context) {
-    showDialog(
+    showGeneralDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.6),
-      builder: (context) {
-        return Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: Colors.grey.shade900,
-          child: Container(
-            constraints: const BoxConstraints(maxHeight: 600),
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Titre + fermer
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Courses proches...",
-                        style: TextStyle(
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          height: 1.2,
+      barrierLabel: 'Courses proches',
+      barrierColor: Colors.black.withOpacity(.55),
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (_, anim, __, ___) {
+        final t = Curves.easeOutCubic.transform(anim.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * t,
+            child: Material(
+              // ✅ essentiel pour InkWell / ripple
+              type: MaterialType.transparency,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      constraints:
+                          const BoxConstraints(maxWidth: 560, maxHeight: 640),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF0E0E0E), Color(0xFF171717)],
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        border: Border.all(color: Colors.white12, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Lux.gold1.withOpacity(.12),
+                            blurRadius: 34,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
 
-                // Contenu
-                FutureBuilder<List<DocumentSnapshot>>(
-                  future: _fetchNearbyPendingReservations(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child:
-                              CircularProgressIndicator(color: AppColors.gold),
-                        ),
-                      );
-                    }
-
-                    final reservations = snapshot.data!;
-                    if (reservations.isEmpty) {
-                      return const Text(
-                        "Aucune course disponible à proximité.",
-                        style: TextStyle(color: Colors.white54),
-                      );
-                    }
-
-                    return Expanded(
-                      child: ListView.builder(
-                        itemCount: reservations.length,
-                        itemBuilder: (context, index) {
-                          final doc = reservations[index];
-                          final data = doc.data() as Map<String, dynamic>;
-                          final from = data['from'] ?? '';
-                          final to = data['to'] ?? '';
-                          final priceNum = (data['price'] as num?)?.toDouble();
-                          final price = priceNum != null
-                              ? priceNum.toStringAsFixed(2)
-                              : 'N/A';
-                          final date =
-                              (data['timestamp'] as Timestamp).toDate();
-                          final distanceNum =
-                              (data['distance'] as num?)?.toDouble();
-                          final distance = distanceNum != null
-                              ? distanceNum.toStringAsFixed(1)
-                              : '?';
-
-                          final duration = date.difference(DateTime.now());
-                          final isUrgent = duration.inMinutes <= 3;
-
-                          return FadeInUp(
-                            duration: const Duration(milliseconds: 300),
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 14),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade900,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: AppColors.gold.withOpacity(0.3),
+                      // ────────────── CONTENU ──────────────
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Header : titre + bouton fermer
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Lux.goldGradientText("Courses proches ✨",
+                                    fs: 20),
+                              ),
+                              InkWell(
+                                onTap: () => Navigator.of(context).pop(),
+                                borderRadius: BorderRadius.circular(999),
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withOpacity(.06),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: const Icon(Icons.close,
+                                      color: Colors.white70, size: 18),
                                 ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.location_on,
-                                          color: AppColors.gold, size: 18),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          "$from ➜ $to",
-                                          style: const TextStyle(
-                                            color: AppColors.gold,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      // Nouveau : chip countdown (sans changer la logique)
-                                      Lux.countdownChip(duration,
-                                          urgent: isUrgent),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text("Distance : $distance km",
-                                      style: const TextStyle(
-                                          color: Colors.white70)),
-                                  Text("Prix : $price €",
-                                      style: const TextStyle(
-                                          color: Colors.white70)),
-                                  const SizedBox(height: 12),
-                                  ElevatedButton.icon(
-                                    onPressed: () async {
-                                      try {
-                                        await _acceptReservation(doc.id);
-                                        if (mounted)
-                                          Navigator.of(context).pop();
-                                      } catch (e) {
-                                        debugPrint(
-                                            "❌ Erreur acceptReservation : $e");
-                                      }
-                                    },
-                                    icon: const Icon(Icons.check_circle_outline,
-                                        color: Colors.black),
-                                    label: Text(
-                                      isUrgent
-                                          ? "ACCEPTER IMMÉDIATEMENT"
-                                          : "Accepter cette course",
-                                      style:
-                                          const TextStyle(color: Colors.black),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: isUrgent
-                                          ? Colors.redAccent
-                                          : AppColors.gold,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(30),
-                                      ),
-                                      minimumSize: const Size.fromHeight(44),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              "Près de vous, compatibles avec votre véhicule",
+                              style: Lux.goldLabel(11)
+                                  .copyWith(color: Colors.white54),
                             ),
-                          );
-                        },
+                          ),
+
+                          const SizedBox(height: 10),
+                          _glassDivider(),
+
+                          // Liste
+                          Expanded(
+                            child: FutureBuilder<List<DocumentSnapshot>>(
+                              future: _fetchNearbyPendingReservations(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) {
+                                  return const Center(
+                                    child: CircularProgressIndicator(
+                                        color: AppColors.gold),
+                                  );
+                                }
+                                final reservations = snapshot.data!;
+                                if (reservations.isEmpty) {
+                                  return Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.inbox_rounded,
+                                            size: 36, color: Colors.white24),
+                                        SizedBox(height: 8),
+                                        Text(
+                                            "Aucune course disponible à proximité",
+                                            style: TextStyle(
+                                                color: Colors.white60)),
+                                      ],
+                                    ),
+                                  );
+                                }
+
+                                return ListView.separated(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  itemCount: reservations.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 12),
+                                  itemBuilder: (context, index) {
+                                    final doc = reservations[index];
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+                                    final from =
+                                        (data['from'] ?? '').toString();
+                                    final to = (data['to'] ?? '').toString();
+                                    final price =
+                                        ((data['price'] as num?)?.toDouble() ??
+                                                0)
+                                            .toStringAsFixed(2);
+                                    final date =
+                                        (data['timestamp'] as Timestamp?)
+                                                ?.toDate() ??
+                                            DateTime.now();
+                                    final distanceStr =
+                                        ((data['distance'] as num?)?.toDouble())
+                                                ?.toStringAsFixed(1) ??
+                                            "?";
+
+                                    final duration =
+                                        date.difference(DateTime.now());
+                                    final isUrgent = duration.inMinutes <= 3;
+
+                                    // Carte premium
+                                    return FadeInUp(
+                                      from: 10,
+                                      duration:
+                                          const Duration(milliseconds: 280),
+                                      child: Stack(
+                                        children: [
+                                          // halo doux
+                                          Positioned.fill(
+                                            child: IgnorePointer(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Lux.gold1
+                                                          .withOpacity(.08),
+                                                      blurRadius: 22,
+                                                      offset:
+                                                          const Offset(0, 12),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.all(14),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(18),
+                                              gradient: const LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                                colors: [
+                                                  Color(0xFF111111),
+                                                  Color(0xFF171717)
+                                                ],
+                                              ),
+                                              border: Border.all(
+                                                  color: Colors.white12),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Ligne 1 : itinéraire + countdown
+                                                Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(Icons.route,
+                                                        color: AppColors.gold,
+                                                        size: 18),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(
+                                                        "$from ➜ $to",
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          fontSize: 15.5,
+                                                          letterSpacing: .2,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Lux.countdownChip(duration,
+                                                        urgent: isUrgent),
+                                                  ],
+                                                ),
+
+                                                const SizedBox(height: 10),
+
+                                                // Ligne 2 : chips (distance, prix, heure)
+                                                Wrap(
+                                                  spacing: 8,
+                                                  runSpacing: 8,
+                                                  children: [
+                                                    _goldPill("$distanceStr km",
+                                                        icon: Icons
+                                                            .straighten_rounded),
+                                                    _goldPill("$price €",
+                                                        icon:
+                                                            Icons.euro_rounded),
+                                                    _goldPill(
+                                                        DateFormat("HH:mm")
+                                                            .format(date),
+                                                        icon: Icons
+                                                            .schedule_rounded),
+                                                  ],
+                                                ),
+
+                                                _glassDivider(),
+
+                                                // Bouton accepter
+                                                Lux.premiumButton(
+                                                  label: isUrgent
+                                                      ? "ACCEPTER IMMÉDIATEMENT"
+                                                      : "Accepter cette course",
+                                                  icon: isUrgent
+                                                      ? Icons.flash_on_rounded
+                                                      : Icons
+                                                          .check_circle_rounded,
+                                                  danger:
+                                                      isUrgent, // rouge soft si urgent
+                                                  onPressed: () async {
+                                                    try {
+                                                      await _acceptReservation(
+                                                          doc.id);
+                                                      if (mounted)
+                                                        Navigator.of(context)
+                                                            .pop();
+                                                    } catch (e) {
+                                                      debugPrint(
+                                                          "❌ Erreur acceptReservation : $e");
+                                                    }
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Ruban URGENT discret
+                                          if (isUrgent)
+                                            Positioned(
+                                              right: 10,
+                                              top: 10,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      Colors.redAccent.shade400,
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.redAccent
+                                                          .withOpacity(.35),
+                                                      blurRadius: 10,
+                                                      offset:
+                                                          const Offset(0, 4),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: const Text(
+                                                  "URGENT",
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 10.5,
+                                                    letterSpacing: .8,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         );

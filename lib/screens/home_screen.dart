@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart';
@@ -653,6 +654,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _trips = [];
   Map<String, dynamic>? _weather;
   bool _weatherLoading = false;
+  final GlobalKey _trafficMapKey = GlobalKey();
+  LatLng? _currentPosition;
+  BitmapDescriptor? _customPassengerIcon;
 
   // Quick places (Maison/Travail/Aéroports)
   List<Map<String, String>> _quickPlaces = [];
@@ -678,6 +682,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadQuickPlaces();
     _loadRecentDestinations();
     _initWeather();
+    _initTrafficAssets();
+    _ensureCurrentLatLng();
   }
 
   void _initIntl() {
@@ -773,6 +779,32 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _initTrafficAssets() async {
+    try {
+      _customPassengerIcon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(64, 64)),
+        'assets/icons/car_gold.png', // change le chemin si besoin
+      );
+      if (mounted) setState(() {});
+    } catch (_) {
+      // fallback: laisser null → defaultMarker
+    }
+  }
+
+  Future<void> _ensureCurrentLatLng() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+      );
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = LatLng(pos.latitude, pos.longitude);
+      });
+    } catch (_) {
+      // silencieux
+    }
   }
 
   Future<void> _initWeather() async {
@@ -1938,6 +1970,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 12),
                         _weatherSection(),
                         const SizedBox(height: 6),
+
+                        TrafficPanelPremium(
+                          center: _currentPosition,
+                          markers: {
+                            if (_currentPosition != null)
+                              Marker(
+                                markerId: const MarkerId("passenger"),
+                                position: _currentPosition!,
+                                icon: _customPassengerIcon ??
+                                    BitmapDescriptor.defaultMarker,
+                              ),
+                          },
+                          hasIncidents: false,
+                          onTapVoir: () {
+                            final ctx = _trafficMapKey.currentContext;
+                            if (ctx != null) {
+                              Scrollable.ensureVisible(
+                                ctx,
+                                duration: const Duration(milliseconds: 480),
+                                curve: Curves.easeOutCubic,
+                                alignment: .05,
+                              );
+                            }
+                          },
+                        ),
+
+//
 
 // --- Texte + ligne animée ---
                         Center(
@@ -3679,6 +3738,368 @@ class _GreetingLineState extends State<_GreetingLine>
           },
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRAFFIC — Panel ULTRA PREMIUM (header + map + legend) — version autonome
+// ─────────────────────────────────────────────────────────────────────────────
+class TrafficPanelPremium extends StatelessWidget {
+  final LatLng? center;
+  final Set<Marker> markers;
+  final VoidCallback? onTapVoir;
+  final bool hasIncidents;
+  final double height;
+
+  const TrafficPanelPremium({
+    Key? key,
+    required this.center,
+    this.markers = const {},
+    this.onTapVoir,
+    this.hasIncidents = false,
+    this.height = 200,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return _glassCard(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Row(
+            children: [
+              _goldBadge(icon: Icons.traffic_rounded),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _GoldTitle("Trafic autour de vous"),
+                    SizedBox(height: 2),
+                    Text(
+                      "Données en direct sur les axes proches",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              _LiveChipLite(),
+              const SizedBox(width: 10),
+              _VoirButtonLite(onTap: onTapVoir),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Map
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: SizedBox(
+              height: height,
+              child: Stack(
+                children: [
+                  if (center != null)
+                    GoogleMap(
+                      initialCameraPosition:
+                          CameraPosition(target: center!, zoom: 13.6),
+                      compassEnabled: false,
+                      myLocationEnabled: false,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                      trafficEnabled: true,
+                      mapToolbarEnabled: false,
+                      markers: markers,
+                    )
+                  else
+                    const _MapPlaceholderLite(),
+
+                  // vignette sombre + cadre
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(.10),
+                              Colors.transparent,
+                              Colors.black.withOpacity(.14),
+                            ],
+                            stops: const [0, .5, 1],
+                          ),
+                          border: Border.all(color: Colors.white10, width: 1),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  if (hasIncidents)
+                    const Positioned(
+                      right: 10,
+                      top: 10,
+                      child: _RibbonLite(label: "Incidents à proximité"),
+                    ),
+                  const Positioned(
+                    left: 10,
+                    top: 10,
+                    child: _GlassTagLite(
+                        icon: Icons.traffic, label: "Trafic en direct"),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          // Légende
+          const Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _LegendPillLite(color: Color(0xFF45E27A), label: "Fluide"),
+              _LegendPillLite(color: Color(0xFFFFC44D), label: "Dense"),
+              _LegendPillLite(color: Color(0xFFE55B5B), label: "Très dense"),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// —— petits éléments internes (versions “Lite”) ——
+Widget _glassCard(
+    {required double radius,
+    required EdgeInsets padding,
+    required Widget child}) {
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(radius),
+      gradient: LinearGradient(
+        colors: [Colors.white.withOpacity(0.06), Colors.black12],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      border: Border.all(color: Colors.white10),
+      boxShadow: const [
+        BoxShadow(
+            color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 6)),
+      ],
+    ),
+    padding: padding,
+    child: child,
+  );
+}
+
+Widget _goldBadge({required IconData icon}) => Container(
+      width: 44,
+      height: 44,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Icon(Icons.traffic_rounded, color: Colors.black),
+    );
+
+class _VoirButtonLite extends StatelessWidget {
+  final VoidCallback? onTap;
+  const _VoirButtonLite({this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x33FFD700), blurRadius: 18, offset: Offset(0, 8)),
+          ],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: const [
+          Text("Voir",
+              style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .2)),
+          SizedBox(width: 6),
+          Icon(Icons.chevron_right_rounded, size: 18, color: Colors.black),
+        ]),
+      ),
+    );
+  }
+}
+
+class _LiveChipLite extends StatefulWidget {
+  const _LiveChipLite();
+  @override
+  State<_LiveChipLite> createState() => _LiveChipLiteState();
+}
+
+class _LiveChipLiteState extends State<_LiveChipLite>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200))
+    ..repeat(reverse: true);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween(begin: .92, end: 1.0)
+          .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: const Color(0xFF1A1A1A),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: const Color(0xFF45E27A),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                    color: const Color(0xFF45E27A).withOpacity(.6),
+                    blurRadius: 10)
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text("LIVE",
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _LegendPillLite extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendPillLite({required this.color, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: const Color(0xFF101010),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: color.withOpacity(.35), blurRadius: 10)
+                ])),
+        const SizedBox(width: 6),
+        const Text("", style: TextStyle(fontSize: 0)), // padding fix for layout
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+class _GlassTagLite extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _GlassTagLite({required this.icon, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.black.withOpacity(.55),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(children: [
+        const Icon(Icons.traffic, size: 16, color: AppColors.gold),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ]),
+    );
+  }
+}
+
+class _RibbonLite extends StatelessWidget {
+  final String label;
+  const _RibbonLite({required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+            colors: [Color(0xFFE05E5E), Color(0xFF9A1E1E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x59E05E5E), blurRadius: 14, offset: Offset(0, 6))
+        ],
+      ),
+      child: Row(children: const [
+        Icon(Icons.warning_amber_rounded, size: 16, color: Colors.white),
+        SizedBox(width: 6),
+        Text("Incidents à proximité",
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800)),
+      ]),
+    );
+  }
+}
+
+class _MapPlaceholderLite extends StatelessWidget {
+  const _MapPlaceholderLite();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: const Text("Localisation en cours…",
+          style: TextStyle(color: Colors.white54)),
     );
   }
 }

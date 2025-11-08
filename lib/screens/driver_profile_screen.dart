@@ -811,7 +811,6 @@ class DriverProfileScreen extends StatelessWidget {
                         children: [
                           _statusChip(_isProfileComplete(user)),
                           const SizedBox(width: 10),
-                          _eliteBadge(),
                         ],
                       ),
                     ],
@@ -1024,6 +1023,8 @@ class DriverProfileScreen extends StatelessWidget {
       {"key": "idCardUrl", "label": "Pièce d'identité"},
     ];
 
+    bool isCompact(BuildContext ctx) => MediaQuery.of(ctx).size.width < 380;
+
     return documents.map((doc) {
       final key = doc['key']!;
       final label = doc['label']!;
@@ -1032,60 +1033,84 @@ class DriverProfileScreen extends StatelessWidget {
 
       return Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(.30),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white12),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(hasUrl ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                color: hasUrl ? Colors.greenAccent : Colors.redAccent,
-                size: 20),
-            const SizedBox(width: 10),
-            if (hasUrl && _isImageUrl(url)) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  _cacheBust(url),
-                  width: 44,
-                  height: 36,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 44,
-                    height: 36,
-                    color: Colors.black26,
-                    child: const Icon(Icons.broken_image,
-                        size: 18, color: Colors.white38),
+            // LIGNE 1 — Statut + miniature + libellé (toujours lisible)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                  hasUrl ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                  color: hasUrl ? Colors.greenAccent : Colors.redAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+
+                if (hasUrl && _isImageUrl(url)) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      _cacheBust(url),
+                      width: 44,
+                      height: 36,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 44,
+                        height: 36,
+                        color: Colors.black26,
+                        child: const Icon(Icons.broken_image,
+                            size: 18, color: Colors.white38),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+
+                // Libellé toujours sur 1 ligne, ellipsis
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: hasUrl ? Colors.white : Colors.white54,
+                      fontSize: 15,
+                      fontWeight: hasUrl ? FontWeight.w700 : FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              flex: 3,
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: hasUrl ? Colors.white70 : Colors.white38,
-                  fontSize: 15,
-                  fontWeight: hasUrl ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
+              ],
             ),
-            const SizedBox(width: 8),
-            if (hasUrl)
-              _pillButton('Voir',
-                  onTap: () => _isPdfUrl(url)
-                      ? _openUrl(url)
-                      : _previewImage(context, url)),
-            const SizedBox(width: 6),
-            _pillButton(hasUrl ? 'Modifier' : 'Ajouter',
-                icon: Icons.edit_rounded,
-                onTap: () => _uploadDocument(context, key, label)),
+
+            const SizedBox(height: 10),
+
+            // LIGNE 2 — Actions (ne débordent jamais)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (hasUrl)
+                  _pillButton(
+                    'Voir',
+                    icon: Icons.visibility_rounded,
+                    onTap: () => _isPdfUrl(url)
+                        ? _openUrl(url)
+                        : _previewImage(context, url),
+                  ),
+                const SizedBox(width: 8),
+                _pillButton(
+                  hasUrl ? 'Modifier' : 'Ajouter',
+                  icon: Icons.edit_rounded,
+                  onTap: () => _uploadDocument(context, key, label),
+                ),
+              ],
+            ),
           ],
         ),
       );
@@ -1094,6 +1119,8 @@ class DriverProfileScreen extends StatelessWidget {
 
   Widget _pillButton(String text,
       {IconData? icon, required VoidCallback onTap}) {
+    final showShort = text.length <= 5; // “Voir”, “RIB”, “Modif.” etc.
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -1109,13 +1136,20 @@ class DriverProfileScreen extends StatelessWidget {
           children: [
             if (icon != null) ...[
               Icon(icon, size: 14, color: AppColors.deepGold),
-              const SizedBox(width: 6),
+              if (showShort) const SizedBox(width: 6),
             ],
-            Text(text,
-                style: const TextStyle(
-                    color: AppColors.deepGold,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
+            Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: const TextStyle(
+                color: AppColors.deepGold,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: .2,
+              ),
+            ),
           ],
         ),
       ),

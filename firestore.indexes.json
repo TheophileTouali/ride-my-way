@@ -1,0 +1,35 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "feedbacks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromDriver", "order": "ASCENDING" },
+        { "fieldPath": "passengerId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "reservations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "chats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "members", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastAt", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    }
+  ],
+  "fieldOverrides": []
+}

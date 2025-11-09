@@ -673,6 +673,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const int orMin = 250; // ✅ Or à 250
   static const int diamantMin = 500; // ✅ Diamant à 500
 
+  bool _showTrafficMap = false;
+
   @override
   void initState() {
     super.initState();
@@ -1203,6 +1205,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   IconData _wmoIcon(int code) {
+    // Fallback sûr : certaines versions n’ont pas Icons.foggy
+    const fogFallback = Icons.cloud_rounded;
     switch (code) {
       case 0:
         return Icons.wb_sunny_rounded;
@@ -1213,7 +1217,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return Icons.cloud_rounded;
       case 45:
       case 48:
-        return Icons.foggy;
+        return fogFallback; // ← fallback
       case 51:
       case 53:
       case 55:
@@ -1226,7 +1230,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return Icons.umbrella_rounded;
       case 66:
       case 67:
-        return Icons.ac_unit_rounded;
       case 71:
       case 73:
       case 75:
@@ -1960,19 +1963,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ShaderMask(
-                          shaderCallback: (Rect bounds) {
-                            return const LinearGradient(
-                              colors: [Color(0xFFFFD700), Color(0xFFA87C00)],
-                            ).createShader(bounds);
-                          },
-                        ),
                         const SizedBox(height: 12),
-                        _weatherSection(),
-                        const SizedBox(height: 6),
-
-                        TrafficPanelPremium(
-                          center: _currentPosition,
+                        WeatherTrafficCompactCard(
+                          weather: _weather,
+                          weatherLoading: _weatherLoading,
+                          onRefreshWeather:
+                              _loadWeather, // garde ton fetch existant
+                          center: _currentPosition, // ta position détectée
                           markers: {
                             if (_currentPosition != null)
                               Marker(
@@ -1982,59 +1979,52 @@ class _HomeScreenState extends State<HomeScreen> {
                                     BitmapDescriptor.defaultMarker,
                               ),
                           },
-                          hasIncidents: false,
-                          onTapVoir: () {
-                            final ctx = _trafficMapKey.currentContext;
-                            if (ctx != null) {
-                              Scrollable.ensureVisible(
-                                ctx,
-                                duration: const Duration(milliseconds: 480),
-                                curve: Curves.easeOutCubic,
-                                alignment: .05,
-                              );
-                            }
-                          },
                         ),
 
-//
+//                        const SizedBox(height: 12),
 
 // --- Texte + ligne animée ---
                         Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Texte premium avec dégradé or
-                              ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                  colors: [
-                                    Color(0xFFFFD700),
-                                    Color(0xFFA87C00)
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ).createShader(bounds),
-                                child: const Text(
-                                  "Préparez-vous à vivre un trajet d’exception. ✨",
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontStyle: FontStyle.italic,
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                    shadows: [
-                                      Shadow(
-                                        color: Color(0xAA000000),
-                                        blurRadius: 8,
-                                        offset: Offset(0, 2),
-                                      ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                    colors: [
+                                      Color(0xFFFFD700),
+                                      Color(0xFFA87C00)
                                     ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ).createShader(bounds),
+                                  child: const Text(
+                                    "Préparez-vous à vivre un trajet d’exception. ✨",
+                                    textAlign: TextAlign.center,
+                                    softWrap: true,
+                                    maxLines: 2, // ← pas plus de 2 lignes
+                                    overflow:
+                                        TextOverflow.fade, // ← pas d’overflow
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontStyle: FontStyle.italic,
+                                      fontFamily: 'PlayfairDisplay',
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      shadows: [
+                                        Shadow(
+                                            color: Color(0xAA000000),
+                                            blurRadius: 8,
+                                            offset: Offset(0, 2)),
+                                      ],
+                                    ),
                                   ),
-                                  textAlign: TextAlign.center,
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              // Ligne animée élégante
                               _GoldLine(),
                             ],
                           ),
@@ -3579,9 +3569,10 @@ class PremiumHeader extends StatelessWidget {
 }
 
 /// Titre “Accueil” avec dégradé or + lueur discrète
+/// Titre “or” réutilisable (prend bien le texte passé)
 class _GoldTitle extends StatelessWidget {
   final String text;
-  const _GoldTitle(this.text);
+  const _GoldTitle(this.text, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -3605,9 +3596,9 @@ class _GoldTitle extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ).createShader(r),
-          child: const Text(
-            "Accueil",
-            style: TextStyle(
+          child: Text(
+            text, // ← plus de "Accueil" en dur !
+            style: const TextStyle(
               color: Colors.white, // requis par ShaderMask
               fontSize: 26,
               fontWeight: FontWeight.w800,
@@ -3751,6 +3742,7 @@ class TrafficPanelPremium extends StatelessWidget {
   final VoidCallback? onTapVoir;
   final bool hasIncidents;
   final double height;
+  final bool showMap;
 
   const TrafficPanelPremium({
     Key? key,
@@ -3759,6 +3751,7 @@ class TrafficPanelPremium extends StatelessWidget {
     this.onTapVoir,
     this.hasIncidents = false,
     this.height = 200,
+    this.showMap = false,
   }) : super(key: key);
 
   @override
@@ -3769,16 +3762,16 @@ class TrafficPanelPremium extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
+          // HEADER
           Row(
             children: [
               _goldBadge(icon: Icons.traffic_rounded),
               const SizedBox(width: 12),
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    _GoldTitle("Trafic autour de vous"),
+                  children: [
+                    _GoldTitle("Infos Trafic"),
                     SizedBox(height: 2),
                     Text(
                       "Données en direct sur les axes proches",
@@ -3790,76 +3783,44 @@ class TrafficPanelPremium extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              _LiveChipLite(),
+              const _LiveChipLite(),
               const SizedBox(width: 10),
               _VoirButtonLite(onTap: onTapVoir),
             ],
           ),
+
           const SizedBox(height: 12),
 
-          // Map
+          // MAP or PLACEHOLDER
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: SizedBox(
               height: height,
-              child: Stack(
-                children: [
-                  if (center != null)
-                    GoogleMap(
-                      initialCameraPosition:
-                          CameraPosition(target: center!, zoom: 13.6),
-                      compassEnabled: false,
-                      myLocationEnabled: false,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      trafficEnabled: true,
-                      mapToolbarEnabled: false,
-                      markers: markers,
-                    )
-                  else
-                    const _MapPlaceholderLite(),
-
-                  // vignette sombre + cadre
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withOpacity(.10),
-                              Colors.transparent,
-                              Colors.black.withOpacity(.14),
-                            ],
-                            stops: const [0, .5, 1],
-                          ),
-                          border: Border.all(color: Colors.white10, width: 1),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: (showMap && center != null)
+                    ? GoogleMap(
+                        key: const ValueKey('traffic-map'),
+                        initialCameraPosition:
+                            CameraPosition(target: center!, zoom: 13.6),
+                        compassEnabled: false,
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
+                        zoomControlsEnabled: false,
+                        trafficEnabled: true,
+                        mapToolbarEnabled: false,
+                        markers: markers,
+                      )
+                    : const _MapPlaceholderLite(
+                        key: ValueKey('traffic-ph'),
                       ),
-                    ),
-                  ),
-
-                  if (hasIncidents)
-                    const Positioned(
-                      right: 10,
-                      top: 10,
-                      child: _RibbonLite(label: "Incidents à proximité"),
-                    ),
-                  const Positioned(
-                    left: 10,
-                    top: 10,
-                    child: _GlassTagLite(
-                        icon: Icons.traffic, label: "Trafic en direct"),
-                  ),
-                ],
               ),
             ),
           ),
 
           const SizedBox(height: 12),
-          // Légende
+
+          // LÉGENDE
           const Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -3915,7 +3876,11 @@ Widget _goldBadge({required IconData icon}) => Container(
 
 class _VoirButtonLite extends StatelessWidget {
   final VoidCallback? onTap;
-  const _VoirButtonLite({this.onTap});
+  final String label; // NEW
+
+  const _VoirButtonLite({this.onTap, this.label = "Infos trafic", Key? key})
+      : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -3931,17 +3896,24 @@ class _VoirButtonLite extends StatelessWidget {
           ),
           boxShadow: const [
             BoxShadow(
-                color: Color(0x33FFD700), blurRadius: 18, offset: Offset(0, 8)),
+              color: Color(0x33FFD700),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
           ],
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: const [
-          Text("Voir",
-              style: TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .2)),
-          SizedBox(width: 6),
-          Icon(Icons.chevron_right_rounded, size: 18, color: Colors.black),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            label, // ← utilise le label fourni
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .2,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Icon(Icons.chevron_right_rounded,
+              size: 18, color: Colors.black),
         ]),
       ),
     );
@@ -3952,6 +3924,35 @@ class _LiveChipLite extends StatefulWidget {
   const _LiveChipLite();
   @override
   State<_LiveChipLite> createState() => _LiveChipLiteState();
+}
+
+// Place ce widget n'importe où dans le même fichier (ex: sous _LiveChipLite)
+class _CloseBtn extends StatelessWidget {
+  final VoidCallback? onTap;
+  const _CloseBtn({this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap ?? () => Navigator.of(context).pop(),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Colors.white12),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.close_rounded, size: 20, color: Colors.white),
+      ),
+    );
+  }
 }
 
 class _LiveChipLiteState extends State<_LiveChipLite>
@@ -4092,14 +4093,429 @@ class _RibbonLite extends StatelessWidget {
 }
 
 class _MapPlaceholderLite extends StatelessWidget {
-  const _MapPlaceholderLite();
+  const _MapPlaceholderLite({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black,
+      color: Colors.black, // fond neutre
       alignment: Alignment.center,
-      child: const Text("Localisation en cours…",
-          style: TextStyle(color: Colors.white54)),
+      child: const Text(
+        "Localisation en cours…",
+        style: TextStyle(color: Colors.white54),
+      ),
+    );
+  }
+}
+
+/// Carte météo + bouton "Voir le trafic" (compact)
+/// - N'occupe qu'une seule carte
+/// - La GoogleMap est chargée uniquement au clic (bottom sheet)
+class WeatherTrafficCompactCard extends StatelessWidget {
+  final Map<String, dynamic>? weather;
+  final bool weatherLoading;
+  final Future<void> Function()? onRefreshWeather;
+
+  final LatLng? center;
+  final Set<Marker> markers;
+
+  const WeatherTrafficCompactCard({
+    Key? key,
+    required this.weather,
+    required this.weatherLoading,
+    this.onRefreshWeather,
+    required this.center,
+    this.markers = const {},
+  }) : super(key: key);
+
+  // — libellés WMO (local pour éviter dépendances)
+  String _wmoLabel(int code) {
+    switch (code) {
+      case 0:
+        return "Ciel clair";
+      case 1:
+      case 2:
+        return "Partiellement nuageux";
+      case 3:
+        return "Couvert";
+      case 45:
+      case 48:
+        return "Brouillard";
+      case 51:
+      case 53:
+      case 55:
+        return "Bruine";
+      case 61:
+      case 63:
+      case 65:
+        return "Pluie";
+      case 66:
+      case 67:
+        return "Pluie verglaçante";
+      case 71:
+      case 73:
+      case 75:
+        return "Neige";
+      case 77:
+        return "Grésil";
+      case 80:
+      case 81:
+      case 82:
+        return "Averses";
+      case 85:
+      case 86:
+        return "Averses de neige";
+      case 95:
+        return "Orage";
+      case 96:
+      case 99:
+        return "Orage violent";
+      default:
+        return "Météo";
+    }
+  }
+
+  IconData _wmoIcon(int code) {
+    // Fallback sûr : certaines versions n’ont pas Icons.foggy
+    const fogFallback = Icons.cloud_rounded;
+    switch (code) {
+      case 0:
+        return Icons.wb_sunny_rounded;
+      case 1:
+      case 2:
+        return Icons.wb_cloudy_rounded;
+      case 3:
+        return Icons.cloud_rounded;
+      case 45:
+      case 48:
+        return fogFallback; // ← fallback
+      case 51:
+      case 53:
+      case 55:
+      case 61:
+      case 63:
+      case 65:
+      case 80:
+      case 81:
+      case 82:
+        return Icons.umbrella_rounded;
+      case 66:
+      case 67:
+      case 71:
+      case 73:
+      case 75:
+      case 85:
+      case 86:
+        return Icons.ac_unit_rounded;
+      case 95:
+      case 96:
+      case 99:
+        return Icons.thunderstorm_rounded;
+      default:
+        return Icons.wb_cloudy_rounded;
+    }
+  }
+
+  void _openTrafficSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          // ↓↓↓ plus compact au départ
+          initialChildSize: 0.36,
+          minChildSize: 0.30,
+          maxChildSize: 0.86,
+          snap: true,
+          snapSizes: const [0.36, 0.62, 0.86],
+          builder: (ctx, scroll) {
+            final size = MediaQuery.of(context).size;
+            final isPhone = size.width < 640;
+
+            // ↓↓↓ carte plus courte
+            final mapHeight = isPhone ? 200.0 : 240.0;
+
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F10),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(22)),
+                    border: Border.all(color: Colors.white10, width: 1),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 24,
+                          offset: Offset(0, -8)),
+                    ],
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      controller: scroll,
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // --- Header compact ---
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                const Flexible(
+                                  child: Row(
+                                    children: [
+                                      Flexible(
+                                          child: _GoldTitle(
+                                              "Trafic autour de vous")),
+                                      SizedBox(width: 8),
+                                      _LiveChipLite(),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                _CloseBtn(),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // --- Carte plus petite ---
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Stack(
+                                children: [
+                                  SizedBox(
+                                    height: mapHeight,
+                                    child: (center != null)
+                                        ? GoogleMap(
+                                            initialCameraPosition:
+                                                CameraPosition(
+                                                    target: center!,
+                                                    zoom: 13.6),
+                                            trafficEnabled: true,
+                                            zoomControlsEnabled: false,
+                                            myLocationEnabled: false,
+                                            myLocationButtonEnabled: false,
+                                            compassEnabled: false,
+                                            mapToolbarEnabled: false,
+                                            markers: markers,
+                                          )
+                                        : const _MapPlaceholderLite(),
+                                  ),
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [
+                                              Colors.black.withOpacity(.06),
+                                              Colors.transparent,
+                                              Colors.black.withOpacity(.10),
+                                            ],
+                                            stops: const [0, .55, 1],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.white10,
+                                            width: 1,
+                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(18),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // --- Légendes compactes ---
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                _LegendPillLite(
+                                    color: Color(0xFF45E27A), label: "Fluide"),
+                                _LegendPillLite(
+                                    color: Color(0xFFFFC44D), label: "Dense"),
+                                _LegendPillLite(
+                                    color: Color(0xFFE55B5B),
+                                    label: "Très dense"),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 8), // ⬅️ plus petit
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (weatherLoading) {
+      return const _Shimmer(height: 100);
+    }
+
+    final hasWeather = weather != null;
+    final int code = hasWeather ? (weather!['code'] as int? ?? -1) : -1;
+    final double t =
+        hasWeather ? ((weather!['t'] as num?)?.toDouble() ?? 0) : 0;
+    final double feels =
+        hasWeather ? ((weather!['feels'] as num?)?.toDouble() ?? 0) : 0;
+    final double wind =
+        hasWeather ? ((weather!['wind'] as num?)?.toDouble() ?? 0) : 0;
+
+    final w = MediaQuery.sizeOf(context).width;
+    final isNarrow = w <= 400; // ← seuil élargi, évite l’overflow
+
+    final icon = _LuxWeatherIcon(
+        icon: _wmoIcon(code), code: code, size: 52, thickness: 4);
+
+    final infoCol = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          hasWeather ? _wmoLabel(code) : "Météo",
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.gold,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            fontFamily: 'PlayfairDisplay',
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            _Metric(
+                icon: Icons.thermostat_rounded,
+                value: "${feels.toStringAsFixed(1)}°",
+                hint: "Ressenti"),
+            _Metric(
+                icon: Icons.air_rounded,
+                value: "${wind.toStringAsFixed(0)} km/h",
+                hint: "Vent"),
+          ],
+        ),
+      ],
+    );
+
+    final temp = RichText(
+      text: TextSpan(
+        text: t.toStringAsFixed(1),
+        style: const TextStyle(
+          color: AppColors.gold,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          fontFamily: 'PlayfairDisplay',
+        ),
+        children: const [
+          TextSpan(
+              text: "°", style: TextStyle(fontSize: 16, color: AppColors.gold)),
+        ],
+      ),
+    );
+
+    final voirBtn = _VoirButtonLite(
+      onTap: () => _openTrafficSheet(context),
+      label:
+          isNarrow ? "Trafic" : "Infos trafic", // ← label plus court si étroit
+    );
+
+    // —— Version ÉTROITE : bouton sur une nouvelle ligne
+    if (isNarrow) {
+      return _glassCard(
+        radius: 22,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                icon,
+                const SizedBox(width: 12),
+                Expanded(child: infoCol),
+                const SizedBox(width: 10),
+                FittedBox(fit: BoxFit.scaleDown, child: temp), // ← compressible
+              ],
+            ),
+            const SizedBox(height: 10),
+            Align(alignment: Alignment.centerRight, child: voirBtn),
+          ],
+        ),
+      );
+    }
+
+    // —— Version LARGE : tout sur une ligne, éléments compressibles
+    return _glassCard(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      child: Row(
+        children: [
+          icon,
+          const SizedBox(width: 12),
+          Expanded(child: infoCol),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              FittedBox(fit: BoxFit.scaleDown, child: temp), // ← compressible
+              const SizedBox(height: 10),
+              FittedBox(
+                  fit: BoxFit.scaleDown, child: voirBtn), // ← compressible
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

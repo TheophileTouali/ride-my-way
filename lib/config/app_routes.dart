@@ -37,6 +37,7 @@ import '../screens/payment_success_screen.dart';
 import '../screens/payment_cancel_screen.dart';
 import '../screens/payment_method_screen.dart';
 import '../guards/require_auth_profile.dart';
+import 'package:ride_my_way/screens/chat_screen.dart';
 
 // 👈 ajoute ce fichier à ton projet
 
@@ -113,6 +114,14 @@ class AppRoutes {
         path: '/reset-password',
         name: 'reset-password',
         builder: (context, state) => const ResetPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/chat/:chatId',
+        builder: (ctx, state) => ChatScreen(
+          chatId: state.pathParameters['chatId']!,
+          // peerName: state.queryParams['name'], // optionnel
+          // peerPhotoUrl: state.queryParams['photo'], // optionnel
+        ),
       ),
       GoRoute(
         path: '/profile',

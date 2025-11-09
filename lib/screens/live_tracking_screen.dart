@@ -18,6 +18,8 @@ import 'package:flutter/foundation.dart'
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/chat_service.dart'; // <-- ton service de l’étape 2
 
 // 👉 API STRIPE (garde tes endpoints)
 const String _VERIFY_BASE =

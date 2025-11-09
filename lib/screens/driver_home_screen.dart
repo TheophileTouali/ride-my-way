@@ -473,6 +473,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final AudioPlayer _ringer = AudioPlayer();
   bool _isRinging = false;
   final GlobalKey _trafficMapKey = GlobalKey();
+  bool _isExpiredReservation(Map<String, dynamic> data) {
+    // Expirée = En attente + (now >= (createdAt|timestamp) + 30 min)
+    final status = (data['status'] ?? '').toString();
+    if (status != 'En attente') return false;
+
+    final ts = (data['createdAt'] ?? data['timestamp']) as Timestamp?;
+    if (ts == null) return false;
+
+    final created = ts.toDate();
+    return DateTime.now().isAfter(created.add(const Duration(minutes: 30)));
+  }
 
   bool _isVisible = false;
   double _driverRating = 0.0;
@@ -496,6 +507,60 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     if (h >= 12 && h < 18) return "Bon après-midi";
     if (h >= 18 && h < 22) return "Bonsoir";
     return "Bonne nuit";
+  }
+
+  Future<void> _cancelExpiredPendingReservations() async {
+    try {
+      final now = DateTime.now();
+      final thirtyMinAgo = now.subtract(const Duration(minutes: 30));
+
+      final snap = await FirebaseFirestore.instance
+          .collection('reservations')
+          .where('status', isEqualTo: 'En attente')
+          .where('createdAt', isLessThan: Timestamp.fromDate(thirtyMinAgo))
+          .limit(50)
+          .get();
+
+      for (final d in snap.docs) {
+        await d.reference.update({
+          'status': 'Annulée',
+          'canceledAt': FieldValue.serverTimestamp(),
+          'canceledReason': 'expired_unaccepted',
+          'expiredSearch': true,
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ cancelExpiredPendingReservations: $e');
+    }
+  }
+
+  Future<void> _cancelExpiredFallbackOnTimestamp() async {
+    try {
+      final now = DateTime.now();
+      final thirtyMinAgo = now.subtract(const Duration(minutes: 30));
+
+      final snap = await FirebaseFirestore.instance
+          .collection('reservations')
+          .where('status', isEqualTo: 'En attente')
+          .limit(100)
+          .get();
+
+      for (final d in snap.docs) {
+        final data = d.data() as Map<String, dynamic>;
+        final ts = (data['createdAt'] ?? data['timestamp']) as Timestamp?;
+        if (ts == null) continue;
+        if (ts.toDate().isBefore(thirtyMinAgo)) {
+          await d.reference.update({
+            'status': 'Annulée',
+            'canceledAt': FieldValue.serverTimestamp(),
+            'canceledReason': 'expired_unaccepted',
+            'expiredSearch': true,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ cancelExpiredFallbackOnTimestamp: $e');
+    }
   }
 
 // Pastille or premium (texte court + icône optionnelle)
@@ -1181,11 +1246,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-      final newDocs = await _fetchNearbyPendingReservations();
+      /// 🔄 Récupération des réservations EN ATTENTE
+      final newDocsRaw = await _fetchNearbyPendingReservations();
 
-      // maj UI (liste + bouton qui clignote)
+      /// ❌ Filtrer les réservations expirées (> 30 minutes)
+      final newDocs = newDocsRaw.where((d) {
+        final map = d.data() as Map<String, dynamic>;
+        return !_isExpiredReservation(map);
+      }).toList();
+
+      /// ✅ Maj UI
       final hasNew =
           newDocs.isNotEmpty && newDocs.length != _nearbyReservations.length;
+
       if (mounted) {
         setState(() {
           _hasNewNearbyCourse = hasNew;
@@ -1193,22 +1266,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         });
       }
 
-      // set des IDs actuels
+      /// ✅ Set des IDs courants
       final newIds = newDocs.map((d) => d.id).toSet();
       final newlyAdded = newIds.difference(_nearbyIds);
 
-      // 1) si nouvelle(s) course(s) → heads-up + démarre sonnerie en boucle
+      /// ✅ 1) nouvelles courses → heads-up + sonnerie
       if (newlyAdded.isNotEmpty) {
         final now = DateTime.now();
         final canAlert = _lastNearbyAlertAt == null ||
             now.difference(_lastNearbyAlertAt!) > _nearbyAlertCooldown;
+
         if (canAlert) {
           _lastNearbyAlertAt = now;
+
           final first = newDocs
               .firstWhere((d) => d.id == newlyAdded.first)
               .data() as Map<String, dynamic>;
           final from = (first['from'] ?? 'Départ').toString();
           final to = (first['to'] ?? 'Arrivée').toString();
+
           try {
             await _showNearbyHeadsUp(
               title: '🚗 Course proche disponible',
@@ -1218,15 +1294,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             debugPrint('Heads-up error: $e');
           }
         }
-        await _startRinger(); // 🔊 boucle
+
+        await _startRinger();
       }
 
-      // 2) s’il n’y a plus AUCUNE course proche → coupe la sonnerie
+      /// ✅ 2) s’il n’y a plus AUCUNE course proche → stop ringer
       if (newIds.isEmpty) {
         await _stopRinger();
       }
 
-      // mémorise
+      /// ✅ Mémo IDs
       _nearbyIds = newIds;
     });
   }
@@ -1399,6 +1476,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void showNearbyCoursesDialog(BuildContext context) {
+    // Helper local : une course "En attente" est expirée si créée il y a ≥ 30 min
+    bool _isExpiredReservation(Map<String, dynamic> data) {
+      final status = (data['status'] ?? '').toString();
+
+      // Seules les réservations "En attente" peuvent expirer
+      if (status != 'En attente') return false;
+
+      // On regarde l’horodatage de création
+      final ts = (data['createdAt'] ?? data['timestamp']);
+      if (ts is! Timestamp) return false; // si pas d’horodatage → n’expire pas
+
+      final created = ts.toDate();
+
+      // Expire si + de 30 minutes
+      return DateTime.now().isAfter(
+        created.add(const Duration(minutes: 30)),
+      );
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -1413,7 +1509,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           child: Transform.scale(
             scale: 0.96 + 0.04 * t,
             child: Material(
-              // ✅ essentiel pour InkWell / ripple
               type: MaterialType.transparency,
               child: Center(
                 child: ClipRRect(
@@ -1495,7 +1590,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                         color: AppColors.gold),
                                   );
                                 }
-                                final reservations = snapshot.data!;
+
+                                // ⛔️ Filtre local anti-expiré (créées il y a ≥ 30 min)
+                                final reservations = snapshot.data!
+                                    .where((doc) => !_isExpiredReservation(
+                                        doc.data() as Map<String, dynamic>))
+                                    .toList();
+
                                 if (reservations.isEmpty) {
                                   return Center(
                                     child: Column(
@@ -1530,10 +1631,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                         ((data['price'] as num?)?.toDouble() ??
                                                 0)
                                             .toStringAsFixed(2);
+
+                                    // L'horodatage affiché (heure prévue) : on reste sur 'timestamp' si présent
                                     final date =
                                         (data['timestamp'] as Timestamp?)
                                                 ?.toDate() ??
                                             DateTime.now();
+
                                     final distanceStr =
                                         ((data['distance'] as num?)?.toDouble())
                                                 ?.toStringAsFixed(1) ??
@@ -1541,9 +1645,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                                     final duration =
                                         date.difference(DateTime.now());
-                                    final isUrgent = duration.inMinutes <= 3;
+                                    final isUrgent = duration.inMinutes <= 3 &&
+                                        !duration.isNegative;
 
-                                    // Carte premium
                                     return FadeInUp(
                                       from: 10,
                                       duration:
@@ -1615,6 +1719,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
+                                                    // Si la date prévue est passée, on affiche "expiré" visuellement… mais on ne devrait plus y arriver grâce au filtre.
                                                     Lux.countdownChip(duration,
                                                         urgent: isUrgent),
                                                   ],
@@ -1652,8 +1757,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                       ? Icons.flash_on_rounded
                                                       : Icons
                                                           .check_circle_rounded,
-                                                  danger:
-                                                      isUrgent, // rouge soft si urgent
+                                                  danger: isUrgent,
                                                   onPressed: () async {
                                                     try {
                                                       await _acceptReservation(
@@ -2244,9 +2348,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
             // ───────────────────────────────────────────────────────────────────────────
 
-            // Météo
+            // Météo + Trafic (fusionné)
             const SizedBox(height: 32),
-            _buildWeatherCard(),
+            _buildWeatherTrafficCard(),
 
             // Courses proches
             const SizedBox(height: 24),
@@ -2403,33 +2507,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ),
                       ]),
 
-            const SizedBox(height: 24),
-
-            // ── Trafic en direct (bandeau + mini-carte) ─────────────────────────────
-            const SizedBox(height: 20),
-            TrafficPanelPremium(
-              center: _currentPosition,
-              markers: {
-                if (_currentPosition != null)
-                  Marker(
-                    markerId: const MarkerId("driver"),
-                    position: _currentPosition!,
-                    icon: _customDriverIcon ?? BitmapDescriptor.defaultMarker,
-                  ),
-              },
-              hasIncidents: false, // ou true si tu détectes des évènements
-              onTapVoir: () {
-                final ctx = _trafficMapKey.currentContext;
-                if (ctx != null) {
-                  Scrollable.ensureVisible(
-                    ctx,
-                    duration: const Duration(milliseconds: 480),
-                    curve: Curves.easeOutCubic,
-                    alignment: .05,
-                  );
-                }
-              },
-            ),
             const SizedBox(height: 24),
 
 // ── Trajets classés par statut — ULTRA PREMIUM
@@ -2856,6 +2933,230 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+// Ouvre le modal "Trafic autour de vous" (version premium compacte)
+  void _openTrafficModal() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Trafic autour de vous',
+      barrierColor: Colors.black.withOpacity(.55),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (_, anim, __, ___) {
+        final t = Curves.easeOutCubic.transform(anim.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * t,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      constraints:
+                          const BoxConstraints(maxWidth: 560, maxHeight: 640),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF0E0E0E), Color(0xFF171717)],
+                        ),
+                        border: Border.all(color: Colors.white12, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Lux.gold1.withOpacity(.12),
+                            blurRadius: 34,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
+                      ),
+
+                      // ───── Contenu du modal premium compact
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Panneau premium : header + carte + légende (compact & responsive)
+                          LayoutBuilder(
+                            builder: (context, c) {
+                              final h = MediaQuery.of(context).size.height;
+                              final mapH =
+                                  h < 720 ? 240.0 : 300.0; // plus petit que 360
+
+                              return TrafficPanelPremium(
+                                center: _currentPosition,
+                                height: mapH,
+                                markers: {
+                                  if (_currentPosition != null)
+                                    Marker(
+                                      markerId: const MarkerId("driver"),
+                                      position: _currentPosition!,
+                                      icon: _customDriverIcon ??
+                                          BitmapDescriptor.defaultMarker,
+                                    ),
+                                },
+                                hasIncidents: false,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Bouton fermer discret
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              borderRadius: BorderRadius.circular(999),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(.06),
+                                  border: Border.all(color: Colors.white10),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(.35),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(Icons.close,
+                                    color: Colors.white70, size: 18),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Carte fusionnée "Météo + Trafic" (compact, sans carte inline)
+  Widget _buildWeatherTrafficCard() {
+    return FutureBuilder<WeatherInfo>(
+      future: _fetchWeatherFromCurrentLocation(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _loadingCard("Chargement météo & trafic...");
+        }
+        final w = snapshot.data!;
+        return Lux.goldGlass(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Titre
+              Text("Météo à ${w.city}", style: Lux.goldLabel(14)),
+              const SizedBox(height: 12),
+
+              // ── Ligne : capsule météo + métriques + bouton "Infos trafic"
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Capsule météo (garde ton style)
+                  Container(
+                    width: 132,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF111111), Color(0xFF171717)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(color: Colors.white12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Lux.gold1.withOpacity(.12),
+                          blurRadius: 24,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 10),
+                        )
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.network(
+                          w.iconUrl,
+                          width: 40,
+                          height: 40,
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.wb_cloudy,
+                              color: Colors.white38),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(w.city,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white60,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 10),
+                        ShaderMask(
+                          shaderCallback: (r) => const LinearGradient(
+                            colors: [Lux.gold1, Lux.gold2],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ).createShader(r),
+                          child: Text(
+                            "${w.temperature.toStringAsFixed(1)}°C",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontFamily: 'PlayfairDisplay',
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 18),
+
+                  // Métriques météo
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Lux.metric("🌥️", w.condition),
+                        const SizedBox(height: 10),
+                        Lux.metric("💨", "${w.windSpeed} km/h"),
+                        const SizedBox(height: 10),
+                        Lux.metric("💧", "${w.humidity} %"),
+                        const SizedBox(height: 14),
+                        // Bouton unique "Infos trafic" (plus de bandeau, plus d’icône)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _TrafficInfoButton(onTap: _openTrafficModal),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -3979,7 +4280,7 @@ class TrafficStrip extends StatelessWidget {
   final Widget? trailing; // ex: IconButton "voir la carte"
   const TrafficStrip({
     Key? key,
-    this.title = "Trafic autour de vous",
+    this.title = "Infos Trafic",
     this.subtitle = "Chargement du trafic en temps réel…",
     this.trailing,
   }) : super(key: key);
@@ -4080,6 +4381,51 @@ class TrafficStrip extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+class _TrafficInfoButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _TrafficInfoButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Lux.gold1.withOpacity(.30),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text(
+              "Infos trafic",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .2,
+              ),
+            ),
+            SizedBox(width: 6),
+            Icon(Icons.map_rounded, size: 18, color: Colors.black),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -4296,9 +4642,7 @@ class TrafficPanelPremium extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              _LiveChip(), // pastille LIVE pulsante
-              const SizedBox(width: 10),
-              _VoirButton(onTap: onTapVoir), // bouton lux arrondi
+              _LiveChip(), // pastille LIVE pulsante // bouton lux arrondi
             ],
           ),
 
@@ -4419,46 +4763,6 @@ class TrafficPanelPremium extends StatelessWidget {
 }
 
 // ── éléments UI internes (pills, tags, boutons) ─────────────────────────────
-class _VoirButton extends StatelessWidget {
-  final VoidCallback? onTap;
-  const _VoirButton({this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFE08A), Color(0xFFA87C00)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Lux.gold1.withOpacity(.30),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text("Voir",
-                style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .2)),
-            SizedBox(width: 6),
-            Icon(Icons.chevron_right_rounded, size: 18, color: Colors.black),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _LiveChip extends StatefulWidget {
   @override

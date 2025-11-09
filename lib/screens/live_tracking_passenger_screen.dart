@@ -17,7 +17,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import '../services/chat_service.dart'; // <-- ton service Étape 2
 import '../themes/app_theme.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
@@ -146,6 +146,17 @@ class _LiveTrackingPassengerScreenState
       _driverLocSub?.pause();
       _statusSub?.pause();
     }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.black.withOpacity(.9),
+        behavior: SnackBarBehavior.floating,
+        content: Text(msg, style: const TextStyle(color: Colors.white)),
+      ),
+    );
   }
 
   // ---------- Actions Smart (mobile + fallback web) ----------
@@ -504,16 +515,53 @@ class _LiveTrackingPassengerScreenState
   }
 
   // ---------- UI helpers ----------
-  void _openChat() => context.push('/chat/${widget.reservationId}');
+  Future<void> _openChat() async {
+    try {
+      final me = FirebaseAuth.instance.currentUser?.uid;
+      if (me == null) return;
 
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: Colors.black.withOpacity(.9),
-        behavior: SnackBarBehavior.floating,
-        content: Text(msg, style: const TextStyle(color: Colors.white)),
-      ),
-    );
+      // On récupère driverId depuis la réservation
+      final resSnap = await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(widget.reservationId)
+          .get();
+      final data = resSnap.data();
+      if (data == null) return;
+
+      final String passengerId = (data['userId'] ?? me).toString();
+      final String? driverId = (data['driverId'] ??
+              (data['driverRef'] is DocumentReference
+                  ? (data['driverRef'] as DocumentReference).id
+                  : null))
+          ?.toString();
+
+      if (driverId == null || driverId.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Aucun chauffeur assigné pour ce trajet.")),
+        );
+        return;
+      }
+
+      // Création / récupération du chat lié à CE trajet
+      final chatId = await ChatService.instance.openChatFromReservation(
+        reservationId: widget.reservationId,
+        driverId: driverId,
+        passengerId: passengerId,
+      );
+
+      if (!mounted) return;
+      context.push('/chat/$chatId');
+      // (Optionnel) passer le nom/photo en query:
+      // context.push('/chat/$chatId?name=${Uri.encodeComponent(_driverName ?? "")}&photo=${Uri.encodeComponent(_driverPhotoUrl ?? "")}');
+    } catch (e) {
+      debugPrint('openChat passenger error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Impossible d’ouvrir le chat.")),
+      );
+    }
   }
 
   void _recenter() {

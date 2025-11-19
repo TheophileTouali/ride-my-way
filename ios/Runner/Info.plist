@@ -2,12 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
-	<key>NSCameraUsageDescription</key>
-	<string>Nous avons besoin de la caméra pour prendre votre photo de profil.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Nous avons besoin de votre position pour afficher la météo locale.</string>
-	<string>Nous avons besoin de la galerie pour choisir une photo de profil.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>Nous avons besoin de la caméra pour prendre votre photo de profil.</string>
+
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Nous avons besoin de la galerie pour choisir une photo de profil.</string>
+
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Nous avons besoin de votre position pour afficher la météo locale.</string>
 
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>

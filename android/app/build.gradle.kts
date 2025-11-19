@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,11 +13,31 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.ride_my_way"
-        minSdk = 24      // ≥ 21 requis pour le desugaring
+        // ⚠️ pour la prod tu changeras en "com.ridemyway.app"
+        applicationId = "com.ridemyway.app"
+        minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+    }
+
+    // 🔐 On charge key.properties
+    val keystoreProperties = Properties()
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = keystoreProperties["storeFile"] as String?
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+            }
+            storePassword = keystoreProperties["storePassword"] as String?
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+        }
     }
 
     buildTypes {
@@ -25,7 +48,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
             )
+
+            // ✅ très important : on dit d'utiliser la signature "release"
+            signingConfig = signingConfigs.getByName("release")
         }
+
         getByName("debug") {
             isMinifyEnabled = false
             isShrinkResources = false
@@ -33,18 +60,19 @@ android {
     }
 
     compileOptions {
-        // ✅ Java 17 (ok aussi en 1_8 si besoin)
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-
-        // ✅ indispensable pour flutter_local_notifications
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
     }
 }
 
@@ -53,6 +81,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
 
-    // ✅ Desugaring JDK (nécessaire pour l’erreur ':checkDebugAarMetadata')
+    // Desugaring JDK
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

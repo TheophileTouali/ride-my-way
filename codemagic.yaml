@@ -7,6 +7,7 @@ workflows:
       java: 17
       vars:
         ANDROID_SDK_ROOT: /usr/local/share/android-sdk
+        # STRIPE_PK: sera récupéré depuis les variables d'environnement Codemagic si tu l'as défini là-bas
     cache:
       cache_paths:
         - ~/.pub-cache
@@ -28,11 +29,14 @@ workflows:
         script: |
           # Build Flutter (peut échouer à copier l'APK selon l'arborescence)
           flutter build apk --debug --dart-define=STRIPE_PK=$STRIPE_PK || true
+
           # Fallback: build via Gradle si besoin
           (cd android && ./gradlew :app:assembleDebug -x lint)
+
           # Copie à l'emplacement attendu par Flutter
           mkdir -p build/app/outputs/flutter-apk
           cp -f android/app/build/outputs/apk/debug/app-debug.apk build/app/outputs/flutter-apk/app-debug.apk || true
+
           # Affiche les APK trouvés
           find android/app/build/outputs -type f -name "*.apk" -print
           find build -type f -name "*.apk" -print
@@ -40,3 +44,38 @@ workflows:
     artifacts:
       - build/**/outputs/**/*.apk
       - android/app/build/outputs/**/*.apk
+
+  ios_release:
+    name: iOS Release
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: "com.ridemyway.app" # <-- ton nouveau bundle ID (à mettre aussi dans project.pbxproj)
+        # STRIPE_PK: sera récupéré depuis les variables d'environnement Codemagic si tu l'as défini
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+        - ~/Library/Developer/Xcode/DerivedData
+    scripts:
+      - name: Flutter pub get
+        script: |
+          flutter --version
+          flutter pub get
+
+      - name: Pod install
+        script: |
+          cd ios
+          pod install
+          cd ..
+
+      - name: Build iOS IPA (Release)
+        script: |
+          flutter build ipa --release --no-tree-shake-icons \
+            --dart-define=STRIPE_PK=$STRIPE_PK
+
+    artifacts:
+      - build/ios/ipa/*.ipa

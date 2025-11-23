@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '894264775353',
     projectId: 'ride-my-way-7f258',
     storageBucket: 'ride-my-way-7f258.firebasestorage.app',
-    iosBundleId: 'com.example.rideMyWay',
+    iosBundleId: 'com.ridemyway.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(

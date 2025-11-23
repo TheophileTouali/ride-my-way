@@ -385,7 +385,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.rideMyWay.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ride_my_way.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ride_my_way";
@@ -399,7 +399,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.rideMyWay.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ride_my_way.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ride_my_way";
@@ -413,7 +413,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.rideMyWay.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ride_my_way.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ride_my_way";
@@ -470,24 +470,27 @@
 			name = Profile;
 		};
 		338D0CEA231458BD00FA5F75 /* Profile */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Profile;
-		};
+    isa = XCBuildConfiguration;
+    baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
+    buildSettings = {
+        ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+        CLANG_ENABLE_MODULES = YES;
+        CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
+        CODE_SIGN_STYLE = Automatic;
+        COMBINE_HIDPI_IMAGES = YES;
+        DEVELOPMENT_TEAM = L78QPA42N5;
+        INFOPLIST_FILE = Runner/Info.plist;
+        LD_RUNPATH_SEARCH_PATHS = (
+            "$(inherited)",
+            "@executable_path/../Frameworks",
+        );
+        PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app;
+        PROVISIONING_PROFILE_SPECIFIER = "";
+        SWIFT_VERSION = 5.0;
+    };
+    name = Profile;
+};
+
 		338D0CEB231458BD00FA5F75 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -602,44 +605,50 @@
 			name = Release;
 		};
 		33CC10FC2044A3C60003C045 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
+    isa = XCBuildConfiguration;
+    baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
+    buildSettings = {
+        ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+        CLANG_ENABLE_MODULES = YES;
+        CODE_SIGN_ENTITLEMENTS = Runner/DebugProfile.entitlements;
+        CODE_SIGN_STYLE = Automatic;
+        COMBINE_HIDPI_IMAGES = YES;
+        DEVELOPMENT_TEAM = L78QPA42N5;
+        INFOPLIST_FILE = Runner/Info.plist;
+        LD_RUNPATH_SEARCH_PATHS = (
+            "$(inherited)",
+            "@executable_path/../Frameworks",
+        );
+        PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app;
+        PROVISIONING_PROFILE_SPECIFIER = "";
+        SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+        SWIFT_VERSION = 5.0;
+    };
+    name = Debug;
+};
+
 		33CC10FD2044A3C60003C045 /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = Runner/Release.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				INFOPLIST_FILE = Runner/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
+    isa = XCBuildConfiguration;
+    baseConfigurationReference = 33E5194F232828860026EE4D /* AppInfo.xcconfig */;
+    buildSettings = {
+        ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+        CLANG_ENABLE_MODULES = YES;
+        CODE_SIGN_ENTITLEMENTS = Runner/Release.entitlements;
+        CODE_SIGN_STYLE = Automatic;
+        COMBINE_HIDPI_IMAGES = YES;
+        DEVELOPMENT_TEAM = L78QPA42N5;
+        INFOPLIST_FILE = Runner/Info.plist;
+        LD_RUNPATH_SEARCH_PATHS = (
+            "$(inherited)",
+            "@executable_path/../Frameworks",
+        );
+        PRODUCT_BUNDLE_IDENTIFIER = com.ridemyway.app;
+        PROVISIONING_PROFILE_SPECIFIER = "";
+        SWIFT_VERSION = 5.0;
+    };
+    name = Release;
+};
+
 		33CC111C2044C6BA0003C045 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {

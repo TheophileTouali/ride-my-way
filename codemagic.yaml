@@ -7,7 +7,7 @@ workflows:
       java: 17
       vars:
         ANDROID_SDK_ROOT: /usr/local/share/android-sdk
-        # STRIPE_PK: sera récupéré depuis les variables d'environnement Codemagic si tu l'as défini là-bas
+        # STRIPE_PK est lu depuis les variables d'env Codemagic
     cache:
       cache_paths:
         - ~/.pub-cache
@@ -27,17 +27,13 @@ workflows:
 
       - name: Build debug APK (Flutter) + fallback Gradle + copie APK
         script: |
-          # Build Flutter (peut échouer à copier l'APK selon l'arborescence)
           flutter build apk --debug --dart-define=STRIPE_PK=$STRIPE_PK || true
 
-          # Fallback: build via Gradle si besoin
           (cd android && ./gradlew :app:assembleDebug -x lint)
 
-          # Copie à l'emplacement attendu par Flutter
           mkdir -p build/app/outputs/flutter-apk
           cp -f android/app/build/outputs/apk/debug/app-debug.apk build/app/outputs/flutter-apk/app-debug.apk || true
 
-          # Affiche les APK trouvés
           find android/app/build/outputs -type f -name "*.apk" -print
           find build -type f -name "*.apk" -print
 
@@ -49,17 +45,20 @@ workflows:
     name: iOS Release
     instance_type: mac_mini_m2
     environment:
+      groups:
+        - appstore_credentials # <-- importe tes 4 variables Apple
       flutter: stable
       xcode: latest
       cocoapods: default
       vars:
-        BUNDLE_ID: "com.ridemyway.app" # <-- ton nouveau bundle ID (à mettre aussi dans project.pbxproj)
-        # STRIPE_PK: sera récupéré depuis les variables d'environnement Codemagic si tu l'as défini
+        BUNDLE_ID: "com.ridemyway.app" # Ton bundle ID iOS
+        # STRIPE_PK vient des variables d'env si défini
     cache:
       cache_paths:
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
         - ~/Library/Developer/Xcode/DerivedData
+
     scripts:
       - name: Flutter pub get
         script: |
@@ -72,6 +71,23 @@ workflows:
           pod install
           cd ..
 
+      # Étapes de code signing automatique via App Store Connect
+      - name: Initialiser le trousseau et récupérer les fichiers de signature
+        script: |
+          # Initialise un keychain dédié
+          keychain initialize
+
+          # Récupère (ou crée) certif + provisioning profile pour ton BUNDLE_ID
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+          # Ajoute les certificats récupérés au keychain par défaut
+          keychain add-certificates
+
+          # Applique les bons profils de signature au projet Xcode
+          xcode-project use-profiles
+
       - name: Build iOS IPA (Release)
         script: |
           flutter build ipa --release --no-tree-shake-icons \
@@ -79,3 +95,22 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        # Authentification via tes variables
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+
+        # --- TestFlight (optionnel, mais c’est ce que tu veux en premier) ---
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true
+        # Mets ici le nom de ton groupe TestFlight si tu en as un
+        # beta_groups:
+        #   - "Internal Testers"
+
+        # --- App Store (tu peux laisser à false pour le moment) ---
+        submit_to_app_store: false
+        cancel_previous_submissions: false
+        release_type: MANUAL

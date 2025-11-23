@@ -1,13 +1,12 @@
 workflows:
   android_debug:
     name: Android Debug
-    instance_type: mac_mini_m2 # ou linux_x2 si tu préfères Linux
+    instance_type: mac_mini_m2
     environment:
       flutter: stable
       java: 17
       vars:
         ANDROID_SDK_ROOT: /usr/local/share/android-sdk
-        # STRIPE_PK est lu depuis les variables d'env Codemagic
     cache:
       cache_paths:
         - ~/.pub-cache
@@ -21,21 +20,14 @@ workflows:
             "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Flutter pub get
-        script: |
-          flutter --version
-          flutter pub get
+        script: flutter pub get
 
-      - name: Build debug APK (Flutter) + fallback Gradle + copie APK
+      - name: Build debug APK + fallback Gradle
         script: |
           flutter build apk --debug --dart-define=STRIPE_PK=$STRIPE_PK || true
-
           (cd android && ./gradlew :app:assembleDebug -x lint)
-
           mkdir -p build/app/outputs/flutter-apk
           cp -f android/app/build/outputs/apk/debug/app-debug.apk build/app/outputs/flutter-apk/app-debug.apk || true
-
-          find android/app/build/outputs -type f -name "*.apk" -print
-          find build -type f -name "*.apk" -print
 
     artifacts:
       - build/**/outputs/**/*.apk
@@ -46,13 +38,13 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        - appstore_credentials # <-- importe tes 4 variables Apple
+        - appstore_credentials
       flutter: stable
       xcode: latest
       cocoapods: default
       vars:
-        BUNDLE_ID: "com.ridemyway.app" # Ton bundle ID iOS
-        # STRIPE_PK vient des variables d'env si défini
+        BUNDLE_ID: "com.ridemyway.app"
+
     cache:
       cache_paths:
         - ~/.pub-cache
@@ -61,9 +53,7 @@ workflows:
 
     scripts:
       - name: Flutter pub get
-        script: |
-          flutter --version
-          flutter pub get
+        script: flutter pub get
 
       - name: Pod install
         script: |
@@ -71,24 +61,14 @@ workflows:
           pod install
           cd ..
 
-      # Étapes de code signing automatique via App Store Connect
-      - name: Initialiser le trousseau et récupérer les fichiers de signature
+      - name: Fetch signing files
         script: |
-          # Initialise un keychain dédié
           keychain initialize
-
-          # Récupère (ou crée) certif + provisioning profile pour ton BUNDLE_ID
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-
-          # Ajoute les certificats récupérés au keychain par défaut
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
           keychain add-certificates
-
-          # Applique les bons profils de signature au projet Xcode
           xcode-project use-profiles
 
-      - name: Build iOS IPA (Release)
+      - name: Build IPA
         script: |
           flutter build ipa --release --no-tree-shake-icons \
             --dart-define=STRIPE_PK=$STRIPE_PK
@@ -98,19 +78,9 @@ workflows:
 
     publishing:
       app_store_connect:
-        # Authentification via tes variables
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_id: $APP_STORE_CONNECT_KEY_ID
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
 
-        # --- TestFlight (optionnel, mais c’est ce que tu veux en premier) ---
+        # TestFlight uniquement
         submit_to_testflight: true
-        expire_build_submitted_for_review: true
-        # Mets ici le nom de ton groupe TestFlight si tu en as un
-        # beta_groups:
-        #   - "Internal Testers"
-
-        # --- App Store (tu peux laisser à false pour le moment) ---
-        submit_to_app_store: false
-        cancel_previous_submissions: false
-        release_type: MANUAL

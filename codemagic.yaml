@@ -37,14 +37,20 @@ workflows:
     name: iOS Release
     instance_type: mac_mini_m2
 
+    # 👉 On dit à Codemagic d'utiliser la clé App Store Connect
+    # que tu as configurée dans Teams > Integrations
+    integrations:
+      app_store_connect: RideMyWayKey # EXACTEMENT le nom affiché dans l’UI
+
     environment:
-      groups:
-        - appstore_credentials # groupe avec tes 3 variables Apple
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        BUNDLE_ID: "com.ridemyway.app"
+
+      # 👉 Code signing automatique avec ton certificat + provisioning profile
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ridemyway.app
 
     cache:
       cache_paths:
@@ -64,8 +70,6 @@ workflows:
 
       - name: Appliquer les provisioning profiles au projet Xcode
         script: |
-          # Utilise les certificats + provisioning profiles configurés
-          # dans "Code signing identities" de Codemagic
           xcode-project use-profiles
 
       - name: Build IPA
@@ -76,9 +80,18 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
 
+    # 👉 Étape de publication vers App Store Connect + TestFlight
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY # contenu du .p8 (variable secret)
-        key_id: $APP_STORE_CONNECT_KEY_ID # AB64QDRP82
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID # 6c5af7bc-...
-        submit_to_testflight: true # upload automatique vers TestFlight
+        # On utilise l'intégration, donc PAS besoin de variables
+        auth: integration
+
+        # --- TestFlight ---
+        submit_to_testflight: true
+        # Optionnel : expirer l’ancien build en review
+        # expire_build_submitted_for_review: true
+
+        # --- App Store (tu peux laisser à false au début) ---
+        submit_to_app_store: false
+        # cancel_previous_submissions: true
+        # release_type: MANUAL

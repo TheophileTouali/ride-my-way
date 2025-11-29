@@ -36,16 +36,15 @@ workflows:
   ios_release:
     name: iOS Release
     instance_type: mac_mini_m2
+
     environment:
+      groups:
+        - appstore_credentials # groupe avec tes 3 variables Apple
       flutter: stable
       xcode: latest
       cocoapods: default
-
-      # ⚠️ C’est ÇA qui dit à Codemagic d’utiliser
-      # ton certificat + ton provisioning profile déjà ajoutés
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.ridemyway.app
+      vars:
+        BUNDLE_ID: "com.ridemyway.app"
 
     cache:
       cache_paths:
@@ -65,6 +64,8 @@ workflows:
 
       - name: Appliquer les provisioning profiles au projet Xcode
         script: |
+          # Utilise les certificats + provisioning profiles configurés
+          # dans "Code signing identities" de Codemagic
           xcode-project use-profiles
 
       - name: Build IPA
@@ -74,3 +75,10 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY # contenu du .p8 (variable secret)
+        key_id: $APP_STORE_CONNECT_KEY_ID # AB64QDRP82
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID # 6c5af7bc-...
+        submit_to_testflight: true # upload automatique vers TestFlight

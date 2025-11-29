@@ -38,7 +38,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        - appstore_credentials # APP_STORE_CONNECT_PRIVATE_K / KEY_ID / ISSUER_ID
+        - appstore_credentials # APP_STORE_CONNECT_PRIVATE_K / APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -66,23 +66,32 @@ workflows:
           set -e
           keychain initialize
 
-          # Certificat + profil App Store (pour TestFlight / App Store)
+          echo "=== Fetch App Store signing files ==="
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_K"
 
-          # Certificat + profil Development (pour satisfaire Xcode/Flutter)
+          echo "=== Fetch Development signing files ==="
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_DEVELOPMENT \
-            --create
+            --create \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_ID" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_K"
 
-          # Ajout de tous les certificats téléchargés au keychain
+          echo "=== Add certificates to keychain ==="
           keychain add-certificates
 
-          # Applique les bons provisioning profiles au projet Xcode
+          echo "=== Apply provisioning profiles to Xcode project ==="
           xcode-project use-profiles
 
-      - name: Build IPA (release)
+          echo "=== Check code signing identities ==="
+          security find-identity -v -p codesigning || true
+
+      - name: Build IPA
         script: |
           flutter build ipa --release --no-tree-shake-icons \
             --dart-define=STRIPE_PK=$STRIPE_PK

@@ -37,13 +37,15 @@ workflows:
     name: iOS Release
     instance_type: mac_mini_m2
     environment:
-      groups:
-        - appstore_credentials # APP_STORE_CONNECT_PRIVATE_K / APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID
       flutter: stable
       xcode: latest
       cocoapods: default
-      vars:
-        BUNDLE_ID: "com.ridemyway.app"
+
+      # ⚠️ C’est ÇA qui dit à Codemagic d’utiliser
+      # ton certificat + ton provisioning profile déjà ajoutés
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ridemyway.app
 
     cache:
       cache_paths:
@@ -61,35 +63,9 @@ workflows:
           pod install
           cd ..
 
-      - name: Fetch signing files (App Store + Development)
+      - name: Appliquer les provisioning profiles au projet Xcode
         script: |
-          set -e
-          keychain initialize
-
-          echo "=== Fetch App Store signing files ==="
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_ID" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_K"
-
-          echo "=== Fetch Development signing files ==="
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_DEVELOPMENT \
-            --create \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_ID" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_K"
-
-          echo "=== Add certificates to keychain ==="
-          keychain add-certificates
-
-          echo "=== Apply provisioning profiles to Xcode project ==="
           xcode-project use-profiles
-
-          echo "=== Check code signing identities ==="
-          security find-identity -v -p codesigning || true
 
       - name: Build IPA
         script: |
@@ -98,10 +74,3 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
-
-    publishing:
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_ID
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true

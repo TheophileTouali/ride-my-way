@@ -38,7 +38,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        - appstore_credentials
+        - appstore_credentials # APP_STORE_CONNECT_PRIVATE_K / KEY_ID / ISSUER_ID
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -61,14 +61,28 @@ workflows:
           pod install
           cd ..
 
-      - name: Fetch signing files
+      - name: Fetch signing files (App Store + Development)
         script: |
+          set -e
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+
+          # Certificat + profil App Store (pour TestFlight / App Store)
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+          # Certificat + profil Development (pour satisfaire Xcode/Flutter)
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_DEVELOPMENT \
+            --create
+
+          # Ajout de tous les certificats téléchargés au keychain
           keychain add-certificates
+
+          # Applique les bons provisioning profiles au projet Xcode
           xcode-project use-profiles
 
-      - name: Build IPA
+      - name: Build IPA (release)
         script: |
           flutter build ipa --release --no-tree-shake-icons \
             --dart-define=STRIPE_PK=$STRIPE_PK
@@ -78,9 +92,7 @@ workflows:
 
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        api_key: $APP_STORE_CONNECT_PRIVATE_K
         key_id: $APP_STORE_CONNECT_KEY_ID
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-
-        # TestFlight uniquement
         submit_to_testflight: true

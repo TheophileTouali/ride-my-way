@@ -183,7 +183,7 @@ Future<void> main() async {
     Stripe.publishableKey = const String.fromEnvironment(
       'STRIPE_PK',
       defaultValue:
-          'pk_test_51Rp4UvRroJq1dBtwofYynv6pjMhTKEetwIKzYonPh46U1ND4fyFii0fL5NzfoJ7AOjvqoDPe5eV75qoQ5BrTvUnP00YaG7r56f',
+          'pk_live_51Rp4UlRrTVpLAnt7rdj8NVvrKLp0Y1Dr1X433Oru9c3lSYTa9R1BU1TiwJvnSbj4W3g9u0vXG2ItQKcNIHaD9d6i00k8Sg2JTR',
     );
     if (Platform.isIOS) {
       Stripe.merchantIdentifier = 'merchant.com.example.ride_my_way';

@@ -1,6 +1,5 @@
 <!-- android/app/src/main/AndroidManifest.xml -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.ride_my_way">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <!-- 🌐 Réseau (météo + géocoding) -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -9,10 +8,13 @@
     <!-- 📍 Localisation (Android 12+) -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- ➕ Android 13+ : permission notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- On supprime explicitement la localisation en arrière-plan si une lib la déclare -->
+    <uses-permission
+    android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+    tools:node="remove" />
 
     <!-- (Optionnel) vibration explicite, souvent merge automatiquement -->
     <!-- <uses-permission android:name="android.permission.VIBRATE" /> -->

@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.ride_my_way"
+    namespace = "com.ridemyway.app"
     compileSdk = 36
 
     defaultConfig {
@@ -17,7 +17,7 @@ android {
         applicationId = "com.ridemyway.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
+        versionCode = 7
         versionName = "1.0"
     }
 

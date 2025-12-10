@@ -1,4 +1,4 @@
-package com.example.ride_my_way
+package com.ridemyway.app
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

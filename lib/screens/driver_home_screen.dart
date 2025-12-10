@@ -803,8 +803,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             child: const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text("Aucun trajet trouvé.",
-                    style: TextStyle(color: Colors.white54)),
+                child: Text(
+                  "Aucun trajet trouvé.",
+                  style: TextStyle(color: Colors.white54),
+                ),
               ),
             ),
           );
@@ -821,7 +823,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         final done = trips.where((t) => t.status == 'Terminée').toList();
         final canceled = trips.where((t) => t.status == 'Annulée').toList();
 
-// ✅ tri décroissant (plus récents → plus anciens)
+        // ✅ tri décroissant (plus récents → plus anciens)
         final cmpDesc =
             (Trip a, Trip b) => b.departureTime.compareTo(a.departureTime);
 
@@ -839,17 +841,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Header lux ──────────────────────────────────────────────────────
-              // ── Header lux (anti-overflow)
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              // ── Header lux sans bug de layout ────────────────────────────────
+              Row(
                 children: [
                   Expanded(
-                    child: Lux.goldGradientText("Trajets classés par statut",
-                        fs: 18),
+                    child: Lux.goldGradientText(
+                      "Trajets classés par statut",
+                      fs: 18,
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: _goldBadge("${trips.length} trajets"),
@@ -859,16 +860,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
               const SizedBox(height: 14),
 
-              // ── Onglets + contenu ───────────────────────────────────────────────
+              // ── Onglets + contenu ───────────────────────────────────────────
               DefaultTabController(
                 length: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Barre segmentée premium
-                    // Barre segmentée premium (ajuste les espacements)
                     Container(
-                      // ← un poil moins de padding à gauche/droite
                       padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
@@ -883,18 +882,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ],
                       ),
                       child: Align(
-                        alignment:
-                            Alignment.centerLeft, // ← évite le centrage initial
+                        alignment: Alignment.centerLeft,
                         child: TabBar(
                           isScrollable: true,
-                          tabAlignment:
-                              TabAlignment.start, // ← colle au bord gauche
-                          padding: EdgeInsets
-                              .zero, // ← supprime le padding global du TabBar
-                          labelPadding: const EdgeInsets.symmetric(
-                              horizontal: 8), // ← resserre chaque onglet
-                          indicatorPadding: EdgeInsets
-                              .zero, // ← l’indicateur n’ajoute pas d’espace
+                          tabAlignment: TabAlignment.start,
+                          padding: EdgeInsets.zero,
+                          labelPadding:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                          indicatorPadding: EdgeInsets.zero,
                           dividerColor: Colors.transparent,
                           indicator: BoxDecoration(
                             gradient: const LinearGradient(
@@ -1516,8 +1511,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                     child: Container(
-                      constraints:
-                          const BoxConstraints(maxWidth: 560, maxHeight: 640),
+                      constraints: const BoxConstraints(
+                        maxWidth: 560,
+                        maxHeight: 640,
+                      ),
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(22),
@@ -1545,8 +1542,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           Row(
                             children: [
                               Expanded(
-                                child: Lux.goldGradientText("Courses proches ✨",
-                                    fs: 20),
+                                child: Lux.goldGradientText(
+                                  "Courses proches ✨",
+                                  fs: 20,
+                                ),
                               ),
                               InkWell(
                                 onTap: () => Navigator.of(context).pop(),
@@ -1559,8 +1558,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                     color: Colors.white.withOpacity(.06),
                                     border: Border.all(color: Colors.white10),
                                   ),
-                                  child: const Icon(Icons.close,
-                                      color: Colors.white70, size: 18),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white70,
+                                    size: 18,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1579,22 +1581,27 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           const SizedBox(height: 10),
                           _glassDivider(),
 
-                          // Liste
-                          Expanded(
+                          // Liste des courses (hauteur fixe → plus de Expanded)
+                          SizedBox(
+                            height: 380, // ajuste si besoin (320–420)
                             child: FutureBuilder<List<DocumentSnapshot>>(
                               future: _fetchNearbyPendingReservations(),
                               builder: (context, snapshot) {
                                 if (!snapshot.hasData) {
                                   return const Center(
                                     child: CircularProgressIndicator(
-                                        color: AppColors.gold),
+                                      color: AppColors.gold,
+                                    ),
                                   );
                                 }
 
-                                // ⛔️ Filtre local anti-expiré (créées il y a ≥ 30 min)
+                                // Filtre local anti-expiration
                                 final reservations = snapshot.data!
-                                    .where((doc) => !_isExpiredReservation(
-                                        doc.data() as Map<String, dynamic>))
+                                    .where(
+                                      (doc) => !_isExpiredReservation(
+                                        doc.data() as Map<String, dynamic>,
+                                      ),
+                                    )
                                     .toList();
 
                                 if (reservations.isEmpty) {
@@ -1602,13 +1609,18 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: const [
-                                        Icon(Icons.inbox_rounded,
-                                            size: 36, color: Colors.white24),
+                                        Icon(
+                                          Icons.inbox_rounded,
+                                          size: 36,
+                                          color: Colors.white24,
+                                        ),
                                         SizedBox(height: 8),
                                         Text(
-                                            "Aucune course disponible à proximité",
-                                            style: TextStyle(
-                                                color: Colors.white60)),
+                                          "Aucune course disponible à proximité",
+                                          style: TextStyle(
+                                            color: Colors.white60,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   );
@@ -1632,7 +1644,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                 0)
                                             .toStringAsFixed(2);
 
-                                    // L'horodatage affiché (heure prévue) : on reste sur 'timestamp' si présent
                                     final date =
                                         (data['timestamp'] as Timestamp?)
                                                 ?.toDate() ??
@@ -1650,8 +1661,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                                     return FadeInUp(
                                       from: 10,
-                                      duration:
-                                          const Duration(milliseconds: 280),
+                                      duration: const Duration(
+                                        milliseconds: 280,
+                                      ),
                                       child: Stack(
                                         children: [
                                           // halo doux
@@ -1660,7 +1672,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                               child: Container(
                                                 decoration: BoxDecoration(
                                                   borderRadius:
-                                                      BorderRadius.circular(18),
+                                                      BorderRadius.circular(
+                                                    18,
+                                                  ),
                                                   boxShadow: [
                                                     BoxShadow(
                                                       color: Lux.gold1
@@ -1684,11 +1698,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                 end: Alignment.bottomRight,
                                                 colors: [
                                                   Color(0xFF111111),
-                                                  Color(0xFF171717)
+                                                  Color(0xFF171717),
                                                 ],
                                               ),
                                               border: Border.all(
-                                                  color: Colors.white12),
+                                                color: Colors.white12,
+                                              ),
                                             ),
                                             child: Column(
                                               crossAxisAlignment:
@@ -1699,9 +1714,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                   crossAxisAlignment:
                                                       CrossAxisAlignment.center,
                                                   children: [
-                                                    const Icon(Icons.route,
-                                                        color: AppColors.gold,
-                                                        size: 18),
+                                                    const Icon(
+                                                      Icons.route,
+                                                      color: AppColors.gold,
+                                                      size: 18,
+                                                    ),
                                                     const SizedBox(width: 8),
                                                     Expanded(
                                                       child: Text(
@@ -1719,9 +1736,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
-                                                    // Si la date prévue est passée, on affiche "expiré" visuellement… mais on ne devrait plus y arriver grâce au filtre.
-                                                    Lux.countdownChip(duration,
-                                                        urgent: isUrgent),
+                                                    Lux.countdownChip(
+                                                      duration,
+                                                      urgent: isUrgent,
+                                                    ),
                                                   ],
                                                 ),
 
@@ -1732,17 +1750,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                   spacing: 8,
                                                   runSpacing: 8,
                                                   children: [
-                                                    _goldPill("$distanceStr km",
-                                                        icon: Icons
-                                                            .straighten_rounded),
-                                                    _goldPill("$price €",
-                                                        icon:
-                                                            Icons.euro_rounded),
                                                     _goldPill(
-                                                        DateFormat("HH:mm")
-                                                            .format(date),
-                                                        icon: Icons
-                                                            .schedule_rounded),
+                                                      "$distanceStr km",
+                                                      icon: Icons
+                                                          .straighten_rounded,
+                                                    ),
+                                                    _goldPill(
+                                                      "$price €",
+                                                      icon: Icons.euro_rounded,
+                                                    ),
+                                                    _goldPill(
+                                                      DateFormat("HH:mm")
+                                                          .format(date),
+                                                      icon: Icons
+                                                          .schedule_rounded,
+                                                    ),
                                                   ],
                                                 ),
 
@@ -1761,13 +1783,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                                   onPressed: () async {
                                                     try {
                                                       await _acceptReservation(
-                                                          doc.id);
-                                                      if (mounted)
+                                                        doc.id,
+                                                      );
+                                                      if (mounted) {
                                                         Navigator.of(context)
                                                             .pop();
+                                                      }
                                                     } catch (e) {
                                                       debugPrint(
-                                                          "❌ Erreur acceptReservation : $e");
+                                                        "❌ Erreur acceptReservation : $e",
+                                                      );
                                                     }
                                                   },
                                                 ),
@@ -1783,8 +1808,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                               child: Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4),
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
                                                 decoration: BoxDecoration(
                                                   color:
                                                       Colors.redAccent.shade400,

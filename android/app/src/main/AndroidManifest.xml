@@ -1,26 +1,30 @@
 <!-- android/app/src/main/AndroidManifest.xml -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.ridemyway.app">
 
     <!-- 🌐 Réseau (météo + géocoding) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- 📍 Localisation (Android 12+) -->
+    <!-- 📍 Localisation -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <!-- ➕ Android 13+ : permission notifications -->
+    <!-- 🔔 Android 13+ : notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- On supprime explicitement la localisation en arrière-plan si une lib la déclare -->
     <uses-permission
-    android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
-    tools:node="remove" />
+        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        tools:node="remove" />
 
-    <!-- (Optionnel) vibration explicite, souvent merge automatiquement -->
-    <!-- <uses-permission android:name="android.permission.VIBRATE" /> -->
-
-    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
-    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location.network"
+        android:required="false" />
 
     <application
         android:name="${applicationName}"
@@ -33,18 +37,19 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="@string/google_maps_api_key" />
 
-        <!-- ➕ FCM : canal de notification par défaut (doit exister côté code) -->
+        <!-- FCM : canal de notification par défaut -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="@string/default_notification_channel_id" />
 
-        <!-- ➕ FCM : icône & couleur par défaut des notifs -->
+        <!-- FCM : icône & couleur par défaut des notifs -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />
+
         <meta-data
-    android:name="com.google.firebase.messaging.default_notification_color"
-    android:resource="@android:color/black" />
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@android:color/black" />
 
         <activity
             android:name=".MainActivity"
@@ -55,13 +60,13 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- LAUNCHER -->
+            <!-- Activity principale -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ✅ Stripe 3DS / retour banque -->
+            <!-- Stripe 3DS / retour banque -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

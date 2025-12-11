@@ -19,8 +19,8 @@ android {
         applicationId = "com.ridemyway.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.0"
+        versionCode = 8
+        versionName = "1.0.1"
     }
 
     // 🔐 On charge key.properties

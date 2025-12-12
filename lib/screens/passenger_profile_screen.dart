@@ -147,13 +147,14 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
         task = ref.putFile(
             File(picked.path), SettableMetadata(contentType: 'image/png'));
       }
+
       await task.whenComplete(() {});
       final newUrl = (await ref.getDownloadURL()).trim();
 
-      // 🔥 Aperçu instantané : on met à jour l'UI tout de suite
+      // 🔥 Aperçu instantané
       if (mounted) {
         context.read<UserProvider>().updateAvatarUrl(newUrl);
-        setState(() => _tempPhotoUrl = newUrl); // votre aperçu local conservé
+        setState(() => _tempPhotoUrl = newUrl);
       }
 
       // Firestore + FirebaseAuth (photoURL)
@@ -189,6 +190,110 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
     }
   }
 
+  // ✅ SUPPRESSION DE COMPTE — Apple 5.1.1(v)
+  Future<void> _confirmAndDeleteAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text(
+            "Aucun utilisateur connecté.",
+            style: TextStyle(color: Colors.redAccent),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111118),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          "Supprimer mon compte",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          "Cette action supprimera définitivement votre compte Ride My Way ainsi que vos données de profil.\n\n"
+          "Cette opération est irréversible.\n\n"
+          "Voulez-vous continuer ?",
+          style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.3),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Annuler"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              "Supprimer",
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Loader
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.gold),
+      ),
+    );
+
+    try {
+      final uid = user.uid;
+
+      // 1) Supprime Firestore
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+      // 2) Supprime Auth
+      await user.delete();
+
+      // 3) Logout local + redirection
+      if (mounted) {
+        context.read<UserProvider>().logout();
+        Navigator.of(context).pop(); // close loader
+        context.go('/login');
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) Navigator.of(context).pop(); // close loader
+
+      String msg = "Erreur lors de la suppression du compte.";
+      if (e.code == 'requires-recent-login') {
+        msg =
+            "Pour des raisons de sécurité, veuillez vous reconnecter puis réessayez la suppression.";
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text(msg, style: const TextStyle(color: Colors.redAccent)),
+        ),
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // close loader
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text("Une erreur est survenue : $e",
+              style: const TextStyle(color: Colors.redAccent)),
+        ),
+      );
+    }
+  }
+
   // —————————————————————————————————————————————————————————
   // HEADER ULTRA-PREMIUM — version alignée + anti-overflow
   // —————————————————————————————————————————————————————————
@@ -215,14 +320,11 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
           child: Center(
-            // ✅ centre tout le bloc
             child: ConstrainedBox(
-              // ✅ largeur max pour un rendu propre
               constraints: const BoxConstraints(maxWidth: 520),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // — Nom doré
                   ShaderMask(
                     shaderCallback: (r) => Premium.goldGradient.createShader(r),
                     blendMode: BlendMode.srcIn,
@@ -234,8 +336,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                       style: const TextStyle(
                         fontFamily: 'PlayfairDisplay',
                         fontWeight: FontWeight.w800,
-                        fontSize: 30, // un peu plus grand
-                        height: 1.12, letterSpacing: .2, color: Colors.white,
+                        fontSize: 30,
+                        height: 1.12,
+                        letterSpacing: .2,
+                        color: Colors.white,
                         shadows: [
                           Shadow(
                               color: Colors.black54,
@@ -246,8 +350,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-
-                  // — Email très lisible
                   Text(
                     email.isEmpty ? '—' : email,
                     textAlign: TextAlign.center,
@@ -264,29 +366,23 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // — Photo + bouton en dessous (photo légèrement plus grande sur écrans ≥380px)
                   LayoutBuilder(builder: (_, c) {
-                    final scale =
-                        c.maxWidth >= 380 ? 1.15 : 1.0; // ✅ grandit la photo
+                    final scale = c.maxWidth >= 380 ? 1.15 : 1.0;
                     return Column(
                       children: [
                         Transform.scale(
-                            scale: scale,
-                            child: _AvatarRing(
-                                url: bustUrl, onTap: onChangePhoto)),
+                          scale: scale,
+                          child:
+                              _AvatarRing(url: bustUrl, onTap: onChangePhoto),
+                        ),
                         const SizedBox(height: 10),
                         _SoftEditButton(
                             onTap: () => context.go('/edit-profile')),
                       ],
                     );
                   }),
-
                   const SizedBox(height: 16),
-
-                  // — Chips centrés
                   Builder(builder: (_) {
                     String _s(dynamic v) =>
                         (v is String) ? v : (v?.toString() ?? '');
@@ -327,24 +423,27 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                     final chips = <Widget>[
                       if (verified)
                         const _SoftChip(
-                            icon: Icons.verified_rounded,
-                            label: 'Profil vérifié',
-                            accent: AppColors.gold),
+                          icon: Icons.verified_rounded,
+                          label: 'Profil vérifié',
+                          accent: AppColors.gold,
+                        ),
                       if (age != null)
                         _SoftChip(icon: Icons.cake_rounded, label: '$age ans'),
                       if (membreDepuis != null)
                         _SoftChip(
-                            icon: Icons.event_available_rounded,
-                            label: 'Membre depuis $membreDepuis'),
+                          icon: Icons.event_available_rounded,
+                          label: 'Membre depuis $membreDepuis',
+                        ),
                       if (rating != null)
                         _SoftChip(
-                            icon: Icons.star_rate_rounded,
-                            label:
-                                '${rating.clamp(0, 5).toStringAsFixed(1)} ★'),
+                          icon: Icons.star_rate_rounded,
+                          label: '${rating.clamp(0, 5).toStringAsFixed(1)} ★',
+                        ),
                       if (reco != null)
                         _SoftChip(
-                            icon: Icons.thumb_up_alt_rounded,
-                            label: 'Recommandé ${reco.round()}%'),
+                          icon: Icons.thumb_up_alt_rounded,
+                          label: 'Recommandé ${reco.round()}%',
+                        ),
                       if (tier != null)
                         _SoftChip(icon: Icons.diamond_rounded, label: tier),
                     ];
@@ -365,101 +464,55 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
     );
   }
 
-  Widget _goldChip({required IconData icon, required String label}) {
+  Widget _trustSafetyShowcase(Map<String, dynamic> userData) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(.35),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.gold.withOpacity(.4)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.gold.withOpacity(.18),
-            blurRadius: 8,
-            spreadRadius: 1.5,
-          ),
-        ],
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        GoldIcon(icon, size: 16),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w700,
-            fontSize: 12,
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _okChip({required String label}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF34D399), Color(0xFF10B981)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x5534D399), blurRadius: 10, offset: Offset(0, 4)),
-        ],
-        border: Border.all(color: Color(0xFF10B981)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.all(18),
+      decoration: Premium.glass(opacity: .50),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.verified_rounded, size: 16, color: Colors.black),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
-            ),
+          Row(
+            children: const [
+              GoldIcon(Icons.shield_rounded, size: 22, glow: true),
+              SizedBox(width: 8),
+              GradientText(
+                'Confiance & Sécurité',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _trustPill(
+            icon: Icons.credit_card_rounded,
+            title: 'Paiements sécurisés',
+            subtitle:
+                'Pré-autorisation Stripe • 3-D Secure • Données chiffrées',
+            ok: true,
+          ),
+          const SizedBox(height: 10),
+          _trustPill(
+            icon: Icons.verified_rounded,
+            title: 'Chauffeurs vérifiés',
+            subtitle: 'Identité contrôlée • Dossier validé • Note ≥ 4,8/5',
+            ok: true,
+          ),
+          const SizedBox(height: 10),
+          _trustPill(
+            icon: Icons.lock_rounded,
+            title: 'Protection des données (RGPD)',
+            subtitle: 'Stockage UE • Accès strictement limité',
+            ok: true,
           ),
         ],
       ),
     );
   }
 
-  // ===================== TRUST & SAFETY — CHECKLIST PREMIUM =====================
-
-  // Halo doré qui pulse (safe avec flutter_animate)
-  Widget _haloIcon(IconData icon, {double size = 22}) {
-    final halo = Container(
-      width: size + 16,
-      height: size + 16,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.gold.withOpacity(.18),
-      ),
-    )
-        .animate(onPlay: (c) => c.repeat(reverse: true))
-        .scaleXY(
-            begin: .95, end: 1.10, duration: 1200.ms, curve: Curves.easeInOut)
-        .fade(begin: .6, end: 1.0, duration: 1200.ms);
-
-    return Stack(alignment: Alignment.center, children: [
-      halo,
-      GoldIcon(icon, size: size, glow: true),
-    ]);
-  }
-
-  // Pastille "engagement" — non cliquable
   Widget _trustPill({
     required IconData icon,
     required String title,
     String? subtitle,
-    required bool ok, // true => ✅ vert, false => ⏳ ambre
+    required bool ok,
   }) {
     final rightIcon =
         ok ? Icons.check_circle_rounded : Icons.hourglass_bottom_rounded;
@@ -512,89 +565,7 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
     );
   }
 
-  // Ruban complet : lit l’état KYC pour "Documents vérifiés", le reste est un plus marque premium
-  Widget _trustSafetyShowcase(Map<String, dynamic> userData) {
-    // KYC: vérifié / en attente (fallback legacy identityCardUrl)
-    final kyc = (userData['kyc'] as Map?)?.cast<String, dynamic>();
-    final kycStatus = (kyc?['status'] as String?) ?? '';
-    final hasLegacy =
-        ((userData['identityCardUrl'] as String?) ?? '').isNotEmpty;
-    final docsOk = kycStatus == 'verified';
-    final docsPending = !docsOk && (kycStatus == 'pending' || hasLegacy);
-
-    // docsPending non affiché pour éviter de donner un sentiment négatif en UI
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: Premium.glass(opacity: .50),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: const [SizedBox(width: 2)]),
-          Row(children: const []),
-          Row(
-            children: [
-              _haloIcon(Icons.shield_rounded, size: 22),
-              const SizedBox(width: 8),
-              const GradientText(
-                'Confiance & Sécurité',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _trustPill(
-            icon: Icons.credit_card_rounded,
-            title: 'Paiements sécurisés',
-            subtitle:
-                'Pré-autorisation Stripe • 3-D Secure • Données chiffrées',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-          _trustPill(
-            icon: Icons.verified_rounded,
-            title: 'Chauffeurs vérifiés',
-            subtitle: 'Identité contrôlée • Dossier validé • Note ≥ 4,8/5',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-          _trustPill(
-            icon: Icons.car_crash_rounded,
-            title: 'Véhicules assurés & contrôlés',
-            subtitle: 'Assurance à jour • Contrôles périodiques',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-          _trustPill(
-            icon: Icons.lock_rounded,
-            title: 'Protection des données (RGPD)',
-            subtitle: 'Stockage UE • Accès strictement limité',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-          _trustPill(
-            icon: Icons.share_location_rounded,
-            title: 'Partage de trajet en temps réel',
-            subtitle: 'Suivi live et partage sécurisé de l’itinéraire',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-          _trustPill(
-            icon: Icons.support_agent_rounded,
-            title: 'Assistance prioritaire',
-            subtitle: 'Support réactif en cas d’imprévu',
-            ok: true,
-          ),
-          const SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
-
-  // —————————————————————————————————————————————————————————
-  // UI helpers (section, infos, préférences, actions)
-  // —————————————————————————————————————————————————————————
   Widget _sectionCard({required Widget title, required List<Widget> children}) {
-    // version conservatrice (pas de changement de look brutal)
     return Container(
       padding: const EdgeInsets.all(20),
       margin: const EdgeInsets.only(bottom: 8),
@@ -725,8 +696,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
           const SizedBox(height: 14),
           const Divider(color: Colors.white12, height: 1),
           const SizedBox(height: 14),
-
-          // grille responsive (1 col sur mobile, 2 cols si >520px)
           LayoutBuilder(builder: (context, c) {
             final isWide = c.maxWidth > 520;
             return GridView(
@@ -769,6 +738,12 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                     Provider.of<UserProvider>(context, listen: false).logout();
                     context.go('/login');
                   },
+                ),
+                // ✅ Apple requirement
+                _dangerActionButton(
+                  icon: Icons.delete_forever_rounded,
+                  label: 'Supprimer mon compte',
+                  onTap: _confirmAndDeleteAccount,
                 ),
               ],
             );
@@ -818,7 +793,7 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
     );
   }
 
-  /// Icône toujours or (exigence), mais outline "danger"
+  /// ✅ FIX: utilise vraiment icon + label (avant c’était hardcodé)
   Widget _dangerActionButton({
     required IconData icon,
     required String label,
@@ -840,12 +815,12 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
           child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                GoldIcon(Icons.logout_rounded, size: 20), // icône or (branding)
-                SizedBox(width: 10),
+              children: [
+                GoldIcon(icon, size: 20),
+                const SizedBox(width: 10),
                 Text(
-                  'Se déconnecter',
-                  style: TextStyle(
+                  label,
+                  style: const TextStyle(
                     color: Colors.redAccent,
                     fontWeight: FontWeight.w800,
                     letterSpacing: .2,
@@ -887,8 +862,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
           ),
         ),
       ),
-
-      /// 🔥 Lecture *en temps réel* du document utilisateur
       body: uid == null
           ? const Center(
               child:
@@ -915,14 +888,12 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                 final data = snap.data!.data() ?? {};
                 final firestorePhoto = (data['photoUrl'] as String?) ?? '';
 
-                // Si Firestore a rattrapé l’aperçu local, on nettoie _tempPhotoUrl
                 if (_tempPhotoUrl != null && _tempPhotoUrl == firestorePhoto) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) setState(() => _tempPhotoUrl = null);
                   });
                 }
 
-                // Priorité à l’aperçu local, sinon valeur Firestore
                 final effectivePhoto = (_tempPhotoUrl?.isNotEmpty ?? false)
                     ? _tempPhotoUrl!
                     : firestorePhoto;
@@ -941,15 +912,10 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // —— Header + KPIs + Trust
                         _premiumHeader(bust, data, _pickAndUploadImage),
                         const SizedBox(height: 18),
-
                         _trustSafetyShowcase(data),
-
                         const SizedBox(height: 24),
-
-                        // —— Infos personnelles
                         _sectionCard(
                           title: Row(
                             children: const [
@@ -990,373 +956,7 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                                 'Téléphone', (data['phone'] ?? '').toString()),
                           ],
                         ),
-
-                        const SizedBox(height: 24),
-
-                        // —— Préférences (logique existante, rendu premium)
-                        Builder(builder: (_) {
-                          // 1) Prefs depuis Firestore (nouveau modèle)
-                          final Map<String, dynamic> prefsMap =
-                              (data['preferences'] as Map?)
-                                      ?.cast<String, dynamic>() ??
-                                  {};
-
-                          // 2) Fallback vers le provider (legacy déjà chargé en mémoire)
-                          final legacy =
-                              Provider.of<UserProvider>(context).preferences;
-
-                          // Helpers d’affichage
-                          String s(String key, {String? orElse}) {
-                            final v = prefsMap[key];
-                            if (v == null) return orElse ?? '—';
-                            final str = v.toString().trim();
-                            return str.isEmpty ? (orElse ?? '—') : str;
-                          }
-
-                          bool b(String key, {bool? orElse}) {
-                            final v = prefsMap[key];
-                            if (v is bool) return v;
-                            return orElse ?? false;
-                          }
-
-                          String listStr(String key) {
-                            final v = prefsMap[key];
-                            if (v is List && v.isNotEmpty) {
-                              return v.map((e) => e.toString()).join(', ');
-                            }
-                            return '—';
-                          }
-
-                          // ===== Conditions d'affichage côté PROFIL =====
-                          bool showMusicStyle() =>
-                              (prefsMap['music'] == true) &&
-                              (s('ambiance') != 'Silencieux');
-                          bool showTemperatureLevel() =>
-                              (prefsMap['temperature'] == true);
-                          bool showScentLevel() =>
-                              (prefsMap['perfume'] == true);
-                          bool isMoto() => s('vehicleType') == 'Moto';
-
-                          Widget lineIf(
-                                  bool cond, String label, dynamic value) =>
-                              cond
-                                  ? _preferenceItem(label, value)
-                                  : const SizedBox.shrink();
-
-                          // Valeurs avec fallback (compat descendante)
-                          final ambiance =
-                              s('ambiance', orElse: legacy.ambiance);
-                          final musicOn = b('music', orElse: legacy.music);
-                          final perfumeOn =
-                              b('perfume', orElse: legacy.perfume);
-                          final tempSwitchOn =
-                              b('temperature', orElse: legacy.temperature);
-                          final wifiOn = b('wifi', orElse: legacy.wifi);
-                          final smokeFreeOn =
-                              b('smokeFree', orElse: legacy.smokeFree);
-                          final petsOn = b('pets', orElse: legacy.pets);
-
-                          return _sectionCard(
-                            title: Row(
-                              children: const [
-                                GoldIcon(Icons.headphones_rounded,
-                                    size: 20, glow: true),
-                                SizedBox(width: 8),
-                                GradientText(
-                                  'Vos préférences de trajet',
-                                  style: TextStyle(
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            children: [
-                              // 1) Ambiance & confort intérieur
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.directions_car_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Ambiance et confort intérieur',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Ambiance sonore (niveau de musique)',
-                                  ambiance),
-                              const SizedBox(height: 8),
-                              lineIf(
-                                showMusicStyle(),
-                                'Style musical (genre favori)',
-                                s('musicStyle', orElse: '—'),
-                              ),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Conversation (interaction souhaitée)',
-                                  s('conversation', orElse: '—')),
-                              const SizedBox(height: 8),
-                              lineIf(
-                                showTemperatureLevel(),
-                                'Température (préférence de climatisation)',
-                                s('temperatureLevel', orElse: '—'),
-                              ),
-                              const SizedBox(height: 8),
-                              lineIf(
-                                showScentLevel(),
-                                'Parfum / désodorisant',
-                                s('scentLevel',
-                                    orElse: perfumeOn ? 'Oui' : 'Non'),
-                              ),
-                              const SizedBox(height: 8),
-                              lineIf(
-                                !isMoto(),
-                                'Lumière d’ambiance (couleur/intensité)',
-                                s('ambientLight', orElse: '—'),
-                              ),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Playlist exclusive (on/off)', musicOn),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Température réglée (on/off)', tempSwitchOn),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 2) Confort physique & ergonomique
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.event_seat_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Confort physique et ergonomique',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem(
-                                  'Position du siège (avant / arrière)',
-                                  s('seatPosition', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Réglage du siège (inclinaison)',
-                                  s('seatIncline', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Chargeur / USB',
-                                  s('chargerUsb', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Wi-Fi', wifiOn),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Eau / Boisson', s('water', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Snacks', s('snacks', orElse: '—')),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 3) Environnement & hygiène
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.eco_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Environnement et hygiène',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem(
-                                  'Véhicule non-fumeur', smokeFreeOn),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Véhicule désinfecté',
-                                  b('disinfected', orElse: false)),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Animaux acceptés', petsOn),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Silence à bord',
-                                  b('silentRide', orElse: false)),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 4) Style de conduite
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.speed_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Style de conduite',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem(
-                                  'Conduite (douce / normale / dynamique)',
-                                  s('drivingStyle', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Vitesse moyenne (équilibrée / rapide)',
-                                  s('avgSpeed', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Suspension / type de véhicule (souple / sport)',
-                                  s('suspension', orElse: '—')),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 5) Esthétique & premium
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.diamond_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Préférences esthétiques et premium',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem('Type de véhicule',
-                                  s('vehicleType', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Couleur intérieure',
-                                  s('interiorColor', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Marques préférées', listStr('brands')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Chauffeur attitré',
-                                  b('preferredDriver', orElse: false)),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 6) Spécifiques moto (uniquement si Moto)
-                              if (isMoto()) ...[
-                                const Text(
-                                  '🏍️ Spécifiques moto',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                    letterSpacing: .2,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                _preferenceItem('Type de casque',
-                                    s('helmetType', orElse: '—')),
-                                const SizedBox(height: 8),
-                                _preferenceItem('Hygiène casque',
-                                    s('helmetHygiene', orElse: '—')),
-                                const SizedBox(height: 8),
-                                _preferenceItem('Tenue / protections',
-                                    s('protections', orElse: '—')),
-                                const SizedBox(height: 8),
-                                _preferenceItem('Vitesse de conduite (moto)',
-                                    s('motoSpeed', orElse: '—')),
-                                const SizedBox(height: 8),
-                                _preferenceItem('Discussion en intercom',
-                                    b('intercom', orElse: false)),
-                                const Divider(
-                                    color: Colors.white10, height: 26),
-                              ],
-
-                              // 7) Écologie & éthique
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.public_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Préférences écologiques et éthiques',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem('Type d’énergie',
-                                  s('energyType', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Compensation carbone',
-                                  b('carbonOffset', orElse: false)),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Silence moteur',
-                                  b('engineSilence', orElse: false)),
-
-                              const Divider(color: Colors.white10, height: 26),
-
-                              // 8) Paiement & réservation
-                              Row(
-                                children: const [
-                                  GoldIcon(Icons.credit_card_rounded,
-                                      size: 16, glow: true),
-                                  SizedBox(width: 6),
-                                  GradientText(
-                                    'Paiement et réservation',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      letterSpacing: .2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-
-                              _preferenceItem('Mode de paiement',
-                                  s('paymentMode', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem(
-                                  'Facture', s('invoiceMethod', orElse: '—')),
-                              const SizedBox(height: 8),
-                              _preferenceItem('Notifications',
-                                  s('notifications', orElse: '—')),
-                            ],
-                          );
-                        }),
-
                         const SizedBox(height: 32),
-
-                        // —— Actions
                         _actionsCard(context),
                         const SizedBox(height: 32),
                       ],
@@ -1365,53 +965,6 @@ class _PassengerProfileScreenState extends State<PassengerProfileScreen> {
                 );
               },
             ),
-    );
-  }
-
-  Widget _headerMetaBar(Map<String, dynamic> data) {
-    DateTime? _ts(dynamic v) {
-      if (v == null) return null;
-      if (v is Timestamp) return v.toDate();
-      if (v is String) return DateTime.tryParse(v);
-      return null;
-    }
-
-    // === Calcul de l'âge ===
-    final birth = _ts(data['birthdate']);
-    int? age;
-    if (birth != null) {
-      final now = DateTime.now();
-      var a = now.year - birth.year;
-      if (now.month < birth.month ||
-          (now.month == birth.month && now.day < birth.day)) a--;
-      if (a >= 0 && a < 120) age = a;
-    }
-
-    // === Membre depuis ===
-    final created = _ts(data['createdAt']);
-    String? membreDepuis;
-    if (created != null) {
-      membreDepuis =
-          '${created.month.toString().padLeft(2, '0')}/${created.year}';
-    }
-
-    final chips = <Widget>[
-      if (age != null) _goldChip(icon: Icons.cake_rounded, label: '$age ans'),
-      if (membreDepuis != null)
-        _goldChip(
-            icon: Icons.event_available_rounded,
-            label: 'Membre depuis $membreDepuis'),
-    ];
-
-    if (chips.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: chips,
-      ),
     );
   }
 }
@@ -1436,7 +989,6 @@ class _SoftGlass extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius),
           child: Stack(
             children: [
-              // voile très sombre
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -1449,7 +1001,6 @@ class _SoftGlass extends StatelessWidget {
                   ),
                 ),
               ),
-              // blur (verre) — sigma réduit pour perf
               BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
                 child: Container(
@@ -1516,7 +1067,6 @@ class _AvatarRing extends StatelessWidget {
                 ),
               ),
             ),
-            // anneau très fin
             Container(
               width: 110,
               height: 110,

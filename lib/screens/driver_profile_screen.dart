@@ -647,6 +647,127 @@ class DriverProfileScreen extends StatelessWidget {
     return true;
   }
 
+  /// -------- SUPPRESSION DE COMPTE (Apple 5.1.1(v)) --------
+  Future<void> _confirmAndDeleteAccount(BuildContext context) async {
+    final driverProvider = Provider.of<DriverProvider>(context, listen: false);
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text(
+            "Aucun utilisateur connecté.",
+            style: TextStyle(color: Colors.redAccent),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111118),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          "Supprimer mon compte",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: const Text(
+          "Cette action supprimera définitivement votre compte Ride My Way, "
+          "ainsi que vos données de profil conducteur. Cette opération est irréversible.\n\n"
+          "Voulez-vous vraiment continuer ?",
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Annuler"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              "Supprimer",
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Loader plein écran
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black87,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.gold),
+      ),
+    );
+
+    try {
+      final uid = user.uid;
+
+      // Suppression des documents principaux Firestore liés au conducteur
+      final batch = FirebaseFirestore.instance.batch();
+      final driverDoc =
+          FirebaseFirestore.instance.collection('drivers').doc(uid);
+      batch.delete(driverDoc);
+
+      // Si tu as aussi un profil global "users", tu peux ajouter :
+      // final userDoc = FirebaseFirestore.instance.collection('users').doc(uid);
+      // batch.delete(userDoc);
+
+      await batch.commit();
+
+      // Suppression du compte Firebase Auth
+      await user.delete();
+
+      // Nettoyage provider + navigation
+      driverProvider.logout();
+
+      Navigator.of(context).pop(); // ferme le loader
+
+      context.go('/login-driver');
+    } on FirebaseAuthException catch (e) {
+      Navigator.of(context).pop(); // ferme le loader
+
+      String message = "Erreur lors de la suppression du compte.";
+      if (e.code == 'requires-recent-login') {
+        message =
+            "Pour des raisons de sécurité, merci de vous reconnecter avant de supprimer votre compte, puis réessayez.";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text(
+            message,
+            style: const TextStyle(color: Colors.redAccent),
+          ),
+        ),
+      );
+    } catch (e) {
+      Navigator.of(context).pop(); // ferme le loader
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.black87,
+          content: Text(
+            "Une erreur est survenue : $e",
+            style: const TextStyle(color: Colors.redAccent),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<DriverProvider>(context).user;
@@ -957,6 +1078,7 @@ class DriverProfileScreen extends StatelessWidget {
             Provider.of<DriverProvider>(context, listen: false).logout();
             context.go('/login-driver');
           },
+          onDeleteAccount: () => _confirmAndDeleteAccount(context),
         ),
       ],
     );
@@ -986,31 +1108,6 @@ class DriverProfileScreen extends StatelessWidget {
     );
   }
 
-  /// Badge élite (crown)
-  Widget _eliteBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Lux.gold.withOpacity(.6)),
-        color: Colors.black.withOpacity(.15),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.workspace_premium_rounded,
-              size: 16, color: AppColors.gold),
-          SizedBox(width: 6),
-          Text('Elite',
-              style: TextStyle(
-                  color: AppColors.gold,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
-
   List<Widget> _buildDocumentList(BuildContext context, dynamic user) {
     final documents = [
       {"key": "driverLicenseUrl", "label": "Permis de conduire"},
@@ -1022,8 +1119,6 @@ class DriverProfileScreen extends StatelessWidget {
       {"key": "ribUrl", "label": "RIB"},
       {"key": "idCardUrl", "label": "Pièce d'identité"},
     ];
-
-    bool isCompact(BuildContext ctx) => MediaQuery.of(ctx).size.width < 380;
 
     return documents.map((doc) {
       final key = doc['key']!;
@@ -1192,6 +1287,7 @@ Widget _settingsCard({
   required BuildContext context,
   required VoidCallback onChangePassword,
   required VoidCallback onLogout,
+  required VoidCallback onDeleteAccount,
 }) {
   Widget row({
     required IconData icon,
@@ -1258,6 +1354,14 @@ Widget _settingsCard({
           label: 'Se déconnecter',
           color: Colors.redAccent,
           onTap: onLogout,
+          danger: true,
+        ),
+        const GoldDivider(),
+        row(
+          icon: Icons.delete_forever_rounded,
+          label: 'Supprimer mon compte',
+          color: Colors.redAccent,
+          onTap: onDeleteAccount,
           danger: true,
         ),
       ],

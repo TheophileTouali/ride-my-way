@@ -509,6 +509,171 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return "Bonne nuit";
   }
 
+  // ─────────────────────────────────────────────────────────────
+// DRIVER GATE (validation / permissions)
+// ─────────────────────────────────────────────────────────────
+  bool _driverGateLoaded = false;
+  bool _canAcceptRides = false;
+  String _verificationStatus =
+      'unverified'; // unverified | pending | verified | rejected
+  String? _rejectedReason;
+
+  bool get _isVerifiedDriver =>
+      _driverGateLoaded && _canAcceptRides && _verificationStatus == 'verified';
+
+  void _showDriverGateDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Validation requise',
+      barrierColor: Colors.black.withOpacity(.55),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (_, anim, __, ___) {
+        final t = Curves.easeOutCubic.transform(anim.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.scale(
+            scale: 0.96 + 0.04 * t,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  margin: const EdgeInsets.symmetric(horizontal: 18),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0E0E0E), Color(0xFF171717)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(color: Colors.white12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Lux.gold1.withOpacity(.14),
+                        blurRadius: 30,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(.06),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: const Icon(Icons.lock_rounded,
+                                color: AppColors.gold),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                              child: Text("Validation requise",
+                                  style: Lux.title(18))),
+                          InkWell(
+                            onTap: () => Navigator.of(context).pop(),
+                            borderRadius: BorderRadius.circular(999),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(.06),
+                                border: Border.all(color: Colors.white10),
+                              ),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white70, size: 18),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _verificationStatus == 'rejected'
+                            ? "Votre compte a été refusé. Corrigez votre dossier pour accéder aux courses."
+                            : "Votre compte est en cours de vérification. Dès validation, vous pourrez vous mettre en ligne et accepter des courses.",
+                        style: const TextStyle(
+                            color: Colors.white70, height: 1.25),
+                      ),
+                      if (_verificationStatus == 'rejected' &&
+                          _rejectedReason != null &&
+                          _rejectedReason!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text("Motif : $_rejectedReason",
+                            style: const TextStyle(color: Colors.white54)),
+                      ],
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Lux.premiumButton(
+                          label: "OK",
+                          icon: Icons.check_rounded,
+                          onPressed: () => Navigator.of(context).pop(),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _loadDriverGate() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('drivers').doc(uid).get();
+
+      if (!doc.exists) {
+        if (!mounted) return;
+        setState(() {
+          _driverGateLoaded = true;
+          _canAcceptRides = false;
+          _verificationStatus = 'unverified';
+          _rejectedReason = null;
+        });
+        return;
+      }
+
+      final data = doc.data()!;
+      if (!mounted) return;
+      setState(() {
+        _driverGateLoaded = true;
+        _canAcceptRides = (data['canAcceptRides'] as bool?) ?? false;
+        _verificationStatus =
+            (data['verificationStatus'] as String?)?.trim().toLowerCase() ??
+                'unverified';
+        _rejectedReason = (data['rejectedReason'] as String?)?.trim();
+      });
+    } catch (e) {
+      debugPrint("❌ _loadDriverGate: $e");
+      if (!mounted) return;
+      setState(() {
+        _driverGateLoaded = true;
+        _canAcceptRides = false;
+        _verificationStatus = 'unverified';
+        _rejectedReason = null;
+      });
+    }
+  }
+
   Future<void> _cancelExpiredPendingReservations() async {
     try {
       final now = DateTime.now();
@@ -1054,6 +1219,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadDriverGate(); //
     _loadVisibility();
     _startAutoRefresh();
     _loadDriverStats();
@@ -1464,7 +1630,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Widget _buildNearbyButton() {
     return _LuxNearbyButton(
-      onTap: () => showNearbyCoursesDialog(context),
+      onTap: () {
+        if (!_isVerifiedDriver) {
+          _showDriverGateDialog();
+          return;
+        }
+        showNearbyCoursesDialog(context);
+      },
       label: "Voir les courses proches",
       icon: Icons.map_rounded,
     );
@@ -1862,6 +2034,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final List<DocumentSnapshot> nearby = [];
 
     try {
+      if (!_isVerifiedDriver) return [];
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return [];
 
@@ -1962,6 +2135,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Future<void> _acceptReservation(String docId) async {
+    if (!_isVerifiedDriver) {
+      throw Exception("Compte non validé : acceptation verrouillée.");
+    }
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception("Utilisateur non connecté");
 
@@ -2668,7 +2844,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         // Switch à droite, jamais à la ligne
         Lux.goldSwitchChip(
           value: _isVisible,
-          onChanged: _toggleVisibility,
+          onChanged: (v) {
+            if (!_isVerifiedDriver && v == true) {
+              _showDriverGateDialog();
+              return;
+            }
+            _toggleVisibility(v);
+          },
         ),
       ],
     );
@@ -4933,14 +5115,18 @@ class _Ribbon extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: const [
-          Icon(Icons.warning_amber_rounded, size: 16, color: Colors.white),
-          SizedBox(width: 6),
-          Text("Incidents à proximité",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800)),
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );

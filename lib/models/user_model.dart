@@ -8,7 +8,10 @@ class UserModel extends Equatable {
   final String email;
   final String phone;
   final String address;
-  final Timestamp birthdate;
+
+  // ✅ OPTIONNEL
+  final Timestamp? birthdate;
+
   final String? photoUrl;
   final String? identityCardUrl;
   final String role;
@@ -21,25 +24,33 @@ class UserModel extends Equatable {
     required this.email,
     required this.phone,
     required this.address,
-    required this.birthdate,
+    this.birthdate, // ✅ plus required
     this.photoUrl,
     this.identityCardUrl,
     this.role = 'passenger',
     required this.createdAt,
   });
 
-  Map<String, dynamic> toMap() => {
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': email,
-        'phone': phone,
-        'address': address,
-        'birthdate': birthdate,
-        'photoUrl': photoUrl,
-        'identityCardUrl': identityCardUrl,
-        'role': role,
-        'createdAt': createdAt,
-      };
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phone': phone,
+      'address': address,
+      'photoUrl': photoUrl,
+      'identityCardUrl': identityCardUrl,
+      'role': role,
+      'createdAt': createdAt,
+    };
+
+    // ✅ on n’enregistre birthdate que si elle existe
+    if (birthdate != null) {
+      map['birthdate'] = birthdate;
+    }
+
+    return map;
+  }
 
   factory UserModel.fromDoc(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -50,11 +61,14 @@ class UserModel extends Equatable {
       email: data['email'] ?? '',
       phone: data['phone'] ?? '',
       address: data['address'] ?? '',
-      birthdate: data['birthdate'] ?? Timestamp.now(),
+
+      // ✅ optionnel : si absent => null (PAS Timestamp.now())
+      birthdate: data['birthdate'] as Timestamp?,
+
       photoUrl: data['photoUrl'],
       identityCardUrl: data['identityCardUrl'],
       role: data['role'] ?? 'passenger',
-      createdAt: data['createdAt'] ?? Timestamp.now(),
+      createdAt: (data['createdAt'] as Timestamp?) ?? Timestamp.now(),
     );
   }
 

@@ -103,13 +103,15 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
   @override
   void initState() {
     super.initState();
-    final currentYear = DateTime.now().year;
-    anneesVoiture = List.generate(DateTime.now().year - 1999,
-        (i) => (DateTime.now().year - i).toString());
-    anneesMoto = List.generate(DateTime.now().year - 2004,
-        (i) => (DateTime.now().year - i).toString());
+    anneesVoiture = List.generate(
+      DateTime.now().year - 1999,
+      (i) => (DateTime.now().year - i).toString(),
+    );
+    anneesMoto = List.generate(
+      DateTime.now().year - 2004,
+      (i) => (DateTime.now().year - i).toString(),
+    );
 
-    // Ajout : on initialise à null pour éviter l’affichage "Ajouté" par défaut
     driverLicenseFile = null;
     driverLicenseBytes = null;
 
@@ -139,28 +141,28 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
   Widget _buildTextField(TextEditingController controller, String label,
       {TextInputType type = TextInputType.text}) {
     return TextFormField(
-        controller: controller,
-        keyboardType: type,
-        style: const TextStyle(color: Colors.white),
-        cursorColor: AppColors.deepGold,
-        decoration: _inputDecoration(label),
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            switch (label) {
-              case "Prénom":
-                return "Veuillez saisir votre prénom pour poursuivre l’inscription.";
-              case "Nom":
-                return "Merci d’indiquer votre nom afin de compléter votre profil.";
-              case "Email":
-                return "Une adresse email est nécessaire pour créer votre compte.";
-              case "Adresse":
-                return "L’adresse est indispensable pour une prise en charge personnalisée.";
-              default:
-                return "Ce champ est requis pour continuer.";
-            }
+      controller: controller,
+      keyboardType: type,
+      style: const TextStyle(color: Colors.white),
+      cursorColor: AppColors.deepGold,
+      decoration: _inputDecoration(label),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          switch (label) {
+            case "Prénom":
+              return "Veuillez saisir votre prénom pour poursuivre l’inscription.";
+            case "Nom":
+              return "Merci d’indiquer votre nom afin de compléter votre profil.";
+            case "Email":
+              return "Une adresse email est nécessaire pour créer votre compte.";
+            // ✅ Adresse n’est plus requise (Apple 5.1.1) -> donc pas de message bloquant
+            default:
+              return "Ce champ est requis pour continuer.";
           }
-          return null;
-        });
+        }
+        return null;
+      },
+    );
   }
 
   Widget _buildPassword(TextEditingController controller, String label,
@@ -205,7 +207,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
 
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(now.year - 25), // Suggestion : par défaut 25 ans
+      initialDate: DateTime(now.year - 25),
       firstDate: DateTime(1900),
       lastDate: maxDate,
       locale: const Locale('fr', 'FR'),
@@ -213,12 +215,11 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
         return Theme(
           data: ThemeData.dark().copyWith(
             colorScheme: ColorScheme.dark(
-              primary: AppColors.deepGold, // ← couleur bouton de sélection
-              surface: const Color(0xFF121212), // ← fond du calendrier
-              onSurface: Colors.white, // ← texte
+              primary: AppColors.deepGold,
+              surface: const Color(0xFF121212),
+              onSurface: Colors.white,
             ),
-            dialogBackgroundColor:
-                const Color(0xFF0A0A0A), // ← fond du dialogue
+            dialogBackgroundColor: const Color(0xFF0A0A0A),
           ),
           child: child!,
         );
@@ -346,44 +347,49 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
           backgroundColor: const Color(0xFF0A0A0A),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text("Vérification de l'email",
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.deepGold)),
+          title: const Text(
+            "Vérification de l'email",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppColors.deepGold,
+            ),
+          ),
           content: const Text(
-              "Un lien a été envoyé à votre adresse email. Cliquez sur ce lien avant de continuer.",
-              style: TextStyle(fontSize: 16, color: Colors.white70)),
+            "Un lien a été envoyé à votre adresse email. Cliquez sur ce lien avant de continuer.",
+            style: TextStyle(fontSize: 16, color: Colors.white70),
+          ),
           actions: [
             TextButton(
               onPressed: () async {
-                print("🔄 Vérification email...");
                 showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (_) => const Center(
-                        child: CircularProgressIndicator(
-                            color: AppColors.deepGold)));
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(
+                    child: CircularProgressIndicator(color: AppColors.deepGold),
+                  ),
+                );
                 await FirebaseAuth.instance.currentUser?.reload();
                 final refreshedUser = FirebaseAuth.instance.currentUser;
                 Navigator.of(context).pop();
 
                 if (refreshedUser != null && refreshedUser.emailVerified) {
-                  print("✅ Email vérifié !");
                   Navigator.of(context).pop();
                 } else {
-                  print("❌ Email non vérifié !");
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text(
-                            "Email non vérifié. Veuillez cliquer sur le lien."),
-                        backgroundColor: Colors.redAccent),
+                      content: Text(
+                          "Email non vérifié. Veuillez cliquer sur le lien."),
+                      backgroundColor: Colors.redAccent,
+                    ),
                   );
                 }
               },
-              child: const Text("J'ai vérifié",
-                  style: TextStyle(
-                      color: AppColors.deepGold, fontWeight: FontWeight.w600)),
+              child: const Text(
+                "J'ai vérifié",
+                style: TextStyle(
+                    color: AppColors.deepGold, fontWeight: FontWeight.w600),
+              ),
             ),
             TextButton(
               onPressed: () async {
@@ -393,69 +399,51 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                     await user.sendEmailVerification();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text("Nouveau lien envoyé."),
-                          backgroundColor: AppColors.deepGold),
+                        content: Text("Nouveau lien envoyé."),
+                        backgroundColor: AppColors.deepGold,
+                      ),
                     );
                   }
                 } catch (e) {
-                  print("❌ Erreur renvoi email : $e");
                   ScaffoldMessenger.of(context)
                       .showSnackBar(SnackBar(content: Text("Erreur : $e")));
                 }
               },
-              child: const Text("Renvoyer le lien",
-                  style: TextStyle(
-                      color: AppColors.deepGold, fontWeight: FontWeight.w600)),
+              child: const Text(
+                "Renvoyer le lien",
+                style: TextStyle(
+                    color: AppColors.deepGold, fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),
       );
 
-      // Fonction d'upload universelle
-      Future<String> uploadDocWebOrMobile({
+      // ✅ Upload doc optionnel (web + mobile) : retourne null si absent
+      Future<String?> uploadDocIfProvided({
         required String name,
         File? file,
         Uint8List? bytes,
       }) async {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid == null) throw Exception("Utilisateur non connecté.");
+        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+        if (currentUid == null) throw Exception("Utilisateur non connecté.");
 
-        final ref =
-            FirebaseStorage.instance.ref().child('drivers_data/$uid/$name');
+        if (file == null && bytes == null) return null;
 
-        if (kIsWeb && bytes != null) {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('drivers_data/$currentUid/$name');
+
+        if (bytes != null) {
           await ref.putData(bytes);
-        } else if (!kIsWeb && file != null) {
-          await ref.putFile(file);
         } else {
-          throw Exception("Aucun fichier fourni pour $name.");
+          await ref.putFile(file!);
         }
 
-        final url = await ref.getDownloadURL();
-        print("✅ Upload réussi pour $name : $url");
-        return url;
+        return ref.getDownloadURL();
       }
 
-      // Vérification présence des documents
-      if ((kIsWeb &&
-              (driverLicenseBytes == null ||
-                  registrationBytes == null ||
-                  insuranceBytes == null)) ||
-          (!kIsWeb &&
-              (driverLicenseFile == null ||
-                  registrationFile == null ||
-                  insuranceFile == null))) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                "Merci de sélectionner tous les documents avant de continuer."),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
-
-      // Upload photo de profil
+      // Upload photo de profil (optionnelle)
       String? photoUrl;
       if (profileImageBytes != null) {
         final ref = FirebaseStorage.instance
@@ -463,13 +451,13 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
             .child("drivers_data/$uid/profile.jpg");
         if (kIsWeb) {
           await ref.putData(profileImageBytes!);
-        } else {
+        } else if (profileImage != null) {
           await ref.putFile(profileImage!);
         }
         photoUrl = await ref.getDownloadURL();
       }
 
-      // Upload photo véhicule
+      // Upload photo véhicule (optionnelle)
       String? vehicleUrl;
       if (vehiclePhotoBytes != null) {
         final ref = FirebaseStorage.instance
@@ -477,40 +465,40 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
             .child("drivers_data/$uid/vehicle.jpg");
         if (kIsWeb) {
           await ref.putData(vehiclePhotoBytes!);
-        } else {
+        } else if (vehiclePhoto != null) {
           await ref.putFile(vehiclePhoto!);
         }
         vehicleUrl = await ref.getDownloadURL();
       }
 
-      // Upload des documents
-      print("📤 Upload des documents...");
-      final driverLicenseUrl = await uploadDocWebOrMobile(
+      // ✅ Upload des documents (optionnels)
+      final driverLicenseUrl = await uploadDocIfProvided(
         name: "driver_license.pdf",
         file: driverLicenseFile,
         bytes: driverLicenseBytes,
       );
-      final registrationUrl = await uploadDocWebOrMobile(
+      final registrationUrl = await uploadDocIfProvided(
         name: "registration.pdf",
         file: registrationFile,
         bytes: registrationBytes,
       );
-      final insuranceUrl = await uploadDocWebOrMobile(
+      final insuranceUrl = await uploadDocIfProvided(
         name: "insurance.pdf",
         file: insuranceFile,
         bytes: insuranceBytes,
       );
-      print("✅ Documents uploadés");
 
-      // Enregistrement Firestore
-      print("📝 Enregistrement dans Firestore...");
-      await FirebaseFirestore.instance.collection('drivers').doc(uid).set({
+      final documents = <String, dynamic>{};
+      if (driverLicenseUrl != null)
+        documents['driverLicense'] = driverLicenseUrl;
+      if (registrationUrl != null) documents['registration'] = registrationUrl;
+      if (insuranceUrl != null) documents['insurance'] = insuranceUrl;
+
+      // ✅ Firestore : champs Apple seulement si renseignés + documents seulement si présents
+      final driverData = <String, dynamic>{
         'firstName': firstName.text.trim(),
         'lastName': lastName.text.trim(),
         'email': email.text.trim(),
-        'phone': phone.text.trim(),
-        'birthdate': birthdate.text.trim(),
-        'address': addressController.text.trim(),
         'vehicleType': selectedVehicleType,
         'carBrand': carBrand.text.trim(),
         'licensePlate': licensePlate.text.trim(),
@@ -518,17 +506,43 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
         'driverLicenseNumber': driverLicenseNumber.text.trim(),
         'photoUrl': photoUrl,
         'vehiclePhotoUrl': vehicleUrl,
-        'documents': {
-          'driverLicense': driverLicenseUrl,
-          'registration': registrationUrl,
-          'insurance': insuranceUrl,
-        },
+        if (documents.isNotEmpty) 'documents': documents,
         'role': 'driver',
         'createdAt': FieldValue.serverTimestamp(),
-        'isVisible': false, // ✅ visible par défaut : non
-      });
-      print("✅ Données Firestore enregistrées avec succès !");
+        'isVisible': false,
+        // ✅ AJOUT ICI (valeurs par défaut)
+        'verificationStatus': documents.isNotEmpty ? 'pending' : 'unverified',
+        'canAcceptRides': false,
+        // (optionnel) pour audit
+        'reviewedAt': null,
+        'reviewedBy': null,
+        'rejectedReason': null,
+      };
 
+      final phoneValue = phone.text.trim();
+      if (phoneValue.isNotEmpty &&
+          phoneValue != '+33' &&
+          phoneValue != '+33 ') {
+        driverData['phone'] = phoneValue;
+      }
+
+      final birthValue = birthdate.text.trim();
+      if (birthValue.isNotEmpty) {
+        final dt = DateFormat('dd/MM/yyyy').parse(birthValue);
+        driverData['birthdate'] = Timestamp.fromDate(dt); // ✅ Timestamp
+      }
+
+      final addressValue = addressController.text.trim();
+      if (addressValue.isNotEmpty) {
+        driverData['address'] = addressValue;
+      }
+
+      await FirebaseFirestore.instance
+          .collection('drivers')
+          .doc(uid)
+          .set(driverData);
+
+      print("✅ Données Firestore enregistrées avec succès !");
       if (context.mounted) context.go('/login');
     } catch (e) {
       print("❌ Erreur générale : $e");
@@ -545,7 +559,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked != null) {
       final file = File(picked.path);
-      final bytes = await picked.readAsBytes(); // important pour Web
+      final bytes = await picked.readAsBytes();
       onPicked(file, bytes);
     }
   }
@@ -568,15 +582,13 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                   builder: (context, constraints) {
                     final shrink = constraints.maxHeight < 100;
                     return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24), // <-- AJOUTÉ ICI
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Align(
                         alignment:
                             shrink ? Alignment.bottomLeft : Alignment.center,
                         child: shrink
                             ? const Padding(
-                                padding: EdgeInsets.only(
-                                    bottom: 12), // <-- marge en bas
+                                padding: EdgeInsets.only(bottom: 12),
                                 child: Text(
                                   "Conducteur",
                                   style: TextStyle(
@@ -611,8 +623,6 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                 ),
               ),
             ),
-
-            // === Formulaire scrollable ===
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -628,6 +638,8 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                       _buildTextField(email, "Email",
                           type: TextInputType.emailAddress),
                       const SizedBox(height: 16),
+
+                      // ✅ Téléphone optionnel (validé seulement si rempli)
                       TextFormField(
                         controller: phone,
                         keyboardType: TextInputType.phone,
@@ -652,10 +664,14 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           }
                         },
                         validator: (value) {
-                          final digits =
-                              value?.replaceAll(RegExp(r'[^0-9]'), '');
-                          if (digits == null ||
-                              digits.length != 11 ||
+                          final v = (value ?? '').trim();
+                          if (v.isEmpty || v == '+33' || v == '+33 ')
+                            return null;
+
+                          final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digits.isEmpty) return null;
+
+                          if (digits.length != 11 ||
                               !digits.startsWith('33') ||
                               digits[2] == '0') {
                             return 'Merci de saisir un numéro de téléphone valide.';
@@ -663,7 +679,10 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           return null;
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // ✅ Birthdate optionnelle
                       GestureDetector(
                         onTap: _pickBirthDate,
                         child: AbsorbPointer(
@@ -678,13 +697,11 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                                   color: Colors.white38,
                                   fontStyle: FontStyle.italic),
                             ),
-                            validator: (value) => value == null ||
-                                    value.trim().isEmpty
-                                ? "Merci d’indiquer votre date de naissance pour valider votre inscription."
-                                : null,
+                            validator: (_) => null,
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 16),
                       _buildPassword(password, "Mot de passe", obscure1,
                           () => setState(() => obscure1 = !obscure1)),
@@ -695,6 +712,8 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           obscure2,
                           () => setState(() => obscure2 = !obscure2)),
                       const SizedBox(height: 24),
+
+                      // ✅ Adresse optionnelle
                       GooglePlacesAutoCompleteTextFormField(
                         textEditingController: addressController,
                         googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
@@ -705,14 +724,11 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                         decoration: _inputDecoration("Adresse"),
                         onSuggestionClicked: (prediction) {
                           addressController.text = prediction.description!;
-                          FocusScope.of(context)
-                              .unfocus(); // Pour fermer le clavier
+                          FocusScope.of(context).unfocus();
                         },
                         onChanged: (value) => addressController.text = value,
                         onPlaceDetailsWithCoordinatesReceived: (_) {},
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? "Merci d’indiquer une adresse."
-                            : null,
+                        validator: (_) => null,
                         overlayContainerBuilder: (child) => Material(
                           elevation: 2.0,
                           color: Colors.grey[900],
@@ -720,7 +736,10 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           child: child,
                         ),
                       ),
+
                       const SizedBox(height: 16),
+
+                      // 🔻 Le reste inchangé (véhicule + docs UI)
                       DropdownButtonFormField<String>(
                         value: selectedVehicleType,
                         items: vehicleTypes
@@ -741,27 +760,25 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                         decoration: _inputDecoration("Type de véhicule"),
                         dropdownColor: Colors.black,
                         iconEnabledColor: AppColors.deepGold,
-                        validator: (v) {
-                          if (v == null || v.isEmpty)
-                            return "Veuillez choisir le type de véhicule utilisé.";
-                          return null;
-                        },
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? "Veuillez choisir le type de véhicule utilisé."
+                            : null,
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: marquesSelonType.contains(carBrand.text)
                             ? carBrand.text
                             : null,
-                        items: marquesSelonType.map((brand) {
-                          return DropdownMenuItem(
-                            value: brand,
-                            child: Text(brand,
-                                style: const TextStyle(color: Colors.white)),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setState(() => carBrand.text = value!);
-                        },
+                        items: marquesSelonType
+                            .map((brand) => DropdownMenuItem(
+                                  value: brand,
+                                  child: Text(brand,
+                                      style:
+                                          const TextStyle(color: Colors.white)),
+                                ))
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => carBrand.text = value!),
                         decoration: _inputDecoration("Marque du véhicule"),
                         dropdownColor: Colors.black,
                         iconEnabledColor: AppColors.deepGold,
@@ -808,14 +825,12 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           _LicensePlateFormatter(),
                         ],
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
+                          if (value == null || value.trim().isEmpty)
                             return 'Merci d’indiquer l’immatriculation.';
-                          }
                           final reg =
                               RegExp(r'^[A-HJ-NP-Z]{2}-\d{3}-[A-HJ-NP-Z]{2}$');
-                          if (!reg.hasMatch(value.toUpperCase())) {
+                          if (!reg.hasMatch(value.toUpperCase()))
                             return 'Format invalide (ex : AB-123-CD)';
-                          }
                           return null;
                         },
                       ),
@@ -826,7 +841,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                         cursorColor: AppColors.deepGold,
                         decoration:
                             _inputDecoration("N° Permis de conduire").copyWith(
-                          hintText: "Ex : 20AB12345", // Format conforme
+                          hintText: "Ex : 20AB12345",
                           hintStyle: const TextStyle(
                               color: Colors.white38,
                               fontStyle: FontStyle.italic),
@@ -847,6 +862,8 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                         },
                       ),
                       const Divider(height: 40, color: AppColors.deepGold),
+
+                      // ✅ UI docs inchangée (non bloquante)
                       _uploadTileAligned(
                           "Permis de conduire", driverLicenseFile, () async {
                         final result = await FilePicker.platform.pickFiles(
@@ -854,7 +871,6 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                           withData: true,
                         );
-
                         if (result != null) {
                           if (kIsWeb && result.files.single.bytes != null) {
                             setState(() {
@@ -872,13 +888,13 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           }
                         }
                       }, showCheck: driverLicenseSelected),
+
                       _uploadTileAligned("Assurance", insuranceFile, () async {
                         final result = await FilePicker.platform.pickFiles(
                           type: FileType.custom,
                           allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                           withData: true,
                         );
-
                         if (result != null) {
                           if (kIsWeb && result.files.single.bytes != null) {
                             setState(() {
@@ -895,6 +911,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           }
                         }
                       }, showCheck: insuranceSelected),
+
                       _uploadTileAligned("Carte grise", registrationFile,
                           () async {
                         final result = await FilePicker.platform.pickFiles(
@@ -902,7 +919,6 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                           withData: true,
                         );
-
                         if (result != null) {
                           if (kIsWeb && result.files.single.bytes != null) {
                             setState(() {
@@ -920,6 +936,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           }
                         }
                       }, showCheck: registrationSelected),
+
                       _uploadPhotoRowAligned(
                           "Photo de profil", profileImageBytes, () {
                         _pickImage((f, bytes) {
@@ -938,6 +955,7 @@ class _SignupDriverScreenState extends State<SignupDriverScreen> {
                           });
                         });
                       }),
+
                       const SizedBox(height: 24),
                       ElevatedButton(
                         onPressed: _submit,

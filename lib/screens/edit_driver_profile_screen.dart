@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
 
 import '../providers/driver_provider.dart';
 import '../models/driver_user.dart';
@@ -82,6 +83,161 @@ class FrostedCard extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
           child: Container(padding: padding, child: child),
+        ),
+      ),
+    );
+  }
+}
+
+void showLuxToast(
+  BuildContext context, {
+  required String message,
+  IconData icon = Icons.verified_rounded,
+  Duration duration = const Duration(milliseconds: 1400),
+}) {
+  final overlay = Overlay.of(context);
+  if (overlay == null) return;
+
+  late final OverlayEntry entry;
+
+  entry = OverlayEntry(
+    builder: (_) => _LuxToast(
+      message: message,
+      icon: icon,
+      onDone: () => entry.remove(),
+      duration: duration,
+    ),
+  );
+
+  overlay.insert(entry);
+}
+
+class _LuxToast extends StatefulWidget {
+  final String message;
+  final IconData icon;
+  final VoidCallback onDone;
+  final Duration duration;
+
+  const _LuxToast({
+    required this.message,
+    required this.icon,
+    required this.onDone,
+    required this.duration,
+  });
+
+  @override
+  State<_LuxToast> createState() => _LuxToastState();
+}
+
+class _LuxToastState extends State<_LuxToast> {
+  double _opacity = 0;
+  double _y = -10;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // apparition
+    Future.delayed(const Duration(milliseconds: 10), () {
+      if (!mounted) return;
+      setState(() {
+        _opacity = 1;
+        _y = 0;
+      });
+    });
+
+    // disparition
+    Future.delayed(widget.duration, () {
+      if (!mounted) return;
+      setState(() {
+        _opacity = 0;
+        _y = -10;
+      });
+
+      Future.delayed(const Duration(milliseconds: 260), () {
+        if (!mounted) return;
+        widget.onDone();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.of(context).padding.top + 12;
+
+    return Positioned(
+      top: top,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 220),
+          opacity: _opacity,
+          child: AnimatedSlide(
+            duration: const Duration(milliseconds: 220),
+            offset: Offset(0, _y / 100),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(.55),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.gold.withOpacity(.22)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.gold.withOpacity(.18),
+                        blurRadius: 26,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: Lux.gradientGold,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.gold.withOpacity(.25),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Icon(widget.icon, color: Colors.black, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: .2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ShaderMask(
+                        shaderCallback: (r) => Lux.metallicGold(r),
+                        child: const Icon(Icons.auto_awesome_rounded,
+                            color: Colors.white, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -453,13 +609,14 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
           .initializeUser();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: Colors.black87,
-            content: Text('✅ Profil mis à jour',
-                style: TextStyle(color: AppColors.gold)),
-          ),
+        showLuxToast(
+          context,
+          message: 'Profil mis à jour avec succès',
+          icon: Icons.verified_rounded,
         );
+
+        await Future.delayed(const Duration(milliseconds: 900));
+        if (!mounted) return;
         context.pop();
       }
     } catch (e) {
@@ -655,10 +812,44 @@ class _EditDriverProfileScreenState extends State<EditDriverProfileScreen> {
                                         : null,
                               ),
                               const SizedBox(height: 12),
-                              TextFormField(
-                                controller: _addressC,
-                                decoration: _luxDec('Adresse'),
+                              GooglePlacesAutoCompleteTextFormField(
+                                textEditingController: _addressC,
+                                googleAPIKey:
+                                    "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+                                debounceTime: 800,
+                                countries: const ["fr"],
+                                fetchCoordinates: true,
                                 style: const TextStyle(color: Colors.white),
+                                decoration: _luxDec('Adresse'),
+                                onSuggestionClicked: (prediction) {
+                                  _addressC.text = prediction.description ?? '';
+                                  FocusScope.of(context).unfocus();
+                                  setState(
+                                      () {}); // pour rafraîchir l’UI si besoin
+                                },
+                                onChanged: (value) => _addressC.text = value,
+                                onPlaceDetailsWithCoordinatesReceived: (_) {},
+                                validator: (_) =>
+                                    null, // ✅ optionnel / non bloquant
+                                overlayContainerBuilder: (child) => Material(
+                                  color: Colors.transparent,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(.92),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                          color: Colors.white.withOpacity(.10)),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(.55),
+                                          blurRadius: 22,
+                                          offset: const Offset(0, 12),
+                                        ),
+                                      ],
+                                    ),
+                                    child: child,
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 12),
                               TextFormField(

@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Garde d'accès : impose connexion + profil complet + rôle.
+/// Garde d'accès : impose connexion + rôle.
+/// ✅ Ne bloque plus sur phone/address/birthdate/photoUrl (Apple 5.1.1)
 class RequireAuthAndCompleteProfile extends StatefulWidget {
   final Widget child;
   final String requiredRole; // "passenger" ou "driver"
@@ -35,12 +36,10 @@ class _RequireAuthAndCompleteProfileState
     final d = snap.data() ?? {};
     bool notEmpty(String k) => (d[k]?.toString().trim().isNotEmpty ?? false);
 
-    final hasAll = notEmpty('firstName') &&
+    // ✅ Champs CORE uniquement (ne pas bloquer sur champs optionnels)
+    final coreOk = notEmpty('firstName') &&
         notEmpty('lastName') &&
-        notEmpty('address') &&
-        notEmpty('phone') &&
-        d['birthdate'] != null &&
-        notEmpty('photoUrl') &&
+        notEmpty('email') && // si tu stockes email dans Firestore (tu le fais)
         notEmpty('role');
 
     final roleOk = (d['role']?.toString() ?? '') == widget.requiredRole;
@@ -48,7 +47,7 @@ class _RequireAuthAndCompleteProfileState
     // (optionnel) email vérifié :
     // final emailVerified = user.emailVerified == true;
 
-    return hasAll && roleOk; // && emailVerified;
+    return coreOk && roleOk; // && emailVerified;
   }
 
   @override
@@ -74,7 +73,7 @@ class _RequireAuthAndCompleteProfileState
 
         final ok = snap.data == true;
         if (!ok) {
-          // Profil incomplet ou mauvais rôle → forcer l’édition
+          // ❗ Ici on garde le comportement: si doc absent / mauvais rôle / champs core manquants
           WidgetsBinding.instance.addPostFrameCallback((_) {
             context.go('/edit-profile');
           });

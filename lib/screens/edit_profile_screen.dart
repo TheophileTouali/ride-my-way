@@ -1,6 +1,6 @@
 import 'dart:io' show File;
 import 'dart:typed_data' show Uint8List;
-
+import 'package:google_places_autocomplete_text_field/google_places_autocomplete_text_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -153,13 +153,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // 4) Feedback + retour profil
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Profil mis à jour'),
-          backgroundColor: AppColors.deepGold,
-          duration: Duration(milliseconds: 900),
-        ),
-      );
+      _showPremiumSuccess('Profil mis à jour');
       await Future.delayed(const Duration(milliseconds: 900));
       if (!mounted) return;
       final bust = DateTime.now().millisecondsSinceEpoch;
@@ -176,6 +170,58 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  void _showPremiumSuccess(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        duration: const Duration(milliseconds: 1200),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.gold.withOpacity(.28)),
+            gradient: LinearGradient(
+              colors: [
+                AppColors.gold.withOpacity(.22),
+                Colors.white.withOpacity(.06),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.gold.withOpacity(.12),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: AppColors.gold, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // -------------- DATE PICKER --------------
@@ -265,7 +311,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       onTap: _selectBirthDate,
                       child: AbsorbPointer(
                         child: _goldField(birthdateController,
-                            'Date de naissance', Icons.cake_rounded),
+                            'Date de naissance', Icons.cake_rounded,
+                            requiredField: false),
                       ),
                     ),
                   ],
@@ -278,8 +325,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         enabled: false),
                     _goldField(
                         phoneController, 'Téléphone', Icons.phone_rounded),
-                    _goldField(addressController, 'Adresse',
-                        Icons.location_on_rounded),
+                    _buildAddressAutoComplete(),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -411,6 +457,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddressAutoComplete() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: GooglePlacesAutoCompleteTextFormField(
+        textEditingController: addressController,
+        googleAPIKey: "AIzaSyA_-00rdj9W8AMt-ybpDpvJbnPhMHt2MVI",
+        debounceTime: 800,
+        countries: const ["fr"],
+        fetchCoordinates: true,
+        style: const TextStyle(color: Colors.white),
+        decoration: _goldDecoration('Adresse', Icons.location_on_rounded),
+        onSuggestionClicked: (prediction) {
+          addressController.text = prediction.description ?? '';
+          FocusScope.of(context).unfocus();
+        },
+        onChanged: (value) => addressController.text = value,
+        onPlaceDetailsWithCoordinatesReceived: (_) {},
+        validator: (_) => null, // ✅ optionnel
+        overlayContainerBuilder: (child) => Material(
+          elevation: 2.0,
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(12),
+          child: child,
         ),
       ),
     );
@@ -562,6 +636,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     String label,
     IconData icon, {
     bool enabled = true,
+    bool requiredField = true, // ✅ NEW
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -569,28 +644,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         controller: controller,
         enabled: enabled,
         style: const TextStyle(color: Colors.white),
-        validator: (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null,
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: AppColors.gold),
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.white70),
-          filled: true,
-          fillColor: Colors.white.withOpacity(.03),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: Colors.white.withOpacity(.12)),
-          ),
-          disabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: Colors.white.withOpacity(.08)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(14)),
-            borderSide: BorderSide(color: AppColors.gold, width: 1.4),
-          ),
-        ),
+        validator: requiredField
+            ? (v) => v == null || v.trim().isEmpty ? 'Champ requis' : null
+            : (_) => null, // ✅ optionnel
+        decoration: _goldDecoration(label, icon, enabled: enabled),
+      ),
+    );
+  }
+
+  InputDecoration _goldDecoration(String label, IconData icon,
+      {bool enabled = true}) {
+    return InputDecoration(
+      prefixIcon: Icon(icon, color: AppColors.gold),
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white70),
+      filled: true,
+      fillColor: Colors.white.withOpacity(.03),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.white.withOpacity(.12)),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.white.withOpacity(.08)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: AppColors.gold, width: 1.4),
       ),
     );
   }

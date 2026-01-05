@@ -55,6 +55,22 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     );
   }
 
+  // ✅ Libère le verrou si une erreur survient après lock (évite "déjà connecté" fantôme)
+  Future<void> _releaseDriverSession(String uid) async {
+    try {
+      await FirebaseFirestore.instance.collection('drivers').doc(uid).set(
+        {
+          'isLoggedIn': false,
+          'lastActive': FieldValue.serverTimestamp(),
+          'sessionId': FieldValue.delete(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (_) {
+      // Ne jamais casser l'UX si Firestore échoue ici.
+    }
+  }
+
   Future<void> _handleLogin() async {
     FocusScope.of(context).unfocus();
     final email = emailController.text.trim();
@@ -66,6 +82,9 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       return;
     }
 
+    String? uid;
+    bool sessionLocked = false;
+
     try {
       setState(() => _isLoading = true);
 
@@ -76,88 +95,115 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       await user?.reload();
       final refreshedUser = FirebaseAuth.instance.currentUser;
 
-      if (refreshedUser != null) {
-        if (!refreshedUser.emailVerified) {
-          _showPremiumError(
-              "Veuillez confirmer votre adresse e-mail avant de vous connecter.");
-          return;
-        }
-
-        final doc = await FirebaseFirestore.instance
-            .collection('drivers')
-            .doc(refreshedUser.uid)
-            .get();
-
-        if (!doc.exists) {
-          _showPremiumError("Aucun profil conducteur associé à ce compte.");
-          return;
-        }
-
-        final driverData = doc.data()!;
-        final role = driverData['role'];
-        if (role != 'driver') {
-          _showPremiumError(
-              "Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
-          await FirebaseAuth.instance.signOut();
-          return;
-        }
-
-        // 🔒 Vérification de session unique (corrigée)
-        final driverRef = FirebaseFirestore.instance
-            .collection('drivers')
-            .doc(refreshedUser.uid);
-
-        const sessionGrace = Duration(minutes: 10);
-        final now = DateTime.now();
-
-        final allowed =
-            await FirebaseFirestore.instance.runTransaction<bool>((tx) async {
-          final snap = await tx.get(driverRef);
-          final data = snap.data() ?? {};
-
-          final isLoggedIn = (data['isLoggedIn'] as bool?) ?? false;
-          final lastActiveTs = data['lastActive'] as Timestamp?;
-          final lastActive = lastActiveTs?.toDate();
-
-          final hasRecentSession = isLoggedIn &&
-              lastActive != null &&
-              now.difference(lastActive) < sessionGrace;
-
-          if (hasRecentSession) {
-            return false; // session déjà active
-          }
-
-          final sessionId = now.millisecondsSinceEpoch.toString();
-          tx.set(
-            driverRef,
-            {
-              'isLoggedIn': true,
-              'lastActive': FieldValue.serverTimestamp(),
-              'sessionId': sessionId,
-            },
-            SetOptions(merge: true),
-          );
-
-          return true;
-        });
-
-        if (!allowed) {
-          _showPremiumError(
-            "Ce compte chauffeur est déjà connecté sur un autre appareil.\n"
-            "Réessaie dans quelques minutes ou déconnecte l’autre session.",
-          );
-          try {
-            await FirebaseAuth.instance.signOut();
-          } catch (_) {}
-          return;
-        }
-
-        // ✅ Stockage du conducteur en mémoire locale (Provider)
-        final driver = DriverUser.fromMap(driverData, uid: doc.id);
-        Provider.of<DriverProvider>(context, listen: false).setUser(driver);
-
-        context.go('/driver-home');
+      if (refreshedUser == null) {
+        _showPremiumError("Connexion impossible. Veuillez réessayer.");
+        return;
       }
+
+      uid = refreshedUser.uid;
+
+      // ✅ Important : si email non vérifié, on sort ET on signOut (pas de session résiduelle)
+      if (!refreshedUser.emailVerified) {
+        _showPremiumError(
+            "Veuillez confirmer votre adresse e-mail avant de vous connecter.");
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+        return;
+      }
+
+      final doc =
+          await FirebaseFirestore.instance.collection('drivers').doc(uid).get();
+
+      if (!doc.exists) {
+        _showPremiumError("Aucun profil conducteur associé à ce compte.");
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+        return;
+      }
+
+      final driverData = doc.data()!;
+      final role = driverData['role'];
+      if (role != 'driver') {
+        _showPremiumError(
+            "Ce compte n'est pas autorisé à accéder à l'espace conducteur.");
+        await FirebaseAuth.instance.signOut();
+        return;
+      }
+
+      // ✅ 1) Crée le modèle AVANT le lock (évite lock fantôme si un champ manque / crash ailleurs)
+      late final DriverUser driver;
+      try {
+        driver = DriverUser.fromMap(driverData, uid: doc.id);
+      } catch (e) {
+        debugPrint("❌ DriverUser.fromMap error: $e");
+        _showPremiumError(
+          "Votre profil conducteur est incomplet.\n"
+          "Veuillez compléter votre profil.",
+        );
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+        return;
+      }
+
+      // 🔒 2) Vérification de session unique (inchangée côté UX, sécurisée côté flux)
+      final driverRef =
+          FirebaseFirestore.instance.collection('drivers').doc(uid);
+
+      const sessionGrace = Duration(minutes: 10);
+      final now = DateTime.now();
+
+      final allowed =
+          await FirebaseFirestore.instance.runTransaction<bool>((tx) async {
+        final snap = await tx.get(driverRef);
+        final data = snap.data() ?? {};
+
+        final isLoggedIn = (data['isLoggedIn'] as bool?) ?? false;
+        final lastActiveTs = data['lastActive'] as Timestamp?;
+        final lastActive = lastActiveTs?.toDate();
+
+        final hasRecentSession = isLoggedIn &&
+            lastActive != null &&
+            now.difference(lastActive) < sessionGrace;
+
+        if (hasRecentSession) {
+          return false; // session déjà active
+        }
+
+        final sessionId = now.millisecondsSinceEpoch.toString();
+        tx.set(
+          driverRef,
+          {
+            'isLoggedIn': true,
+            'lastActive': FieldValue.serverTimestamp(),
+            'sessionId': sessionId,
+          },
+          SetOptions(merge: true),
+        );
+
+        return true;
+      });
+
+      if (!allowed) {
+        _showPremiumError(
+          "Ce compte chauffeur est déjà connecté sur un autre appareil.\n"
+          "Réessaie dans quelques minutes ou déconnecte l’autre session.",
+        );
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+        return;
+      }
+
+      sessionLocked = true;
+
+      // ✅ Stockage du conducteur en mémoire locale (Provider)
+      Provider.of<DriverProvider>(context, listen: false).setUser(driver);
+
+      // ✅ Navigation
+      context.go('/driver-home');
     } on FirebaseAuthException catch (e) {
       final message = switch (e.code) {
         'user-not-found' => "Aucun compte trouvé avec cet e-mail.",
@@ -178,6 +224,12 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
     } catch (e, stack) {
       debugPrint("🔥 Type: ${e.runtimeType} | Erreur: $e");
       debugPrintStack(stackTrace: stack);
+
+      // ✅ Rollback : si on a locké la session puis crash, on libère le verrou
+      if (uid != null && sessionLocked) {
+        await _releaseDriverSession(uid!);
+      }
+
       _showPremiumError(
           "Une erreur inattendue s’est produite. Veuillez réessayer.");
     } finally {
@@ -298,8 +350,10 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                         padding: EdgeInsets.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: const Text("Mot de passe oublié ?",
-                          style: TextStyle(fontSize: 14)),
+                      child: const Text(
+                        "Mot de passe oublié ?",
+                        style: TextStyle(fontSize: 14),
+                      ),
                     ),
                   ),
 

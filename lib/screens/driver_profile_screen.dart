@@ -911,11 +911,11 @@ class DriverProfileScreen extends StatelessWidget {
                       const SizedBox(height: 6),
                       _infoLine(
                           icon: Icons.email_rounded,
-                          value: user.email,
+                          value: user.email ?? '',
                           color: Colors.white70),
                       _infoLine(
                           icon: Icons.phone_android_rounded,
-                          value: user.phone,
+                          value: user.phone ?? '',
                           color: AppColors.deepGold),
                       if (user.address?.isNotEmpty ?? false)
                         _infoLine(

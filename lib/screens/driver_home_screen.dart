@@ -26,6 +26,19 @@ String _formatEuroFr(double v) =>
     NumberFormat.currency(locale: 'fr_FR', symbol: '€', decimalDigits: 2)
         .format(v); // ex: 604,01 €
 
+const double kPlatformCommissionRate = 0.40;
+const double kDriverNetRate = 1.0 - kPlatformCommissionRate; // 0.60
+
+double _driverNetFromGross(num? gross) {
+  final g = (gross ?? 0).toDouble();
+  return g * kDriverNetRate;
+}
+
+double _grossFromReservation(Map<String, dynamic> data) {
+  final p = (data['price'] ?? data['amount'] ?? data['fare']) as num?;
+  return (p ?? 0).toDouble();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Lux UI – helpers visuels premium (sans impact logique)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -433,7 +446,9 @@ class Testimonial {
 
 Future<Map<int, double>> fetchMonthlyRevenues() async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) throw Exception("Utilisateur non connecté");
+  if (uid == null) {
+    throw Exception("Utilisateur non connecté");
+  }
 
   final snapshot = await FirebaseFirestore.instance
       .collection('reservations')
@@ -442,16 +457,27 @@ Future<Map<int, double>> fetchMonthlyRevenues() async {
       .get();
 
   final Map<int, double> revenues = {};
+
   for (final doc in snapshot.docs) {
     final data = doc.data();
-    final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-    final timestamp = data['timestamp'] as Timestamp?;
-    if (timestamp == null) continue;
 
-    final date = timestamp.toDate();
-    final month = date.month; // 1..12
-    revenues[month] = (revenues[month] ?? 0.0) + price;
+    // ✅ 1) Prix BRUT payé par le passager
+    final double gross = _grossFromReservation(data);
+
+    // ✅ 2) Gain NET conducteur = BRUT × 0,60 (−40% commission)
+    final double net = _driverNetFromGross(gross);
+
+    // ✅ 3) Horodatage robuste (priorité à la date de fin)
+    final ts = data['completedAt'] ?? data['timestamp'] ?? data['createdAt'];
+    if (ts is! Timestamp) continue;
+
+    final DateTime date = ts.toDate();
+    final int month = date.month; // 1..12
+
+    // ✅ 4) Addition du NET (jamais le brut)
+    revenues[month] = (revenues[month] ?? 0.0) + net;
   }
+
   return revenues;
 }
 
@@ -1315,41 +1341,43 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    // bornes locales (minuit -> minuit+1)
+    // Bornes locales (minuit -> minuit+1)
     final now = DateTime.now();
     final start = _startOfDay(now);
     final end = _startOfNextDay(now);
 
-    _todayEarningsSub?.cancel();
+    await _todayEarningsSub?.cancel();
 
     _todayEarningsSub = FirebaseFirestore.instance
         .collection('reservations')
         .where('driverId', isEqualTo: uid)
-        .where('status', isEqualTo: 'Terminée') // plus fiable
+        .where('status', isEqualTo: 'Terminée')
         .snapshots()
         .listen((snap) {
-      double sum = 0.0;
+      double sumNet = 0.0;
 
-      for (final d in snap.docs) {
-        final data = d.data();
+      for (final doc in snap.docs) {
+        final data = doc.data();
 
-        // 1) choisir le bon champ date
-        final ts = (data['completedAt'] ??
-            data['timestamp'] ??
-            data['createdAt']) as Timestamp?;
-        if (ts == null) continue;
+        // ✅ 1) Champ date (priorité à completedAt)
+        final dynamic tsDyn =
+            data['completedAt'] ?? data['timestamp'] ?? data['createdAt'];
+        if (tsDyn is! Timestamp) continue;
 
-        final dt = ts
-            .toDate(); // UTC → converti automatiquement en DateTime local pour les comparaisons
+        final dt = tsDyn.toDate();
         if (dt.isBefore(start) || !dt.isBefore(end))
-          continue; // garder aujourd'hui
+          continue; // uniquement aujourd'hui
 
-        // 2) choisir le bon champ prix
-        final price = (data['price'] ?? data['amount'] ?? data['fare']) as num?;
-        sum += (price?.toDouble() ?? 0.0);
+        // ✅ 2) Gain NET conducteur = brut × 0,60
+        final gross = _grossFromReservation(data);
+        final net = _driverNetFromGross(gross);
+
+        sumNet += net;
       }
 
-      if (mounted) setState(() => _todayEarnings = sum);
+      if (mounted) {
+        setState(() => _todayEarnings = sumNet);
+      }
     }, onError: (e) {
       debugPrint('❌ todayEarnings stream: $e');
     });
@@ -1808,13 +1836,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                     final doc = reservations[index];
                                     final data =
                                         doc.data() as Map<String, dynamic>;
+
                                     final from =
                                         (data['from'] ?? '').toString();
                                     final to = (data['to'] ?? '').toString();
-                                    final price =
-                                        ((data['price'] as num?)?.toDouble() ??
-                                                0)
-                                            .toStringAsFixed(2);
+
+                                    // ✅ GAIN NET conducteur (×0,60) — PAS DE TÂTONNAGE
+                                    final gross = _grossFromReservation(data);
+                                    final net = _driverNetFromGross(gross);
 
                                     final date =
                                         (data['timestamp'] as Timestamp?)
@@ -1833,9 +1862,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                                     return FadeInUp(
                                       from: 10,
-                                      duration: const Duration(
-                                        milliseconds: 280,
-                                      ),
+                                      duration:
+                                          const Duration(milliseconds: 280),
                                       child: Stack(
                                         children: [
                                           // halo doux
@@ -1844,9 +1872,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                               child: Container(
                                                 decoration: BoxDecoration(
                                                   borderRadius:
-                                                      BorderRadius.circular(
-                                                    18,
-                                                  ),
+                                                      BorderRadius.circular(18),
                                                   boxShadow: [
                                                     BoxShadow(
                                                       color: Lux.gold1
@@ -1917,19 +1943,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
                                                 const SizedBox(height: 10),
 
-                                                // Ligne 2 : chips (distance, prix, heure)
+                                                // ✅ Ligne 2 : chips (GAIN NET + distance + heure)
                                                 Wrap(
                                                   spacing: 8,
                                                   runSpacing: 8,
                                                   children: [
+                                                    // ✅ Libellé explicite : Gain
+                                                    _goldPill(
+                                                      "Gain",
+                                                      icon: Icons
+                                                          .account_balance_wallet_rounded,
+                                                    ),
+                                                    // ✅ Montant NET conducteur
+                                                    _goldPill(
+                                                      "${net.toStringAsFixed(2)} €",
+                                                      icon: Icons.euro_rounded,
+                                                    ),
                                                     _goldPill(
                                                       "$distanceStr km",
                                                       icon: Icons
                                                           .straighten_rounded,
-                                                    ),
-                                                    _goldPill(
-                                                      "$price €",
-                                                      icon: Icons.euro_rounded,
                                                     ),
                                                     _goldPill(
                                                       DateFormat("HH:mm")
@@ -2206,13 +2239,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // Tentative tri serveur si index (meilleur perf)
+      // Tentative tri serveur si index (meilleure perf)
       QuerySnapshot snapshot;
       try {
         snapshot = await FirebaseFirestore.instance
             .collection('reservations')
             .where('driverId', isEqualTo: uid)
-            .orderBy('timestamp', descending: true) // ✅ tri côté serveur
+            .orderBy('timestamp', descending: true)
             .get();
       } on FirebaseException {
         // Fallback si index manquant
@@ -2224,18 +2257,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
       final trips = snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        final ts = data['timestamp'] as Timestamp?;
+
+        // ✅ Horodatage robuste
+        final ts =
+            data['completedAt'] ?? data['timestamp'] ?? data['createdAt'];
+        final DateTime departure = (ts is Timestamp)
+            ? ts.toDate()
+            : DateTime.fromMillisecondsSinceEpoch(0);
+
+        // ✅ Prix BRUT → Gain NET conducteur
+        final double gross = _grossFromReservation(data);
+        final double net = _driverNetFromGross(gross);
+
         return Trip(
           id: doc.id,
           from: (data['from'] ?? '').toString(),
           to: (data['to'] ?? '').toString(),
-          departureTime: (ts ?? Timestamp(0, 0)).toDate(), // null-safe
-          price: (data['price'] as num?)?.toDouble() ?? 0.0,
+          departureTime: departure,
+          price: net, // ✅ TOUJOURS LE NET
           status: (data['status'] ?? '').toString(),
         );
       }).toList();
 
-      // Tri local (garantie en cas de fallback)
+      // Tri local de sécurité
       trips.sort((a, b) => b.departureTime.compareTo(a.departureTime));
       return trips;
     } catch (e) {
@@ -2566,27 +2610,38 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           child: Column(
                             children: _nearbyReservations.map((doc) {
                               final data = doc.data() as Map<String, dynamic>;
-                              final from = data['from'] ?? '';
-                              final to = data['to'] ?? '';
-                              final priceNum =
-                                  (data['price'] as num?)?.toDouble();
-                              final price = priceNum != null
-                                  ? priceNum.toStringAsFixed(2)
-                                  : 'N/A';
+
+                              final from = (data['from'] ?? '').toString();
+                              final to = (data['to'] ?? '').toString();
+
+                              // ✅ BRUT + NET conducteur
+                              final gross = _grossFromReservation(data);
+                              final net = _driverNetFromGross(gross);
+
                               final distance =
                                   (data['distance'] as num?)?.toDouble();
                               final distanceStr = distance != null
                                   ? distance.toStringAsFixed(1)
                                   : '?';
-                              final date =
-                                  (data['timestamp'] as Timestamp).toDate();
+
+                              // ✅ timestamp null-safe (si un doc a un champ manquant)
+                              final tsDyn =
+                                  data['timestamp'] ?? data['createdAt'];
+                              final date = (tsDyn is Timestamp)
+                                  ? tsDyn.toDate()
+                                  : DateTime.now();
 
                               final now = DateTime.now();
                               final diff = date.difference(now);
-                              final timeBefore = diff.inMinutes < 60
-                                  ? "dans ${diff.inMinutes} min"
-                                  : "dans ${diff.inHours} h";
-                              final isUrgent = diff.inMinutes <= 3;
+
+                              final timeBefore = diff.isNegative
+                                  ? "déjà passé"
+                                  : (diff.inMinutes < 60
+                                      ? "dans ${diff.inMinutes} min"
+                                      : "dans ${diff.inHours} h");
+
+                              final isUrgent =
+                                  !diff.isNegative && diff.inMinutes <= 3;
 
                               return FadeInUp(
                                 duration: const Duration(milliseconds: 400),
@@ -2597,8 +2652,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                     color: const Color(0xFF121212),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                        color: AppColors.gold.withOpacity(0.4),
-                                        width: 1.2),
+                                      color: AppColors.gold.withOpacity(0.4),
+                                      width: 1.2,
+                                    ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: AppColors.gold.withOpacity(0.08),
@@ -2616,55 +2672,72 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                           const Icon(Icons.route,
                                               color: AppColors.gold, size: 18),
                                           const SizedBox(width: 6),
-                                          const Text("Trajet",
-                                              style: TextStyle(
-                                                  color: AppColors.gold,
-                                                  fontWeight: FontWeight.bold)),
+                                          const Text(
+                                            "Trajet",
+                                            style: TextStyle(
+                                              color: AppColors.gold,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                           const Spacer(),
                                           Lux.countdownChip(diff,
                                               urgent: isUrgent),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
-                                      Text("$from ➜ $to",
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600)),
+                                      Text(
+                                        "$from ➜ $to",
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                                       const SizedBox(height: 12),
+
                                       Row(
                                         children: [
                                           const Icon(Icons.schedule,
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
                                           Text(
-                                              "Départ : ${date.toLocal().toString().split('.').first} ($timeBefore)",
-                                              style: const TextStyle(
-                                                  color: Colors.white70)),
+                                            "Départ : ${date.toLocal().toString().split('.').first} ($timeBefore)",
+                                            style: const TextStyle(
+                                                color: Colors.white70),
+                                          ),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
+
                                       Row(
                                         children: [
                                           const Icon(Icons.straighten,
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
-                                          Text("Distance : $distanceStr km",
-                                              style: const TextStyle(
-                                                  color: Colors.white70)),
+                                          Text(
+                                            "Distance : $distanceStr km",
+                                            style: const TextStyle(
+                                                color: Colors.white70),
+                                          ),
                                         ],
                                       ),
                                       const SizedBox(height: 6),
+
+                                      // ✅ Affichage NET conducteur (et libellé explicite)
                                       Row(
                                         children: [
-                                          const Icon(Icons.attach_money,
+                                          const Icon(Icons.euro_rounded,
                                               color: Colors.white54, size: 16),
                                           const SizedBox(width: 6),
-                                          Text("Prix : $price €",
-                                              style: const TextStyle(
-                                                  color: Colors.white70)),
+                                          Text(
+                                            "Gain : ${net.toStringAsFixed(2)} €",
+                                            style: const TextStyle(
+                                                color: Colors.white70),
+                                          ),
+                                          const SizedBox(width: 8),
                                         ],
                                       ),
+
                                       const SizedBox(height: 16),
                                       Center(
                                         child: ElevatedButton.icon(
@@ -2693,8 +2766,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                             minimumSize:
                                                 const Size.fromHeight(48),
                                             shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(30)),
+                                              borderRadius:
+                                                  BorderRadius.circular(30),
+                                            ),
                                             textStyle: const TextStyle(
                                                 fontWeight: FontWeight.w600),
                                           ),
@@ -4177,7 +4251,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   // ── Petits helpers de formatage ──────────────────────────────────────────
-
   Widget _tripCard(BuildContext context, Trip trip) {
     final isSmall = MediaQuery.of(context).size.width < 380;
 
@@ -4213,10 +4286,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     Text(
                       "Trajet",
                       style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: .6),
+                        fontSize: 14,
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .6,
+                      ),
                     ),
                   ],
                 ),
@@ -4238,16 +4312,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ),
                   ],
                 ),
+
+                // ✅ GAIN NET (trip.price est déjà NET grâce à fetchDriverTrips corrigé)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.euro, color: Colors.white60, size: 14),
+                    const Icon(Icons.euro_rounded,
+                        color: Colors.white60, size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      trip.price.toStringAsFixed(2),
+                      _formatEuroFr(trip.price),
                       overflow: TextOverflow.ellipsis,
                       style:
                           const TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      "gain",
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .2,
+                      ),
                     ),
                   ],
                 ),
@@ -4262,25 +4349,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   child: RichText(
                     text: TextSpan(
                       style: TextStyle(
-                          fontSize: isSmall ? 15 : 16,
-                          color: Colors.white,
-                          height: 1.35),
+                        fontSize: isSmall ? 15 : 16,
+                        color: Colors.white,
+                        height: 1.35,
+                      ),
                       children: [
                         TextSpan(
-                            text: trip.from,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFFFD700))),
+                          text: trip.from,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFFD700),
+                          ),
+                        ),
                         const TextSpan(
-                            text: "  ➜  ",
-                            style: TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w500)),
+                          text: "  ➜  ",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         TextSpan(
-                            text: trip.to,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFFFD700))),
+                          text: trip.to,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFFFD700),
+                          ),
+                        ),
                       ],
                     ),
                     maxLines: 3,

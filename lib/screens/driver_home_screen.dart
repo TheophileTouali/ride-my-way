@@ -1438,26 +1438,58 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       /// 🔄 Récupération des réservations EN ATTENTE
       final newDocsRaw = await _fetchNearbyPendingReservations();
 
-      /// ❌ Filtrer les réservations expirées (> 30 minutes)
+      /// ✅ Helper local : récupère l'heure de "course" (priorité departureTime)
+      DateTime? _getCourseDate(Map<String, dynamic> data) {
+        final ts = data['departureTime'] ?? data['timestamp'];
+        if (ts is Timestamp) return ts.toDate();
+        return null;
+      }
+
+      /// ❌ Filtrer :
+      /// 1) les réservations expirées (>30 min sur createdAt/timestamp selon ta règle)
+      /// 2) les courses déjà passées (heure de course dépassée)
       final newDocs = newDocsRaw.where((d) {
         final map = d.data() as Map<String, dynamic>;
-        return !_isExpiredReservation(map);
+
+        // 1) expire business rule
+        if (_isExpiredReservation(map)) return false;
+        if (_isPastCourse(map)) return false;
+
+        // 2) course passée : on la retire de la liste
+        final courseDate = _getCourseDate(map);
+        if (courseDate != null && courseDate.isBefore(DateTime.now())) {
+          return false;
+        }
+
+        return true;
       }).toList();
 
-      /// ✅ Maj UI
-      final hasNew =
-          newDocs.isNotEmpty && newDocs.length != _nearbyReservations.length;
+      /// ✅ Set des IDs courants (on le calcule AVANT le setState)
+      final newIds = newDocs.map((d) => d.id).toSet();
+      final newlyAdded = newIds.difference(_nearbyIds);
 
+      /// ✅ Détecter si une course "arrive" (métier) : départ dans ≤ 3 min
+      final bool hasArrivingSoon = newDocs.any((d) {
+        final data = d.data() as Map<String, dynamic>;
+
+        final courseDate = _getCourseDate(data);
+        if (courseDate == null) return false;
+
+        final diff = courseDate.difference(DateTime.now());
+        return !diff.isNegative && diff.inMinutes <= 3;
+      });
+
+      /// ✅ Nouveau comportement : pulse si nouveaux IDs OU course arrivante
+      final hasNew =
+          newDocs.isNotEmpty && (newlyAdded.isNotEmpty || hasArrivingSoon);
+
+      /// ✅ Maj UI
       if (mounted) {
         setState(() {
           _hasNewNearbyCourse = hasNew;
           _nearbyReservations = newDocs;
         });
       }
-
-      /// ✅ Set des IDs courants
-      final newIds = newDocs.map((d) => d.id).toSet();
-      final newlyAdded = newIds.difference(_nearbyIds);
 
       /// ✅ 1) nouvelles courses → heads-up + sonnerie
       if (newlyAdded.isNotEmpty) {
@@ -1495,6 +1527,29 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       /// ✅ Mémo IDs
       _nearbyIds = newIds;
     });
+  }
+
+  DateTime _getReservationCourseDate(Map<String, dynamic> data) {
+    // 👉 On prend la date de COURSE (priorité)
+    final tsDyn = data['departureTime'] ?? data['timestamp'];
+    if (tsDyn is Timestamp) return tsDyn.toDate();
+
+    // fallback (si vraiment rien)
+    final createdDyn = data['createdAt'];
+    if (createdDyn is Timestamp) return createdDyn.toDate();
+
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+// ❌ Course réellement dépassée = heure de course + 3 minutes
+  bool _isPastCourse(Map<String, dynamic> data) {
+    final courseDate = _getReservationCourseDate(data);
+    if (courseDate == null) return false;
+
+    // ⏱ Tolérance métier : 3 minutes après l’heure prévue
+    final expiry = courseDate.add(const Duration(minutes: 3));
+
+    return DateTime.now().isAfter(expiry);
   }
 
   // ── Normalisation / compat véhicule ──────────────────────────────────────────
@@ -1671,23 +1726,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void showNearbyCoursesDialog(BuildContext context) {
-    // Helper local : une course "En attente" est expirée si créée il y a ≥ 30 min
+    // Helper local : une course "En attente" est expirée si le départ est passé
     bool _isExpiredReservation(Map<String, dynamic> data) {
       final status = (data['status'] ?? '').toString();
 
       // Seules les réservations "En attente" peuvent expirer
       if (status != 'En attente') return false;
 
-      // On regarde l’horodatage de création
-      final ts = (data['createdAt'] ?? data['timestamp']);
-      if (ts is! Timestamp) return false; // si pas d’horodatage → n’expire pas
+      // ⬇️ PRIORITÉ AU TEMPS DE DÉPART (logique métier)
+      final ts =
+          data['departureTime'] ?? data['timestamp'] ?? data['createdAt'];
 
-      final created = ts.toDate();
+      if (ts is! Timestamp) return false;
 
-      // Expire si + de 30 minutes
-      return DateTime.now().isAfter(
-        created.add(const Duration(minutes: 30)),
-      );
+      final date = ts.toDate();
+
+      // Expirée uniquement si le départ est passé
+      return DateTime.now().isAfter(date);
     }
 
     showGeneralDialog(
@@ -2306,6 +2361,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final w = MediaQuery.of(context).size.width;
     final small = w < 380; // breakpoint mobile étroit
 
+    final validNearby = _nearbyReservations.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final tsDyn =
+          data['departureTime'] ?? data['timestamp'] ?? data['createdAt'];
+      if (tsDyn is! Timestamp) return true;
+      return tsDyn.toDate().isAfter(DateTime.now());
+    }).toList();
+
     return Scaffold(
       backgroundColor: AppColors.black,
       appBar: AppBar(
@@ -2459,64 +2522,58 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(height: 32),
             _buildWeatherTrafficCard(),
 
-            _infoCard(
-              title: "Courses proches à accepter 🛰️",
-              child: Column(
-                children: _nearbyReservations.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
+            if (validNearby.isNotEmpty)
+              _infoCard(
+                title: "Courses proches à accepter 🛰️",
+                child: Column(
+                  children: validNearby.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                  final from = (data['from'] ?? '').toString();
-                  final to = (data['to'] ?? '').toString();
+                    final from = (data['from'] ?? '').toString();
+                    final to = (data['to'] ?? '').toString();
 
-                  // ✅ BRUT + NET conducteur
-                  final gross = _grossFromReservation(data);
-                  final net = _driverNetFromGross(gross);
+                    final gross = _grossFromReservation(data);
+                    final net = _driverNetFromGross(gross);
 
-                  final distance = (data['distance'] as num?)?.toDouble();
-                  final distanceStr =
-                      distance != null ? distance.toStringAsFixed(1) : '?';
+                    final distance = (data['distance'] as num?)?.toDouble();
+                    final distanceStr =
+                        distance != null ? distance.toStringAsFixed(1) : '?';
 
-                  // ✅ timestamp null-safe
-                  final tsDyn = data['departureTime'] ??
-                      data['timestamp'] ??
-                      data['createdAt'];
-                  final date =
-                      (tsDyn is Timestamp) ? tsDyn.toDate() : DateTime.now();
+                    final tsDyn = data['departureTime'] ??
+                        data['timestamp'] ??
+                        data['createdAt'];
+                    final date =
+                        (tsDyn is Timestamp) ? tsDyn.toDate() : DateTime.now();
 
-                  final now = DateTime.now();
-                  final diff = date.difference(now);
+                    final diff = date.difference(DateTime.now());
 
-                  final timeBefore = diff.isNegative
-                      ? "déjà passé"
-                      : (diff.inMinutes < 60
-                          ? "dans ${diff.inMinutes} min"
-                          : "dans ${diff.inHours} h");
+                    final timeBefore = diff.isNegative
+                        ? "déjà passé"
+                        : (diff.inMinutes < 60
+                            ? "dans ${diff.inMinutes} min"
+                            : "dans ${diff.inHours} h");
 
-                  final isUrgent = !diff.isNegative && diff.inMinutes <= 3;
+                    final isUrgent = !diff.isNegative && diff.inMinutes <= 3;
 
-                  return FadeInUp(
-                    duration: const Duration(milliseconds: 420),
-                    child: _NearbyCourseCardPremium(
-                      from: from,
-                      to: to,
-                      date: date,
-                      diff: diff,
-                      timeBefore: timeBefore,
-                      isUrgent: isUrgent,
-                      distanceStr: distanceStr,
-                      net: net,
-                      onAccept: () async {
-                        try {
+                    return FadeInUp(
+                      duration: const Duration(milliseconds: 420),
+                      child: _NearbyCourseCardPremium(
+                        from: from,
+                        to: to,
+                        date: date,
+                        diff: diff,
+                        timeBefore: timeBefore,
+                        isUrgent: isUrgent,
+                        distanceStr: distanceStr,
+                        net: net,
+                        onAccept: () async {
                           await _acceptReservation(doc.id);
-                        } catch (e) {
-                          debugPrint("❌ Erreur acceptReservation : $e");
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
-            ),
 
             const SizedBox(height: 24),
 

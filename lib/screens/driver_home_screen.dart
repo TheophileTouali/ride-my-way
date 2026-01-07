@@ -1734,17 +1734,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                         ],
                       ),
 
-                      // ────────────── CONTENU ──────────────
+// ────────────── CONTENU (GENIUS) ──────────────
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Header : titre + bouton fermer
+                          // Header premium : titre + LIVE chip + close
                           Row(
                             children: [
                               Expanded(
-                                child: Lux.goldGradientText(
-                                  "Courses proches ✨",
-                                  fs: 20,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Lux.goldGradientText("Courses proches",
+                                            fs: 20),
+                                        const SizedBox(width: 10),
+                                        const _LivePill(), // chip “LIVE”
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Près de vous • compatibles avec votre véhicule",
+                                      style: Lux.goldLabel(11)
+                                          .copyWith(color: Colors.white54),
+                                    ),
+                                  ],
                                 ),
                               ),
                               InkWell(
@@ -1757,295 +1772,141 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                     shape: BoxShape.circle,
                                     color: Colors.white.withOpacity(.06),
                                     border: Border.all(color: Colors.white10),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(.35),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white70,
-                                    size: 18,
-                                  ),
+                                  child: const Icon(Icons.close,
+                                      color: Colors.white70, size: 18),
                                 ),
                               ),
                             ],
                           ),
 
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              "Près de vous, compatibles avec votre véhicule",
-                              style: Lux.goldLabel(11)
-                                  .copyWith(color: Colors.white54),
-                            ),
-                          ),
+                          const SizedBox(height: 12),
+                          _hairline(),
 
-                          const SizedBox(height: 10),
-                          _glassDivider(),
+                          const SizedBox(height: 12),
 
-                          // Liste des courses (hauteur fixe → plus de Expanded)
+                          // Liste premium (hauteur fixe)
                           SizedBox(
-                            height: 380, // ajuste si besoin (320–420)
+                            height: 410, // + un peu d'air, très agréable
                             child: FutureBuilder<List<DocumentSnapshot>>(
                               future: _fetchNearbyPendingReservations(),
                               builder: (context, snapshot) {
                                 if (!snapshot.hasData) {
                                   return const Center(
                                     child: CircularProgressIndicator(
-                                      color: AppColors.gold,
-                                    ),
+                                        color: AppColors.gold),
                                   );
                                 }
 
                                 // Filtre local anti-expiration
                                 final reservations = snapshot.data!
-                                    .where(
-                                      (doc) => !_isExpiredReservation(
-                                        doc.data() as Map<String, dynamic>,
-                                      ),
-                                    )
+                                    .where((doc) => !_isExpiredReservation(
+                                        doc.data() as Map<String, dynamic>))
                                     .toList();
 
                                 if (reservations.isEmpty) {
-                                  return Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: const [
-                                        Icon(
-                                          Icons.inbox_rounded,
-                                          size: 36,
-                                          color: Colors.white24,
+                                  return const _EmptyNearbyState();
+                                }
+
+                                // Petit bandeau compteur + hint “tap to accept”
+                                return Column(
+                                  children: [
+                                    Row(
+                                      children: [
+                                        _MetaPill(
+                                          icon: Icons.near_me_rounded,
+                                          text:
+                                              "${reservations.length} course${reservations.length > 1 ? 's' : ''} dispo",
                                         ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          "Aucune course disponible à proximité",
-                                          style: TextStyle(
-                                            color: Colors.white60,
+                                        const SizedBox(width: 10),
+                                        const Expanded(
+                                          child: Text(
+                                            "Choisissez une course et acceptez en 1 clic",
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                color: Colors.white38,
+                                                fontSize: 12.5),
                                           ),
                                         ),
                                       ],
                                     ),
-                                  );
-                                }
+                                    const SizedBox(height: 12),
+                                    Expanded(
+                                      child: ListView.separated(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 8),
+                                        itemCount: reservations.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 12),
+                                        itemBuilder: (context, index) {
+                                          final doc = reservations[index];
+                                          final data = doc.data()
+                                              as Map<String, dynamic>;
 
-                                return ListView.separated(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 6),
-                                  itemCount: reservations.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemBuilder: (context, index) {
-                                    final doc = reservations[index];
-                                    final data =
-                                        doc.data() as Map<String, dynamic>;
+                                          final from =
+                                              (data['from'] ?? '').toString();
+                                          final to =
+                                              (data['to'] ?? '').toString();
 
-                                    final from =
-                                        (data['from'] ?? '').toString();
-                                    final to = (data['to'] ?? '').toString();
+                                          // ✅ GAIN NET conducteur (×0,60)
+                                          final gross =
+                                              _grossFromReservation(data);
+                                          final net =
+                                              _driverNetFromGross(gross);
 
-                                    // ✅ GAIN NET conducteur (×0,60) — PAS DE TÂTONNAGE
-                                    final gross = _grossFromReservation(data);
-                                    final net = _driverNetFromGross(gross);
+                                          final date =
+                                              (data['timestamp'] as Timestamp?)
+                                                      ?.toDate() ??
+                                                  DateTime.now();
+                                          final distanceStr =
+                                              ((data['distance'] as num?)
+                                                          ?.toDouble())
+                                                      ?.toStringAsFixed(1) ??
+                                                  "?";
 
-                                    final date =
-                                        (data['timestamp'] as Timestamp?)
-                                                ?.toDate() ??
-                                            DateTime.now();
+                                          final duration =
+                                              date.difference(DateTime.now());
+                                          final isUrgent =
+                                              duration.inMinutes <= 3 &&
+                                                  !duration.isNegative;
 
-                                    final distanceStr =
-                                        ((data['distance'] as num?)?.toDouble())
-                                                ?.toStringAsFixed(1) ??
-                                            "?";
-
-                                    final duration =
-                                        date.difference(DateTime.now());
-                                    final isUrgent = duration.inMinutes <= 3 &&
-                                        !duration.isNegative;
-
-                                    return FadeInUp(
-                                      from: 10,
-                                      duration:
-                                          const Duration(milliseconds: 280),
-                                      child: Stack(
-                                        children: [
-                                          // halo doux
-                                          Positioned.fill(
-                                            child: IgnorePointer(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(18),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Lux.gold1
-                                                          .withOpacity(.08),
-                                                      blurRadius: 22,
-                                                      offset:
-                                                          const Offset(0, 12),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
+                                          return FadeInUp(
+                                            from: 10,
+                                            duration: const Duration(
+                                                milliseconds: 280),
+                                            child: _NearbyCourseTileGenius(
+                                              from: from,
+                                              to: to,
+                                              date: date,
+                                              duration: duration,
+                                              distanceStr: distanceStr,
+                                              net: net,
+                                              isUrgent: isUrgent,
+                                              onAccept: () async {
+                                                try {
+                                                  await _acceptReservation(
+                                                      doc.id);
+                                                  if (mounted)
+                                                    Navigator.of(context).pop();
+                                                } catch (e) {
+                                                  debugPrint(
+                                                      "❌ Erreur acceptReservation : $e");
+                                                }
+                                              },
                                             ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.all(14),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(18),
-                                              gradient: const LinearGradient(
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                                colors: [
-                                                  Color(0xFF111111),
-                                                  Color(0xFF171717),
-                                                ],
-                                              ),
-                                              border: Border.all(
-                                                color: Colors.white12,
-                                              ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                // Ligne 1 : itinéraire + countdown
-                                                Row(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.center,
-                                                  children: [
-                                                    const Icon(
-                                                      Icons.route,
-                                                      color: AppColors.gold,
-                                                      size: 18,
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: Text(
-                                                        "$from ➜ $to",
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          fontSize: 15.5,
-                                                          letterSpacing: .2,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Lux.countdownChip(
-                                                      duration,
-                                                      urgent: isUrgent,
-                                                    ),
-                                                  ],
-                                                ),
-
-                                                const SizedBox(height: 10),
-
-                                                // ✅ Ligne 2 : chips (GAIN NET + distance + heure)
-                                                Wrap(
-                                                  spacing: 8,
-                                                  runSpacing: 8,
-                                                  children: [
-                                                    // ✅ Libellé explicite : Gain
-                                                    _goldPill(
-                                                      "Gain",
-                                                      icon: Icons
-                                                          .account_balance_wallet_rounded,
-                                                    ),
-                                                    // ✅ Montant NET conducteur
-                                                    _goldPill(
-                                                      "${net.toStringAsFixed(2)} €",
-                                                      icon: Icons.euro_rounded,
-                                                    ),
-                                                    _goldPill(
-                                                      "$distanceStr km",
-                                                      icon: Icons
-                                                          .straighten_rounded,
-                                                    ),
-                                                    _goldPill(
-                                                      DateFormat("HH:mm")
-                                                          .format(date),
-                                                      icon: Icons
-                                                          .schedule_rounded,
-                                                    ),
-                                                  ],
-                                                ),
-
-                                                _glassDivider(),
-
-                                                // Bouton accepter
-                                                Lux.premiumButton(
-                                                  label: isUrgent
-                                                      ? "ACCEPTER IMMÉDIATEMENT"
-                                                      : "Accepter cette course",
-                                                  icon: isUrgent
-                                                      ? Icons.flash_on_rounded
-                                                      : Icons
-                                                          .check_circle_rounded,
-                                                  danger: isUrgent,
-                                                  onPressed: () async {
-                                                    try {
-                                                      await _acceptReservation(
-                                                        doc.id,
-                                                      );
-                                                      if (mounted) {
-                                                        Navigator.of(context)
-                                                            .pop();
-                                                      }
-                                                    } catch (e) {
-                                                      debugPrint(
-                                                        "❌ Erreur acceptReservation : $e",
-                                                      );
-                                                    }
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          // Ruban URGENT discret
-                                          if (isUrgent)
-                                            Positioned(
-                                              right: 10,
-                                              top: 10,
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                  horizontal: 8,
-                                                  vertical: 4,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      Colors.redAccent.shade400,
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.redAccent
-                                                          .withOpacity(.35),
-                                                      blurRadius: 10,
-                                                      offset:
-                                                          const Offset(0, 4),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: const Text(
-                                                  "URGENT",
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 10.5,
-                                                    letterSpacing: .8,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
+                                          );
+                                        },
                                       ),
-                                    );
-                                  },
+                                    ),
+                                  ],
                                 );
                               },
                             ),
@@ -2598,190 +2459,64 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             const SizedBox(height: 32),
             _buildWeatherTrafficCard(),
 
-            // Courses proches
-            const SizedBox(height: 24),
-            ...(_hasNewNearbyCourse
-                ? [Pulse(infinite: true, child: _buildNearbyButton())]
-                : _nearbyReservations.isEmpty
-                    ? [_buildNearbyButton()]
-                    : [
-                        _infoCard(
-                          title: "Courses proches à accepter 🛰️",
-                          child: Column(
-                            children: _nearbyReservations.map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
+            _infoCard(
+              title: "Courses proches à accepter 🛰️",
+              child: Column(
+                children: _nearbyReservations.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
 
-                              final from = (data['from'] ?? '').toString();
-                              final to = (data['to'] ?? '').toString();
+                  final from = (data['from'] ?? '').toString();
+                  final to = (data['to'] ?? '').toString();
 
-                              // ✅ BRUT + NET conducteur
-                              final gross = _grossFromReservation(data);
-                              final net = _driverNetFromGross(gross);
+                  // ✅ BRUT + NET conducteur
+                  final gross = _grossFromReservation(data);
+                  final net = _driverNetFromGross(gross);
 
-                              final distance =
-                                  (data['distance'] as num?)?.toDouble();
-                              final distanceStr = distance != null
-                                  ? distance.toStringAsFixed(1)
-                                  : '?';
+                  final distance = (data['distance'] as num?)?.toDouble();
+                  final distanceStr =
+                      distance != null ? distance.toStringAsFixed(1) : '?';
 
-                              // ✅ timestamp null-safe (si un doc a un champ manquant)
-                              final tsDyn =
-                                  data['timestamp'] ?? data['createdAt'];
-                              final date = (tsDyn is Timestamp)
-                                  ? tsDyn.toDate()
-                                  : DateTime.now();
+                  // ✅ timestamp null-safe
+                  final tsDyn = data['departureTime'] ??
+                      data['timestamp'] ??
+                      data['createdAt'];
+                  final date =
+                      (tsDyn is Timestamp) ? tsDyn.toDate() : DateTime.now();
 
-                              final now = DateTime.now();
-                              final diff = date.difference(now);
+                  final now = DateTime.now();
+                  final diff = date.difference(now);
 
-                              final timeBefore = diff.isNegative
-                                  ? "déjà passé"
-                                  : (diff.inMinutes < 60
-                                      ? "dans ${diff.inMinutes} min"
-                                      : "dans ${diff.inHours} h");
+                  final timeBefore = diff.isNegative
+                      ? "déjà passé"
+                      : (diff.inMinutes < 60
+                          ? "dans ${diff.inMinutes} min"
+                          : "dans ${diff.inHours} h");
 
-                              final isUrgent =
-                                  !diff.isNegative && diff.inMinutes <= 3;
+                  final isUrgent = !diff.isNegative && diff.inMinutes <= 3;
 
-                              return FadeInUp(
-                                duration: const Duration(milliseconds: 400),
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF121212),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: AppColors.gold.withOpacity(0.4),
-                                      width: 1.2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.gold.withOpacity(0.08),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.route,
-                                              color: AppColors.gold, size: 18),
-                                          const SizedBox(width: 6),
-                                          const Text(
-                                            "Trajet",
-                                            style: TextStyle(
-                                              color: AppColors.gold,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Lux.countdownChip(diff,
-                                              urgent: isUrgent),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        "$from ➜ $to",
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.schedule,
-                                              color: Colors.white54, size: 16),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            "Départ : ${date.toLocal().toString().split('.').first} ($timeBefore)",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.straighten,
-                                              color: Colors.white54, size: 16),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            "Distance : $distanceStr km",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-
-                                      // ✅ Affichage NET conducteur (et libellé explicite)
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.euro_rounded,
-                                              color: Colors.white54, size: 16),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            "Gain : ${net.toStringAsFixed(2)} €",
-                                            style: const TextStyle(
-                                                color: Colors.white70),
-                                          ),
-                                          const SizedBox(width: 8),
-                                        ],
-                                      ),
-
-                                      const SizedBox(height: 16),
-                                      Center(
-                                        child: ElevatedButton.icon(
-                                          onPressed: () async {
-                                            try {
-                                              await _acceptReservation(doc.id);
-                                            } catch (e) {
-                                              debugPrint(
-                                                  "❌ Erreur acceptReservation : $e");
-                                            }
-                                          },
-                                          icon: const Icon(Icons.check_circle,
-                                              color: Colors.black),
-                                          label: Text(
-                                            isUrgent
-                                                ? "ACCEPTER IMMÉDIATEMENT"
-                                                : "Accepter cette course",
-                                            style: const TextStyle(
-                                                color: Colors.black),
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: isUrgent
-                                                ? Colors.redAccent
-                                                : AppColors.gold,
-                                            foregroundColor: Colors.black,
-                                            minimumSize:
-                                                const Size.fromHeight(48),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(30),
-                                            ),
-                                            textStyle: const TextStyle(
-                                                fontWeight: FontWeight.w600),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ]),
+                  return FadeInUp(
+                    duration: const Duration(milliseconds: 420),
+                    child: _NearbyCourseCardPremium(
+                      from: from,
+                      to: to,
+                      date: date,
+                      diff: diff,
+                      timeBefore: timeBefore,
+                      isUrgent: isUrgent,
+                      distanceStr: distanceStr,
+                      net: net,
+                      onAccept: () async {
+                        try {
+                          await _acceptReservation(doc.id);
+                        } catch (e) {
+                          debugPrint("❌ Erreur acceptReservation : $e");
+                        }
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
 
             const SizedBox(height: 24),
 
@@ -5244,6 +4979,1017 @@ class _RoundGhostButton extends StatelessWidget {
           height: 38,
           child: Icon(Icons.my_location_rounded, color: Colors.white, size: 18),
         ),
+      ),
+    );
+  }
+}
+
+class _NearbyCourseCardPremium extends StatelessWidget {
+  final String from;
+  final String to;
+  final DateTime date;
+  final Duration diff;
+  final String timeBefore;
+  final bool isUrgent;
+  final String distanceStr;
+  final double net;
+  final VoidCallback onAccept;
+
+  const _NearbyCourseCardPremium({
+    required this.from,
+    required this.to,
+    required this.date,
+    required this.diff,
+    required this.timeBefore,
+    required this.isUrgent,
+    required this.distanceStr,
+    required this.net,
+    required this.onAccept,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dateText =
+        "${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}";
+    final hourText =
+        "${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Stack(
+        children: [
+          // Halo or (premium)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.gold.withOpacity(isUrgent ? .16 : .10),
+                      blurRadius: isUrgent ? 34 : 26,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Card verre fumé
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF0F0F0F), Color(0xFF171717)],
+              ),
+              border: Border.all(
+                color: isUrgent
+                    ? Colors.redAccent.withOpacity(.55)
+                    : AppColors.gold.withOpacity(.35),
+                width: 1.15,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(.45),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header luxe : pastille + titre + chip
+                Row(
+                  children: [
+                    _GoldPillIcon(
+                      icon: Icons.route,
+                      urgent: isUrgent,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        "Trajet",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .2,
+                          fontSize: 14.5,
+                        ),
+                      ),
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Lux.countdownChip(diff, urgent: isUrgent),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Ligne From ➜ To (accent or)
+// ── Itinéraire premium : Départ + Arrivée (2 lignes)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _RouteRow(
+                      icon: Icons.radio_button_checked_rounded,
+                      iconColor:
+                          const Color(0xFF45E27A), // vert départ (premium)
+                      label: "Point de départ",
+                      value: from,
+                    ),
+                    const SizedBox(height: 10),
+
+                    // petite ligne verticale stylée entre les deux
+                    Padding(
+                      padding: const EdgeInsets.only(left: 14),
+                      child: Container(
+                        width: 2,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withOpacity(.10),
+                              AppColors.gold.withOpacity(.45),
+                              Colors.white.withOpacity(.10),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+                    _RouteRow(
+                      icon: Icons.location_on_rounded,
+                      iconColor: AppColors.gold, // or arrivée
+                      label: "Point d’arrivée",
+                      value: to,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Séparateur hairline premium
+                Container(
+                  height: 1,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        AppColors.gold.withOpacity(.22),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // ── Infos en “chips” premium
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _LuxInfoChip(
+                      icon: Icons.calendar_month_rounded,
+                      label: "Départ",
+                      value: dateText,
+                    ),
+                    _LuxInfoChip(
+                      icon: Icons.access_time_rounded,
+                      label: "Heure",
+                      value: hourText,
+                    ),
+                    _LuxInfoChip(
+                      icon: Icons.timelapse_rounded,
+                      label: "Temps",
+                      value: timeBefore,
+                      highlight: isUrgent,
+                    ),
+                    _LuxInfoChip(
+                      icon: Icons.straighten_rounded,
+                      label: "Distance",
+                      value: "$distanceStr km",
+                    ),
+                    _LuxInfoChip(
+                      icon: Icons.euro_rounded,
+                      label: "Gain",
+                      value: "${net.toStringAsFixed(2)} €",
+                      goldValue: true,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── CTA ultra premium (gradient + glow)
+                _LuxAcceptButton(
+                  urgent: isUrgent,
+                  onTap: onAccept,
+                ),
+              ],
+            ),
+          ),
+
+          // Badge urgent (coin supérieur droit)
+          if (isUrgent)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF5A5A), Color(0xFFB00020)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: const Text(
+                  "URGENT",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    letterSpacing: .4,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoldPillIcon extends StatelessWidget {
+  final IconData icon;
+  final bool urgent;
+  const _GoldPillIcon({required this.icon, required this.urgent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: urgent
+            ? const LinearGradient(
+                colors: [Color(0xFFFF8A80), Color(0xFFB00020)])
+            : const LinearGradient(
+                colors: [Color(0xFFFFE08A), Color(0xFFA87C00)]),
+        boxShadow: [
+          BoxShadow(
+            color:
+                (urgent ? Colors.redAccent : AppColors.gold).withOpacity(.25),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Icon(icon, color: Colors.black, size: 20),
+    );
+  }
+}
+
+class _LuxInfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool highlight;
+  final bool goldValue;
+
+  const _LuxInfoChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.highlight = false,
+    this.goldValue = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final border =
+        highlight ? Colors.redAccent.withOpacity(.55) : Colors.white10;
+
+    final valueColor = goldValue
+        ? AppColors.gold
+        : (highlight ? Colors.redAccent : Colors.white);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withOpacity(.05),
+        border: Border.all(color: border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.25),
+            blurRadius: 12,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white70),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: .2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: valueColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12.5,
+                  letterSpacing: .15,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LuxAcceptButton extends StatelessWidget {
+  final bool urgent;
+  final VoidCallback onTap;
+  const _LuxAcceptButton({required this.urgent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = urgent
+        ? const LinearGradient(colors: [Color(0xFFFF5A5A), Color(0xFFB00020)])
+        : const LinearGradient(colors: [Color(0xFFFFE08A), Color(0xFFA87C00)]);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 54,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: gradient,
+          boxShadow: [
+            BoxShadow(
+              color:
+                  (urgent ? Colors.redAccent : AppColors.gold).withOpacity(.32),
+              blurRadius: 26,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Halo interne
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withOpacity(.28),
+                      Colors.transparent,
+                    ],
+                    radius: .9,
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.check_circle, color: Colors.black),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    urgent ? "ACCEPTER IMMÉDIATEMENT" : "Accepter cette course",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: .35,
+                      fontSize: 15.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+
+  const _RouteRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // pastille icône
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withOpacity(.06),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Icon(icon, size: 18, color: iconColor),
+        ),
+        const SizedBox(width: 10),
+
+        // label + adresse
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .7,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                  letterSpacing: .1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Widget _hairline() {
+  return Container(
+    height: 1,
+    width: double.infinity,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          Colors.transparent,
+          AppColors.gold.withOpacity(.22),
+          Colors.transparent,
+        ],
+      ),
+    ),
+  );
+}
+
+class _EmptyNearbyState extends StatelessWidget {
+  const _EmptyNearbyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: Colors.white.withOpacity(.04),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.inbox_rounded, size: 38, color: Colors.white24),
+            SizedBox(height: 10),
+            Text(
+              "Aucune course disponible à proximité",
+              textAlign: TextAlign.center,
+              style:
+                  TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: 4),
+            Text(
+              "Revenez dans quelques instants.",
+              style: TextStyle(color: Colors.white38),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LivePill extends StatefulWidget {
+  const _LivePill();
+
+  @override
+  State<_LivePill> createState() => _LivePillState();
+}
+
+class _LivePillState extends State<_LivePill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween(begin: .94, end: 1.0)
+          .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: const Color(0xFF121212),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: const Color(0xFF45E27A),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                      color: const Color(0xFF45E27A).withOpacity(.6),
+                      blurRadius: 10)
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Text("LIVE",
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .3)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _MetaPill({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withOpacity(.05),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppColors.gold),
+          const SizedBox(width: 8),
+          Text(text,
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5)),
+        ],
+      ),
+    );
+  }
+}
+
+class _NearbyCourseTileGenius extends StatelessWidget {
+  final String from;
+  final String to;
+  final DateTime date;
+  final Duration duration;
+  final String distanceStr;
+  final double net;
+  final bool isUrgent;
+  final VoidCallback onAccept;
+
+  const _NearbyCourseTileGenius({
+    required this.from,
+    required this.to,
+    required this.date,
+    required this.duration,
+    required this.distanceStr,
+    required this.net,
+    required this.isUrgent,
+    required this.onAccept,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final safeDuration = duration.isNegative ? Duration.zero : duration;
+
+    return Stack(
+      children: [
+        // Halo or / urgent
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: (isUrgent ? Colors.redAccent : AppColors.gold)
+                        .withOpacity(isUrgent ? .14 : .08),
+                    blurRadius: isUrgent ? 34 : 26,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF0F0F0F), Color(0xFF171717)],
+            ),
+            border: Border.all(
+              color:
+                  isUrgent ? Colors.redAccent.withOpacity(.55) : Colors.white12,
+              width: 1.1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row : icon + countdown + badge gain
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isUrgent
+                          ? const LinearGradient(
+                              colors: [Color(0xFFFF8A80), Color(0xFFB00020)])
+                          : const LinearGradient(
+                              colors: [Color(0xFFFFE08A), Color(0xFFA87C00)]),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isUrgent ? Colors.redAccent : AppColors.gold)
+                              .withOpacity(.22),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
+                    ),
+                    child: const Icon(Icons.route_rounded,
+                        color: Colors.black, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isUrgent ? "Course urgente" : "Course disponible",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14.5,
+                        letterSpacing: .2,
+                      ),
+                    ),
+                  ),
+                  Lux.countdownChip(safeDuration, urgent: isUrgent),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Itinéraire : départ / arrivée (lisible + VTC)
+              _RouteRowMini(
+                dotColor: const Color(0xFF45E27A),
+                label: "Départ",
+                value: from,
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Container(
+                  width: 2,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(.08),
+                        AppColors.gold.withOpacity(.35),
+                        Colors.white.withOpacity(.08),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _RouteRowMini(
+                dotColor: AppColors.gold,
+                label: "Arrivée",
+                value: to,
+              ),
+
+              const SizedBox(height: 12),
+              _hairline(),
+              const SizedBox(height: 12),
+
+              // Badges : gain net, distance, heure (plus “pro” qu’un Wrap brut)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _StatPill(
+                    icon: Icons.account_balance_wallet_rounded,
+                    label: "Gain net",
+                    value: "${net.toStringAsFixed(2)} €",
+                    highlightGold: true,
+                  ),
+                  _StatPill(
+                    icon: Icons.straighten_rounded,
+                    label: "Distance",
+                    value: "$distanceStr km",
+                  ),
+                  _StatPill(
+                    icon: Icons.schedule_rounded,
+                    label: "Départ",
+                    value: DateFormat("HH:mm").format(date),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 14),
+
+              // CTA : ton Lux.premiumButton marche, mais ici un CTA plus “one tap”
+              Lux.premiumButton(
+                label: isUrgent
+                    ? "ACCEPTER\nIMMÉDIATEMENT"
+                    : "Accepter cette course",
+                icon: isUrgent
+                    ? Icons.flash_on_rounded
+                    : Icons.check_circle_rounded,
+                danger: isUrgent,
+                onPressed: onAccept,
+              ),
+            ],
+          ),
+        ),
+
+        // Ruban urgent plus classe (moins “bloc rouge”)
+        if (isUrgent)
+          Positioned(
+            right: 12,
+            top: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                gradient: const LinearGradient(
+                    colors: [Color(0xFFFF5A5A), Color(0xFFB00020)]),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.redAccent.withOpacity(.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  )
+                ],
+              ),
+              child: const Text(
+                "URGENT",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                  letterSpacing: .6,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RouteRowMini extends StatelessWidget {
+  final Color dotColor;
+  final String label;
+  final String value;
+
+  const _RouteRowMini({
+    required this.dotColor,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: dotColor.withOpacity(.18),
+            border: Border.all(color: dotColor.withOpacity(.65)),
+            boxShadow: [
+              BoxShadow(color: dotColor.withOpacity(.25), blurRadius: 12)
+            ],
+          ),
+          child: Center(
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration:
+                  BoxDecoration(color: dotColor, shape: BoxShape.circle),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .7,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15.2,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool highlightGold;
+
+  const _StatPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.highlightGold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final vColor = highlightGold ? AppColors.gold : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withOpacity(.05),
+        border: Border.all(color: Colors.white10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.25),
+            blurRadius: 12,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white70),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: vColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12.7,
+                  letterSpacing: .15,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

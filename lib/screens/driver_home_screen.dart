@@ -5807,201 +5807,223 @@ class _NearbyCourseTileGenius extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safeDuration = duration.isNegative ? Duration.zero : duration;
+    return _EverySecond(
+      builder: (now) {
+        final diff = date.difference(now);
+        final safeDuration = diff.isNegative ? Duration.zero : diff;
 
-    return Stack(
-      children: [
-        // Halo or / urgent
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: (isUrgent ? Colors.redAccent : AppColors.gold)
-                        .withOpacity(isUrgent ? .14 : .08),
-                    blurRadius: isUrgent ? 34 : 26,
-                    offset: const Offset(0, 14),
+        // 🔥 règle métier claire
+        final urgentNow = safeDuration.inMinutes <= 3;
+
+        return Stack(
+          children: [
+            // ── Halo arrière
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (urgentNow ? Colors.redAccent : AppColors.gold)
+                            .withOpacity(urgentNow ? .14 : .08),
+                        blurRadius: urgentNow ? 34 : 26,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
 
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0F0F0F), Color(0xFF171717)],
-            ),
-            border: Border.all(
-              color:
-                  isUrgent ? Colors.redAccent.withOpacity(.55) : Colors.white12,
-              width: 1.1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top row : icon + countdown + badge gain
-              Row(
+            // ── Carte principale
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0F0F0F), Color(0xFF171717)],
+                ),
+                border: Border.all(
+                  color: urgentNow
+                      ? Colors.redAccent.withOpacity(.55)
+                      : Colors.white12,
+                  width: 1.1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: isUrgent
-                          ? const LinearGradient(
-                              colors: [Color(0xFFFF8A80), Color(0xFFB00020)])
-                          : const LinearGradient(
-                              colors: [Color(0xFFFFE08A), Color(0xFFA87C00)]),
-                      boxShadow: [
-                        BoxShadow(
-                          color: (isUrgent ? Colors.redAccent : AppColors.gold)
-                              .withOpacity(.22),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        )
-                      ],
-                    ),
-                    child: const Icon(Icons.route_rounded,
-                        color: Colors.black, size: 20),
+                  // ── HEADER (décompte + urgent en dessous)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _GoldPillIcon(
+                        icon: Icons.route_rounded,
+                        urgent: urgentNow,
+                      ),
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: Text(
+                          urgentNow ? "Course urgente" : "Course disponible",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14.5,
+                            letterSpacing: .2,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      // ✅ Colonne : DANS X MIN puis URGENT dessous
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Lux.countdownChip(
+                            safeDuration,
+                            urgent: urgentNow,
+                          ),
+                          if (urgentNow) ...[
+                            const SizedBox(height: 8),
+                            const _UrgentPulseBadge(), // ✅ sous le countdown
+                          ],
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      isUrgent ? "Course urgente" : "Course disponible",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14.5,
-                        letterSpacing: .2,
+
+                  const SizedBox(height: 12),
+
+                  // ── Itinéraire
+                  _RouteRowMini(
+                    dotColor: const Color(0xFF45E27A),
+                    label: "Départ",
+                    value: from,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Container(
+                      width: 2,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withOpacity(.08),
+                            AppColors.gold.withOpacity(.35),
+                            Colors.white.withOpacity(.08),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  Lux.countdownChip(safeDuration, urgent: isUrgent),
-                ],
-              ),
+                  const SizedBox(height: 8),
+                  _RouteRowMini(
+                    dotColor: AppColors.gold,
+                    label: "Arrivée",
+                    value: to,
+                  ),
 
-              const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                  _hairline(),
+                  const SizedBox(height: 12),
 
-              // Itinéraire : départ / arrivée (lisible + VTC)
-              _RouteRowMini(
-                dotColor: const Color(0xFF45E27A),
-                label: "Départ",
-                value: from,
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Container(
-                  width: 2,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withOpacity(.08),
-                        AppColors.gold.withOpacity(.35),
-                        Colors.white.withOpacity(.08),
-                      ],
+                  // ✅ 2) Gain + Distance + Départ SUR UNE SEULE LIGNE
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      // si écran trop étroit, on repasse en Wrap (safe)
+                      final tight = c.maxWidth < 330;
+
+                      if (tight) {
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _StatPill(
+                              icon: Icons.account_balance_wallet_rounded,
+                              label: "Gain net",
+                              value: "${net.toStringAsFixed(2)} €",
+                              highlightGold: true,
+                            ),
+                            _StatPill(
+                              icon: Icons.straighten_rounded,
+                              label: "Distance",
+                              value: "$distanceStr km",
+                            ),
+                            _StatPill(
+                              icon: Icons.schedule_rounded,
+                              label: "Départ",
+                              value: DateFormat("HH:mm").format(date),
+                            ),
+                          ],
+                        );
+                      }
+
+                      // ✅ ligne unique, bien alignée, pas d’overflow
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: _StatPill(
+                              icon: Icons.account_balance_wallet_rounded,
+                              label: "Gain net",
+                              value: "${net.toStringAsFixed(2)} €",
+                              highlightGold: true,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _StatPill(
+                              icon: Icons.straighten_rounded,
+                              label: "Distance",
+                              value: "$distanceStr km",
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _StatPill(
+                              icon: Icons.schedule_rounded,
+                              label: "Départ",
+                              value: DateFormat("HH:mm").format(date),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ✅ 3) CTA pleine largeur (respiration)
+                  SizedBox(
+                    width: double.infinity,
+                    child: Lux.premiumButton(
+                      label: urgentNow
+                          ? "ACCEPTER\nIMMÉDIATEMENT"
+                          : "Accepter cette course",
+                      icon: urgentNow
+                          ? Icons.flash_on_rounded
+                          : Icons.check_circle_rounded,
+                      danger: urgentNow,
+                      onPressed: onAccept,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _RouteRowMini(
-                dotColor: AppColors.gold,
-                label: "Arrivée",
-                value: to,
-              ),
-
-              const SizedBox(height: 12),
-              _hairline(),
-              const SizedBox(height: 12),
-
-              // Badges : gain net, distance, heure (plus “pro” qu’un Wrap brut)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _StatPill(
-                    icon: Icons.account_balance_wallet_rounded,
-                    label: "Gain net",
-                    value: "${net.toStringAsFixed(2)} €",
-                    highlightGold: true,
-                  ),
-                  _StatPill(
-                    icon: Icons.straighten_rounded,
-                    label: "Distance",
-                    value: "$distanceStr km",
-                  ),
-                  _StatPill(
-                    icon: Icons.schedule_rounded,
-                    label: "Départ",
-                    value: DateFormat("HH:mm").format(date),
-                  ),
                 ],
-              ),
-
-              const SizedBox(height: 14),
-
-              // CTA : ton Lux.premiumButton marche, mais ici un CTA plus “one tap”
-              Lux.premiumButton(
-                label: isUrgent
-                    ? "ACCEPTER\nIMMÉDIATEMENT"
-                    : "Accepter cette course",
-                icon: isUrgent
-                    ? Icons.flash_on_rounded
-                    : Icons.check_circle_rounded,
-                danger: isUrgent,
-                onPressed: onAccept,
-              ),
-            ],
-          ),
-        ),
-
-        // Ruban urgent plus classe (moins “bloc rouge”)
-        if (isUrgent)
-          Positioned(
-            right: 12,
-            top: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                gradient: const LinearGradient(
-                    colors: [Color(0xFFFF5A5A), Color(0xFFB00020)]),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.redAccent.withOpacity(.35),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  )
-                ],
-              ),
-              child: const Text(
-                "URGENT",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 11,
-                  letterSpacing: .6,
-                ),
               ),
             ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -6142,5 +6164,36 @@ class _StatPill extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _EverySecond extends StatefulWidget {
+  final Widget Function(DateTime now) builder;
+  const _EverySecond({super.key, required this.builder});
+
+  @override
+  State<_EverySecond> createState() => _EverySecondState();
+}
+
+class _EverySecondState extends State<_EverySecond> {
+  late final Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(DateTime.now());
   }
 }

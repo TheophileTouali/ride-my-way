@@ -1468,7 +1468,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final newIds = newDocs.map((d) => d.id).toSet();
       final newlyAdded = newIds.difference(_nearbyIds);
 
-      /// ✅ Détecter si une course "arrive" (métier) : départ dans ≤ 3 min
+      /// ✅ Détecter si une course "arrive" (métier) : départ dans ≤ 6 min
       final bool hasArrivingSoon = newDocs.any((d) {
         final data = d.data() as Map<String, dynamic>;
 
@@ -1476,7 +1476,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         if (courseDate == null) return false;
 
         final diff = courseDate.difference(DateTime.now());
-        return !diff.isNegative && diff.inMinutes <= 3;
+        return !diff.isNegative && diff.inMinutes <= 6;
       });
 
       /// ✅ Nouveau comportement : pulse si nouveaux IDs OU course arrivante
@@ -1541,13 +1541,13 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-// ❌ Course réellement dépassée = heure de course + 3 minutes
+// ❌ Course réellement dépassée = heure de course + tolérance métier (12 minutes)
   bool _isPastCourse(Map<String, dynamic> data) {
     final courseDate = _getReservationCourseDate(data);
     if (courseDate == null) return false;
 
-    // ⏱ Tolérance métier : 3 minutes après l’heure prévue
-    final expiry = courseDate.add(const Duration(minutes: 3));
+    // ⏱ Tolérance métier : 12 minutes après l’heure prévue
+    final expiry = courseDate.add(const Duration(minutes: 12));
 
     return DateTime.now().isAfter(expiry);
   }
@@ -5813,7 +5813,7 @@ class _NearbyCourseTileGenius extends StatelessWidget {
         final safeDuration = diff.isNegative ? Duration.zero : diff;
 
         // 🔥 règle métier claire
-        final urgentNow = safeDuration.inMinutes <= 3;
+        final urgentNow = safeDuration.inMinutes <= 6;
 
         return Stack(
           children: [

@@ -5150,7 +5150,7 @@ class _NearbyCourseCardPremium extends StatelessWidget {
                     // 🔴 URGENT (intégré proprement)
                     if (isUrgent) ...[
                       const SizedBox(width: 8),
-                      const _UrgentBadgeStatic(),
+                      const _UrgentPulseBadge(),
                     ],
                   ],
                 ),
@@ -5272,6 +5272,13 @@ class _NearbyCourseCardPremium extends StatelessWidget {
   }
 }
 
+class _UrgentPulseBadge extends StatefulWidget {
+  const _UrgentPulseBadge();
+
+  @override
+  State<_UrgentPulseBadge> createState() => _UrgentPulseBadgeState();
+}
+
 class _UrgentBadgeStatic extends StatelessWidget {
   const _UrgentBadgeStatic();
 
@@ -5302,6 +5309,87 @@ class _UrgentBadgeStatic extends StatelessWidget {
           letterSpacing: .7,
         ),
       ),
+    );
+  }
+}
+
+class _UrgentPulseBadgeState extends State<_UrgentPulseBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  late final Animation<double> _scale;
+  late final Animation<double> _glow;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 920),
+    )..repeat();
+
+    // Double battement coeur : 1 -> 1.10 -> 0.97 -> 1.06 -> 1
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.00, end: 1.10), weight: 22),
+      TweenSequenceItem(tween: Tween(begin: 1.10, end: 0.97), weight: 18),
+      TweenSequenceItem(tween: Tween(begin: 0.97, end: 1.06), weight: 18),
+      TweenSequenceItem(tween: Tween(begin: 1.06, end: 1.00), weight: 42),
+    ]).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+
+    _glow = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.18, end: 0.42), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 0.42, end: 0.20), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 0.20, end: 0.34), weight: 15),
+      TweenSequenceItem(tween: Tween(begin: 0.34, end: 0.18), weight: 40),
+    ]).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        return Transform.scale(
+          scale: _scale.value,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF5A5A), Color(0xFFB00020)],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.redAccent.withOpacity(_glow.value),
+                  blurRadius: 16 + (10 * _c.value),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const Text(
+              "URGENT",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                letterSpacing: .7,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

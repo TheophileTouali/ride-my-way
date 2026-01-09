@@ -5123,10 +5123,6 @@ class _NearbyCourseCardPremium extends StatelessWidget {
                 // ── Header luxe : pastille + titre + chip
                 Row(
                   children: [
-                    _GoldPillIcon(
-                      icon: Icons.route,
-                      urgent: isUrgent,
-                    ),
                     const SizedBox(width: 10),
                     const Expanded(
                       child: Text(
@@ -5141,6 +5137,8 @@ class _NearbyCourseCardPremium extends StatelessWidget {
                         ),
                       ),
                     ),
+
+                    // ⏱️ Compte à rebours
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 150),
                       child: FittedBox(
@@ -5148,6 +5146,12 @@ class _NearbyCourseCardPremium extends StatelessWidget {
                         child: Lux.countdownChip(diff, urgent: isUrgent),
                       ),
                     ),
+
+                    // 🔴 URGENT (intégré proprement)
+                    if (isUrgent) ...[
+                      const SizedBox(width: 8),
+                      const _UrgentBadgeStatic(),
+                    ],
                   ],
                 ),
 
@@ -5262,40 +5266,41 @@ class _NearbyCourseCardPremium extends StatelessWidget {
               ],
             ),
           ),
-
-          // Badge urgent (coin supérieur droit)
-          if (isUrgent)
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF5A5A), Color(0xFFB00020)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.redAccent.withOpacity(.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: const Text(
-                  "URGENT",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                    letterSpacing: .4,
-                  ),
-                ),
-              ),
-            ),
         ],
+      ),
+    );
+  }
+}
+
+class _UrgentBadgeStatic extends StatelessWidget {
+  const _UrgentBadgeStatic();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF5A5A), Color(0xFFB00020)],
+        ),
+        border: Border.all(color: Colors.white.withOpacity(.10)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.redAccent.withOpacity(.25),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Text(
+        "URGENT",
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+          letterSpacing: .7,
+        ),
       ),
     );
   }

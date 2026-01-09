@@ -1,7 +1,6 @@
+// android/app/build.gradle.kts
 import java.util.Properties
 import java.io.FileInputStream
-
-// android/app/build.gradle.kts
 
 plugins {
     id("com.android.application")
@@ -14,13 +13,24 @@ android {
     namespace = "com.ridemyway.app"
     compileSdk = 36
 
+    // ✅ On charge local.properties (Flutter y met flutter.versionCode / flutter.versionName)
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(FileInputStream(localPropertiesFile))
+    }
+
+    val flutterVersionCode = (localProperties.getProperty("flutter.versionCode") ?: "1").toInt()
+    val flutterVersionName = (localProperties.getProperty("flutter.versionName") ?: "1.0.0")
+
     defaultConfig {
-        // ⚠️ pour la prod tu changeras en "com.ridemyway.app"
         applicationId = "com.ridemyway.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.1"
+
+        // ✅ SOURCE DE VÉRITÉ = pubspec.yaml
+        versionCode = flutterVersionCode
+        versionName = flutterVersionName
     }
 
     // 🔐 On charge key.properties
@@ -50,8 +60,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
             )
-
-            // ✅ très important : on dit d'utiliser la signature "release"
             signingConfig = signingConfigs.getByName("release")
         }
 
@@ -82,7 +90,5 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
-
-    // Desugaring JDK
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

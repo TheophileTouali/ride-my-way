@@ -10,6 +10,7 @@ import 'package:characters/characters.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../themes/app_theme.dart'; // Doit contenir AppColors.gold
+import 'package:cloud_functions/cloud_functions.dart';
 
 // =========================
 // Model & helpers
@@ -19,6 +20,29 @@ String _formatPrice(double value) {
   // Format FR sans intl: "35,46 €"
   final s = value.toStringAsFixed(2).replaceAll('.', ',');
   return '$s €';
+}
+
+class RouteInfo {
+  final double distanceKm;
+  final int durationSeconds;
+
+  const RouteInfo({
+    required this.distanceKm,
+    required this.durationSeconds,
+  });
+}
+
+extension RouteInfoX on RouteInfo {
+  Duration get duration => Duration(seconds: durationSeconds);
+
+  String get durationLabel {
+    final d = duration;
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+
+    if (h <= 0) return "${m} min";
+    return "${h}h ${m.toString().padLeft(2, '0')}";
+  }
 }
 
 class VehicleOption {
@@ -99,6 +123,7 @@ class ResultsScreen extends StatefulWidget {
 class _ResultsScreenState extends State<ResultsScreen> {
   double? distanceKm;
   bool isLoading = true;
+  String? durationLabel;
 
   @override
   void initState() {
@@ -108,6 +133,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   Future<void> _calculateDistance() async {
     setState(() => isLoading = true);
+
     try {
       final fromCoord = await getCoordinatesFromAddress(widget.from);
       final toCoord = await getCoordinatesFromAddress(widget.to);
@@ -116,21 +142,30 @@ class _ResultsScreenState extends State<ResultsScreen> {
         throw Exception("Coordonnées non trouvées");
       }
 
-      final distanceInMeters = Geolocator.distanceBetween(
-        fromCoord.lat,
-        fromCoord.lng,
-        toCoord.lat,
-        toCoord.lng,
+      final route = await getRouteInfoViaFunction(
+        origin: fromCoord,
+        destination: toCoord,
       );
 
+      if (route == null) {
+        throw Exception("Route non trouvée");
+      }
+
+      if (!mounted) return;
+
       setState(() {
-        distanceKm = double.parse((distanceInMeters / 1000).toStringAsFixed(2));
+        distanceKm = route.distanceKm;
+        durationLabel = route.durationLabel;
         isLoading = false;
       });
     } catch (e) {
       debugPrint("Erreur distance: $e");
+
+      if (!mounted) return;
+
       setState(() {
         distanceKm = null;
+        durationLabel = null; // ✅ important
         isLoading = false;
       });
     }
@@ -211,8 +246,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Widget _buildTripCard() {
-    final distLabel =
-        distanceKm != null ? "${distanceKm!.toStringAsFixed(1)} km" : "-- km";
+    final distLabel = (distanceKm != null)
+        ? "${distanceKm!.toStringAsFixed(1)} km"
+            "${(durationLabel != null ? " • $durationLabel" : "")}"
+        : "-- km";
 
     return FadeInDown(
       child: Stack(
@@ -890,6 +927,31 @@ Future<LatLng?> getCoordinatesFromAddress(String address) async {
     return LatLng(location['lat'], location['lng']);
   }
   return null;
+}
+
+Future<RouteInfo?> getRouteInfoViaFunction({
+  required LatLng origin,
+  required LatLng destination,
+}) async {
+  try {
+    final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+    final callable = functions.httpsCallable('getRouteInfo');
+
+    final res = await callable.call({
+      'origin': {'lat': origin.lat, 'lng': origin.lng},
+      'destination': {'lat': destination.lat, 'lng': destination.lng},
+    });
+
+    final data = Map<String, dynamic>.from(res.data);
+
+    return RouteInfo(
+      distanceKm: (data['distanceKm'] as num).toDouble(),
+      durationSeconds: (data['durationSeconds'] as num).toInt(),
+    );
+  } catch (e) {
+    debugPrint("getRouteInfo function error: $e");
+    return null;
+  }
 }
 
 class DistancePill extends StatelessWidget {

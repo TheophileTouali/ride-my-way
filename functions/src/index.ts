@@ -7,3 +7,6 @@ export {
   capturePaymentIntent,
   cancelPaymentIntent,
 } from "./payments";
+
+
+export { getRouteInfo } from "./routes";

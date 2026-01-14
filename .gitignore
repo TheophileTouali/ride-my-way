@@ -76,3 +76,5 @@ build/
 android/app/src/main/res/values/strings.xml
 key.properties
 *.jks
+node_modules/
+functions/node_modules/

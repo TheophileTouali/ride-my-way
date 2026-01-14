@@ -1,5 +1,20 @@
 {
   "dependencies": {
+    "firebase-admin": "^13.6.0",
     "stripe": "^18.3.0"
-  }
+  },
+  "name": "ride_my_way",
+  "version": "1.0.0",
+  "description": "> Application mobile Flutter de covoiturage moderne.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

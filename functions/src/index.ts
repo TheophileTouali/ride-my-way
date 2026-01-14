@@ -10,3 +10,9 @@ export {
 
 
 export { getRouteInfo } from "./routes";
+
+import { initializeApp } from "firebase-admin/app";
+initializeApp();
+
+export { adminGetDashboardStats } from "./admin_dashboard";
+

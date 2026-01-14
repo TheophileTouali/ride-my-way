@@ -1342,13 +1342,39 @@ Widget _settingsCard({
         ),
         const SizedBox(height: 10),
         const GoldDivider(),
+
+        // 🔐 Mot de passe
         row(
           icon: Icons.lock_reset_rounded,
           label: 'Modifier le mot de passe',
           color: AppColors.deepGold,
           onTap: onChangePassword,
         ),
+
         const GoldDivider(),
+
+        // 👑 SUPER ADMIN (conditionnel)
+        FutureBuilder<bool>(
+          future: isSuperAdmin(),
+          builder: (context, snapshot) {
+            if (snapshot.data == true) {
+              return Column(
+                children: [
+                  row(
+                    icon: Icons.admin_panel_settings_rounded,
+                    label: 'Console Super Admin',
+                    color: AppColors.gold,
+                    onTap: () => context.go('/admin'),
+                  ),
+                  const GoldDivider(),
+                ],
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // 🚪 Déconnexion
         row(
           icon: Icons.logout_rounded,
           label: 'Se déconnecter',
@@ -1356,7 +1382,10 @@ Widget _settingsCard({
           onTap: onLogout,
           danger: true,
         ),
+
         const GoldDivider(),
+
+        // 🗑 Suppression
         row(
           icon: Icons.delete_forever_rounded,
           label: 'Supprimer mon compte',
@@ -1367,4 +1396,13 @@ Widget _settingsCard({
       ],
     ),
   );
+}
+
+Future<bool> isSuperAdmin() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return false;
+
+  final token = await user.getIdTokenResult(true); // force refresh
+  final claims = token.claims ?? {};
+  return claims['super_admin'] == true;
 }

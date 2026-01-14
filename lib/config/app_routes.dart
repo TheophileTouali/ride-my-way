@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ride_my_way/admin/admin_guard.dart';
+import 'package:ride_my_way/admin/admin_home_screen.dart';
+import 'package:ride_my_way/admin/admin_drivers_screen.dart';
 
 // Import des écrans
 import '../screens/splash_screen.dart';
@@ -178,6 +181,18 @@ class AppRoutes {
             child: ResultsScreen(from: from, to: to),
           );
         },
+      ),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => AdminGuard(
+          child: AdminHomeScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/admin/drivers',
+        builder: (context, state) => AdminGuard(
+          child: const AdminDriversScreen(),
+        ),
       ),
       GoRoute(
         path: '/confirmation',

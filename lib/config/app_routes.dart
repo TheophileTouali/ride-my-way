@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ride_my_way/admin/admin_guard.dart';
 import 'package:ride_my_way/admin/admin_home_screen.dart';
 import 'package:ride_my_way/admin/admin_drivers_screen.dart';
+import 'package:ride_my_way/admin/admin_passengers_screen.dart';
 
 // Import des écrans
 import '../screens/splash_screen.dart';
@@ -192,6 +193,12 @@ class AppRoutes {
         path: '/admin/drivers',
         builder: (context, state) => AdminGuard(
           child: const AdminDriversScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/admin/passengers',
+        builder: (context, state) => AdminGuard(
+          child: const AdminPassengersScreen(),
         ),
       ),
       GoRoute(

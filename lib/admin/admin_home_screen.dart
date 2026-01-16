@@ -164,12 +164,59 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                 ),
 
                                 // Placeholders premium (tu brancheras plus tard)
-                                const _KpiCard(
-                                  title: "Passagers",
-                                  value: "—",
-                                  icon: Icons.people_rounded,
-                                  accent: Color(0xFFFFC44D),
+// KPI Passagers LIVE (cliquable)
+                                StreamBuilder<
+                                    QuerySnapshot<Map<String, dynamic>>>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('passengers')
+                                      .snapshots(),
+                                  builder: (context, snap) {
+                                    if (!snap.hasData) {
+                                      return const _KpiCard(
+                                        title: "Passagers",
+                                        value: "…",
+                                        icon: Icons.people_rounded,
+                                        accent: Color(0xFFFFC44D),
+                                      );
+                                    }
+
+                                    final list = snap.data!.docs
+                                        .map((e) => e.data())
+                                        .toList();
+                                    final total = list.length;
+
+                                    // même logique que ta page passengers : complet = birthdate + address + identityCardUrl
+                                    bool _isPassengerComplete(
+                                        Map<String, dynamic> d) {
+                                      final hasBirth = d['birthdate'] != null;
+                                      final address = (d['address'] ?? '')
+                                          .toString()
+                                          .trim();
+                                      final idCard =
+                                          (d['identityCardUrl'] ?? '')
+                                              .toString()
+                                              .trim();
+                                      return hasBirth &&
+                                          address.isNotEmpty &&
+                                          idCard.isNotEmpty;
+                                    }
+
+                                    final complete =
+                                        list.where(_isPassengerComplete).length;
+                                    final incomplete = total - complete;
+
+                                    return _KpiCard(
+                                      title: "Passagers",
+                                      value:
+                                          "$total  •  $complete ✅  /  $incomplete ❌",
+                                      icon: Icons.people_rounded,
+                                      accent: const Color(0xFFFFC44D),
+                                      onTap: () =>
+                                          context.go('/admin/passengers'),
+                                    );
+                                  },
                                 ),
+
                                 const _KpiCard(
                                   title: "Réservations",
                                   value: "—",

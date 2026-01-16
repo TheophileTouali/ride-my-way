@@ -3,17 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-class AdminDriversScreen extends StatefulWidget {
-  const AdminDriversScreen({super.key});
+class AdminPassengersScreen extends StatefulWidget {
+  const AdminPassengersScreen({super.key});
 
   @override
-  State<AdminDriversScreen> createState() => _AdminDriversScreenState();
+  State<AdminPassengersScreen> createState() => _AdminPassengersScreenState();
 }
 
-class _AdminDriversScreenState extends State<AdminDriversScreen>
+class _AdminPassengersScreenState extends State<AdminPassengersScreen>
     with SingleTickerProviderStateMixin {
   String _query = '';
   String _filter =
@@ -23,13 +21,6 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     vsync: this,
     duration: const Duration(milliseconds: 1600),
   )..repeat(reverse: true);
-  bool _canAccept(Map<String, dynamic> d) {
-    return (d['canAcceptRides'] ??
-            d['can_accept_rides'] ??
-            d['canAcceptRide'] ??
-            false) ==
-        true;
-  }
 
   @override
   void dispose() {
@@ -37,17 +28,77 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     super.dispose();
   }
 
-  static const requiredDocKeys = [
-    'driverLicenseUrl',
-    'registrationUrl',
-    'vehicleInsuranceUrl',
-    'proInsuranceUrl',
-    'technicalInspectionUrl',
-    'maintenanceInvoiceUrl',
-    'ribUrl',
-    'idCardUrl',
-  ];
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PASSENGER RULES
+  // ─────────────────────────────────────────────────────────────────────────────
 
+  // "Complet" = birthdate + address + identityCardUrl
+  bool _isProfileComplete(Map<String, dynamic> d) {
+    final hasBirth = _hasBirthdate(d);
+    final addr = (d['address'] ?? '').toString().trim();
+    final id = (d['identityCardUrl'] ?? '').toString().trim();
+    return hasBirth && addr.isNotEmpty && id.isNotEmpty;
+  }
+
+  bool _hasBirthdate(Map<String, dynamic> d) => _asDate(d['birthdate']) != null;
+
+  bool _birthValidated(Map<String, dynamic> d) =>
+      (d['birthdateValidated'] ?? false) == true;
+
+  String _status(Map<String, dynamic> d) {
+    return (d['verificationStatus'] ??
+            d['status'] ??
+            d['verification_status'] ??
+            'pending')
+        .toString();
+  }
+
+  bool _canBook(Map<String, dynamic> d) {
+    return (d['canBookRides'] ??
+            d['can_book_rides'] ??
+            d['canBookRide'] ??
+            false) ==
+        true;
+  }
+
+  bool _matchFilter(Map<String, dynamic> d) {
+    final complete = _isProfileComplete(d);
+    final s = _status(d);
+    switch (_filter) {
+      case 'complete':
+        return complete;
+      case 'incomplete':
+        return !complete;
+      case 'pending':
+        return s == 'pending';
+      case 'verified':
+        return s == 'verified';
+      case 'rejected':
+        return s == 'rejected';
+      default:
+        return true;
+    }
+  }
+
+  bool _matchQuery(Map<String, dynamic> d) {
+    if (_query.trim().isEmpty) return true;
+    final q = _query.toLowerCase();
+
+    final fullName =
+        '${(d['firstName'] ?? '')} ${(d['lastName'] ?? '')}'.toLowerCase();
+    final email = (d['email'] ?? '').toString().toLowerCase();
+    final phone = (d['phone'] ?? '').toString().toLowerCase();
+    final address = (d['address'] ?? '').toString().toLowerCase();
+
+    return fullName.contains(q) ||
+        email.contains(q) ||
+        phone.contains(q) ||
+        address.contains(q);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DATE helpers
+  // ─────────────────────────────────────────────────────────────────────────────
   String _fmtDate(DateTime dt) {
     final dd = dt.day.toString().padLeft(2, '0');
     final mm = dt.month.toString().padLeft(2, '0');
@@ -80,98 +131,14 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     return dt == null ? '' : _fmtDate(dt);
   }
 
-  bool _hasBirthdate(Map<String, dynamic> d) {
-    final dt = _asDate(d['birthdate']);
-    return dt != null;
-  }
-
-  bool _isProfileComplete(Map<String, dynamic> d) {
-    final docs = (d['documents'] is Map)
-        ? Map<String, dynamic>.from(d['documents'])
-        : <String, dynamic>{};
-
-    for (final k in requiredDocKeys) {
-      final v = (docs[k] ?? '').toString().trim();
-      if (v.isEmpty) return false;
-    }
-    return _hasBirthdate(d);
-  }
-
-  String _status(Map<String, dynamic> d) {
-    return (d['verificationStatus'] ??
-            d['status'] ??
-            d['verification_status'] ??
-            'pending')
-        .toString();
-  }
-
-  String _docStatus(Map<String, dynamic> d, String docKey) {
-    final review = (d['documentsReview'] is Map)
-        ? Map<String, dynamic>.from(d['documentsReview'])
-        : <String, dynamic>{};
-
-    final item = (review[docKey] is Map)
-        ? Map<String, dynamic>.from(review[docKey])
-        : <String, dynamic>{};
-
-    return (item['status'] ?? 'pending').toString();
-  }
-
-  bool _matchFilter(Map<String, dynamic> d) {
-    final complete = _isProfileComplete(d);
-    final s = _status(d);
-    switch (_filter) {
-      case 'complete':
-        return complete;
-      case 'incomplete':
-        return !complete;
-      case 'pending':
-        return s == 'pending';
-      case 'verified':
-        return s == 'verified';
-      case 'rejected':
-        return s == 'rejected';
-      default:
-        return true;
-    }
-  }
-
-  bool _matchQuery(Map<String, dynamic> d) {
-    if (_query.trim().isEmpty) return true;
-    final q = _query.toLowerCase();
-
-    final fullName =
-        '${(d['firstName'] ?? '')} ${(d['lastName'] ?? '')}'.toLowerCase();
-    final email = (d['email'] ?? '').toString().toLowerCase();
-    final phone = (d['phone'] ?? '').toString().toLowerCase();
-    final plate = (d['licensePlate'] ?? '').toString().toLowerCase();
-
-    return fullName.contains(q) ||
-        email.contains(q) ||
-        phone.contains(q) ||
-        plate.contains(q);
-  }
-
-  Future<String> _resolveStorageUrl(String url) async {
-    final u = url.trim();
-    if (u.isEmpty) return '';
-
-    // déjà une URL https
-    if (u.startsWith('http://') || u.startsWith('https://')) return u;
-
-    // URL storage gs://
-    if (u.startsWith('gs://')) {
-      return FirebaseStorage.instance.refFromURL(u).getDownloadURL();
-    }
-
-    return u;
-  }
-
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FIRESTORE ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────────
   Future<void> _validateBirthdate({
     required String uid,
     required String reviewedBy,
   }) async {
-    await FirebaseFirestore.instance.collection('drivers').doc(uid).set({
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
       'birthdateValidated': true,
       'reviewedBy': reviewedBy,
       'reviewedAt': FieldValue.serverTimestamp(),
@@ -182,121 +149,19 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     required String uid,
     required String status, // pending | verified | rejected
     required String reviewedBy,
-    bool? canAcceptRides,
+    bool? canBookRides,
   }) async {
     final patch = <String, dynamic>{
       'verificationStatus': status,
       'reviewedBy': reviewedBy,
       'reviewedAt': FieldValue.serverTimestamp(),
     };
-    if (canAcceptRides != null) patch['canAcceptRides'] = canAcceptRides;
+    if (canBookRides != null) patch['canBookRides'] = canBookRides;
 
-    await FirebaseFirestore.instance.collection('drivers').doc(uid).set(
+    await FirebaseFirestore.instance.collection('users').doc(uid).set(
           patch,
           SetOptions(merge: true),
         );
-  }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DOC REVIEW + PREVIEW (Drivers)
-// ─────────────────────────────────────────────────────────────────────────────
-
-  Future<void> _reviewDriverDoc({
-    required String uid,
-    required String docKey,
-    required String status, // approved | rejected | pending
-    required String reviewedBy,
-  }) async {
-    await FirebaseFirestore.instance.collection('drivers').doc(uid).set({
-      'documentsReview': {
-        docKey: {
-          'status': status,
-          'reviewedBy': reviewedBy,
-          'reviewedAt': FieldValue.serverTimestamp(),
-        }
-      }
-    }, SetOptions(merge: true));
-  }
-
-  Future<void> _openPreview(BuildContext context, String url,
-      {String? title}) async {
-    final resolved = await _resolveStorageUrl(url);
-    if (resolved.isEmpty) return;
-
-    final lower = resolved.toLowerCase();
-
-    // Si ce n'est pas une image (pdf, etc) => on ouvre dans un nouvel onglet
-    final isImage = lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.webp') ||
-        lower.contains('image');
-
-    if (!isImage) {
-      final uri = Uri.parse(resolved);
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(12),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: 0.8,
-                maxScale: 5,
-                child: Image.network(
-                  resolved,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Text(
-                      "Impossible d'afficher ce fichier",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  loadingBuilder: (c, w, p) {
-                    if (p == null) return w;
-                    return const Center(
-                      child:
-                          CircularProgressIndicator(color: Color(0xFFFFD700)),
-                    );
-                  },
-                ),
-              ),
-            ),
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title ?? "Preview",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -365,8 +230,6 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                     children: [
                       _topBar(context),
                       const SizedBox(height: 12),
-
-                      // KPI strip + toolbar sculptée
                       _glass(
                         radius: 22,
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -380,7 +243,6 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 12),
                       Expanded(child: _list()),
                     ],
@@ -397,14 +259,13 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   Widget _topBar(BuildContext context) {
     return Row(
       children: [
-        _GoldTitle("Super Admin • Drivers"),
+        _GoldTitle("Super Admin • Passagers"),
         const SizedBox(width: 10),
         const _LiveChip(),
         const Spacer(),
         _IconGlassBtn(
           icon: Icons.arrow_back_rounded,
           onTap: () {
-            // GoRouter friendly
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             } else {
@@ -418,7 +279,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
 
   Widget _liveStrip() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('drivers').snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
       builder: (context, snap) {
         final total = snap.data?.docs.length ?? 0;
         int complete = 0;
@@ -443,7 +304,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
               child: _MiniKpi(
                 title: "Total",
                 value: "$total",
-                icon: Icons.badge_rounded,
+                icon: Icons.people_alt_rounded,
               ),
             ),
             const SizedBox(width: 10),
@@ -494,7 +355,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54),
-        hintText: "Rechercher (nom, email, tel, plaque)…",
+        hintText: "Rechercher (nom, email, tel, adresse)…",
         hintStyle: const TextStyle(color: Colors.white38),
         filled: true,
         fillColor: Colors.white.withOpacity(0.05),
@@ -549,7 +410,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   Widget _list() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
-          .collection('drivers')
+          .collection('users')
           .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snap) {
@@ -559,14 +420,14 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
           );
         }
 
-        final docs = snap.data!.docs.where((d) {
-          final data = d.data();
+        final docs = snap.data!.docs.where((doc) {
+          final data = doc.data();
           return _matchFilter(data) && _matchQuery(data);
         }).toList();
 
         if (docs.isEmpty) {
           return const Center(
-            child: Text("Aucun driver trouvé.",
+            child: Text("Aucun passager trouvé.",
                 style: TextStyle(color: Colors.white60)),
           );
         }
@@ -584,17 +445,16 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                 "${d['firstName'] ?? ''} ${d['lastName'] ?? ''}".trim();
             final email = (d['email'] ?? '').toString();
             final phone = (d['phone'] ?? '').toString();
+            final address = (d['address'] ?? '').toString().trim();
 
             final hasBirth = _hasBirthdate(d);
             final birthLabel = _birthLabel(d['birthdate']);
-            final birthValidated = (d['birthdateValidated'] ?? false) == true;
-            final canAccept = _canAccept(d);
+            final birthValidated = _birthValidated(d);
 
-            final brand =
-                (d['carBrand'] ?? d['vehicleBrand'] ?? '').toString().trim();
-            final type = (d['vehicleType'] ?? '').toString().trim();
-            final year = (d['vehicleYear'] ?? '').toString().trim();
-            final plate = (d['licensePlate'] ?? '').toString().trim();
+            final idCardUrl = (d['identityCardUrl'] ?? '').toString().trim();
+            final hasIdCard = idCardUrl.isNotEmpty;
+
+            final canBook = _canBook(d);
 
             final status = _status(d);
             final complete = _isProfileComplete(d);
@@ -612,7 +472,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _Medallion(
-                        icon: Icons.badge_rounded,
+                        icon: Icons.person_rounded,
                         status: status,
                         complete: complete,
                       ),
@@ -652,40 +512,19 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
 
                             const SizedBox(height: 6),
 
-                            // Ligne 2 : infos compressibles
                             _InfoLine(icon: Icons.email_rounded, text: email),
                             const SizedBox(height: 2),
                             _InfoLine(
                                 icon: Icons.phone_android_rounded, text: phone),
-                            if (brand.isNotEmpty) ...[
+                            if (address.isNotEmpty) ...[
                               const SizedBox(height: 6),
                               _InfoLine(
-                                  icon: Icons.branding_watermark_rounded,
-                                  text: "Marque • $brand"),
-                            ],
-
-                            if (type.isNotEmpty || year.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              _InfoLine(
-                                icon: Icons.directions_car_rounded,
-                                text: "Type • ${[
-                                  type,
-                                  if (year.isNotEmpty) year
-                                ].where((e) => e.trim().isNotEmpty).join(' ')}",
-                              ),
-                            ],
-
-                            if (plate.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              _InfoLine(
-                                icon: Icons.confirmation_number_rounded,
-                                text: "Immat • $plate",
-                              ),
+                                  icon: Icons.location_on_rounded,
+                                  text: address),
                             ],
 
                             const SizedBox(height: 10),
 
-                            // Pills + actions ultra propres
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
@@ -710,10 +549,19 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                                   dark: true,
                                 ),
                                 _BadgePill(
-                                  text: canAccept
-                                      ? "canAcceptRides: ON"
-                                      : "canAcceptRides: OFF",
-                                  color: canAccept
+                                  text: hasIdCard
+                                      ? "Carte ID: OK"
+                                      : "Carte ID manquante",
+                                  color: hasIdCard
+                                      ? const Color(0xFF45E27A)
+                                      : const Color(0xFFE55B5B),
+                                  dark: true,
+                                ),
+                                _BadgePill(
+                                  text: canBook
+                                      ? "Réservations: ON"
+                                      : "Réservations: OFF",
+                                  color: canBook
                                       ? const Color(0xFF45E27A)
                                       : const Color(0xFFE55B5B),
                                   dark: true,
@@ -732,34 +580,34 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                                 _LuxAction(
                                   label: "Marquer VERIFIED",
                                   icon: Icons.verified_user_rounded,
-                                  enabled: complete && status != 'verified',
+                                  enabled: complete && birthValidated,
                                   onTap: () async {
                                     await _setVerificationStatus(
                                       uid: uid,
                                       status: 'verified',
                                       reviewedBy: "Admin",
-                                      canAcceptRides: true,
+                                      canBookRides: true,
                                     );
                                     if (!mounted) return;
                                     _toast(
-                                        "✅ Driver vérifié (canAcceptRides = true)");
+                                        "✅ Passager vérifié (canBookRides = true)");
                                   },
                                 ),
                                 _LuxAction(
                                   label: "Reject",
                                   icon: Icons.block_rounded,
                                   danger: true,
-                                  enabled: status != 'rejected',
+                                  enabled: true,
                                   onTap: () async {
                                     await _setVerificationStatus(
                                       uid: uid,
                                       status: 'rejected',
                                       reviewedBy: "Admin",
-                                      canAcceptRides: false,
+                                      canBookRides: false,
                                     );
                                     if (!mounted) return;
                                     _toast(
-                                        "⛔ Driver rejeté (canAcceptRides = false)");
+                                        "⛔ Passager rejeté (canBookRides = false)");
                                   },
                                 ),
                               ],
@@ -787,45 +635,32 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   // DETAILS SHEET (lux)
   // ─────────────────────────────────────────────────────────────────────────────
   void _openDetails(String uid, Map<String, dynamic> d) {
-    final docs = (d['documents'] is Map)
-        ? Map<String, dynamic>.from(d['documents'])
-        : <String, dynamic>{};
-
     // controllers (text)
     final cFirst =
         TextEditingController(text: (d['firstName'] ?? '').toString());
     final cLast = TextEditingController(text: (d['lastName'] ?? '').toString());
     final cEmail = TextEditingController(text: (d['email'] ?? '').toString());
     final cPhone = TextEditingController(text: (d['phone'] ?? '').toString());
-
-    final cBrand = TextEditingController(
-        text: (d['carBrand'] ?? d['vehicleBrand'] ?? '').toString());
-    final cType =
-        TextEditingController(text: (d['vehicleType'] ?? '').toString());
-    final cYear =
-        TextEditingController(text: (d['vehicleYear'] ?? '').toString());
-    final cPlate =
-        TextEditingController(text: (d['licensePlate'] ?? '').toString());
-
-    final cLicenseNo = TextEditingController(
-        text: (d['driverLicenseNumber'] ?? '').toString());
+    final cAddress =
+        TextEditingController(text: (d['address'] ?? '').toString());
 
     // birthdate
     DateTime? birthDt = _asDate(d['birthdate']);
 
     // status + booleans
-    String status = (d['verificationStatus'] ?? 'pending').toString();
+    String status = _status(d);
     final Map<String, bool> bools = {};
     for (final e in d.entries) {
       if (e.value is bool) {
         bools[e.key] = e.value as bool;
       }
     }
-    // force show some booleans even if absent
-
-    bools.putIfAbsent(
-        'birthdateValidated', () => (d['birthdateValidated'] ?? false) == true);
+    bools.putIfAbsent('canBookRides', () => _canBook(d));
+    bools.putIfAbsent('birthdateValidated', () => _birthValidated(d));
     bools.putIfAbsent('isVisible', () => (d['isVisible'] ?? true) == true);
+
+    final identityCardUrl = (d['identityCardUrl'] ?? '').toString().trim();
+    final photoUrl = (d['photoUrl'] ?? '').toString().trim();
 
     Future<void> save() async {
       final patch = <String, dynamic>{
@@ -833,19 +668,13 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
         'lastName': cLast.text.trim(),
         'email': cEmail.text.trim(),
         'phone': cPhone.text.trim(),
-        'carBrand': cBrand.text.trim(),
-        'vehicleType': cType.text.trim(),
-        'vehicleYear': cYear.text.trim(),
-        'licensePlate': cPlate.text.trim(),
-        'driverLicenseNumber': cLicenseNo.text.trim(),
+        'address': cAddress.text.trim(),
         'verificationStatus': status,
         'reviewedBy': 'Admin',
         'reviewedAt': FieldValue.serverTimestamp(),
-        // bools
         ...bools,
       };
 
-      // birthdate (Timestamp)
       if (birthDt != null) {
         patch['birthdate'] = Timestamp.fromDate(birthDt!);
       } else {
@@ -853,7 +682,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
       }
 
       await FirebaseFirestore.instance
-          .collection('drivers')
+          .collection('users')
           .doc(uid)
           .set(patch, SetOptions(merge: true));
     }
@@ -1020,10 +849,8 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                           ],
                         ),
                         const SizedBox(height: 8),
-                        const _GoldTitle("Détails driver"),
+                        const _GoldTitle("Détails passager"),
                         const SizedBox(height: 10),
-
-                        // header infos
                         _glass(
                           radius: 18,
                           padding: const EdgeInsets.all(12),
@@ -1034,15 +861,16 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                                   _isProfileComplete(d) ? "Oui" : "Non"),
                               _kv("Birthdate",
                                   birthDt == null ? "—" : _fmtDate(birthDt!)),
+                              _kv("Carte ID",
+                                  identityCardUrl.isEmpty ? "—" : "OK"),
+                              _kv("Photo", photoUrl.isEmpty ? "—" : "OK"),
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 12),
                         const _GoldTitle("Statut"),
                         const SizedBox(height: 10),
                         statusPills(),
-
                         const SizedBox(height: 12),
                         const _GoldTitle("Identité & Contact"),
                         const SizedBox(height: 10),
@@ -1067,39 +895,12 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                             controller: cPhone,
                             icon: Icons.phone_rounded,
                             keyboardType: TextInputType.phone),
-
-                        const SizedBox(height: 12),
-                        const _GoldTitle("Véhicule"),
                         const SizedBox(height: 10),
                         field(
-                            label: "Marque",
-                            controller: cBrand,
-                            icon: Icons.branding_watermark_rounded),
-                        const SizedBox(height: 10),
-                        field(
-                            label: "Type",
-                            controller: cType,
-                            icon: Icons.directions_car_rounded),
-                        const SizedBox(height: 10),
-                        field(
-                            label: "Année",
-                            controller: cYear,
-                            icon: Icons.calendar_month_rounded,
-                            keyboardType: TextInputType.number),
-                        const SizedBox(height: 10),
-                        field(
-                            label: "Immatriculation",
-                            controller: cPlate,
-                            icon: Icons.confirmation_number_rounded),
-
-                        const SizedBox(height: 12),
-                        const _GoldTitle("Permis"),
-                        const SizedBox(height: 10),
-                        field(
-                            label: "Numéro permis",
-                            controller: cLicenseNo,
-                            icon: Icons.credit_card_rounded),
-
+                            label: "Adresse",
+                            controller: cAddress,
+                            icon: Icons.location_on_rounded,
+                            keyboardType: TextInputType.streetAddress),
                         const SizedBox(height: 12),
                         const _GoldTitle("Birthdate"),
                         const SizedBox(height: 10),
@@ -1137,7 +938,6 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 12),
                         const _GoldTitle("Booléens"),
                         const SizedBox(height: 10),
@@ -1145,73 +945,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                               padding: const EdgeInsets.only(bottom: 10),
                               child: boolTile(e.key, e.value),
                             )),
-
-                        const SizedBox(height: 12),
-                        const _GoldTitle("Documents"),
-                        const SizedBox(height: 10),
-
-                        Builder(builder: (context) {
-                          final docs = (d['documents'] is Map)
-                              ? Map<String, dynamic>.from(d['documents'])
-                              : <String, dynamic>{};
-
-                          final docDefs = <(String key, String label)>[
-                            ('driverLicenseUrl', 'Permis de conduire'),
-                            ('idCardUrl', 'Carte d’identité'),
-                            ('registrationUrl', 'Carte grise'),
-                            ('vehicleInsuranceUrl', 'Assurance véhicule'),
-                            ('proInsuranceUrl', 'Assurance pro'),
-                            ('technicalInspectionUrl', 'Contrôle technique'),
-                            ('maintenanceInvoiceUrl', 'Facture entretien'),
-                            ('ribUrl', 'RIB'),
-                          ];
-
-                          return Column(
-                            children: docDefs.map((e) {
-                              final url = (docs[e.$1] ?? '').toString().trim();
-                              final st = _docStatus(d, e.$1);
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: _glass(
-                                  radius: 18,
-                                  padding: const EdgeInsets.all(12),
-                                  child: _DocTile(
-                                    label: e.$2,
-                                    docKey: e.$1,
-                                    url: url,
-                                    status: st,
-                                    onPreview: () =>
-                                        _openPreview(context, url, title: e.$2),
-                                    onApprove: () async {
-                                      await _reviewDriverDoc(
-                                        uid: uid,
-                                        docKey: e.$1,
-                                        status: 'approved',
-                                        reviewedBy: 'Admin',
-                                      );
-                                      if (!mounted) return;
-                                      _toast("✅ ${e.$2} approuvé");
-                                    },
-                                    onReject: () async {
-                                      await _reviewDriverDoc(
-                                        uid: uid,
-                                        docKey: e.$1,
-                                        status: 'rejected',
-                                        reviewedBy: 'Admin',
-                                      );
-                                      if (!mounted) return;
-                                      _toast("⛔ ${e.$2} rejeté");
-                                    },
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        }),
-
                         const SizedBox(height: 14),
-                        // SAVE
                         _LuxAction(
                           label: "Sauvegarder",
                           icon: Icons.save_rounded,
@@ -1237,7 +971,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Helpers
+  // Helpers UI
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _glass({
     required double radius,
@@ -1302,8 +1036,8 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Premium atoms
-// ─────────────────────────────────────────────────────────────────────────────
+// Premium atoms (identiques)
+/// ─────────────────────────────────────────────────────────────────────────────
 class _GoldTitle extends StatelessWidget {
   final String text;
   const _GoldTitle(this.text);
@@ -1779,138 +1513,6 @@ class _SheetHandle extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
         ),
       ),
-    );
-  }
-}
-
-class _DocTile extends StatelessWidget {
-  final String label;
-  final String docKey;
-  final String url;
-  final String status; // approved | rejected | pending
-  final VoidCallback onPreview;
-  final VoidCallback onApprove;
-  final VoidCallback onReject;
-
-  const _DocTile({
-    required this.label,
-    required this.docKey,
-    required this.url,
-    required this.status,
-    required this.onPreview,
-    required this.onApprove,
-    required this.onReject,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasUrl = url.trim().isNotEmpty;
-
-    Color c;
-    IconData ic;
-    String pill;
-    switch (status) {
-      case 'approved':
-        c = const Color(0xFF45E27A);
-        ic = Icons.verified_rounded;
-        pill = "APPROUVÉ";
-        break;
-      case 'rejected':
-        c = const Color(0xFFE55B5B);
-        ic = Icons.block_rounded;
-        pill = "REJETÉ";
-        break;
-      default:
-        c = const Color(0xFFFFC44D);
-        ic = Icons.hourglass_bottom_rounded;
-        pill = "PENDING";
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            _BadgePill(text: pill, color: c, dark: true),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Opacity(
-                opacity: hasUrl ? 1 : .45,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: hasUrl ? onPreview : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      color: Colors.white.withOpacity(0.04),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          hasUrl
-                              ? Icons.image_rounded
-                              : Icons.image_not_supported_rounded,
-                          color:
-                              hasUrl ? const Color(0xFFFFD700) : Colors.white38,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            hasUrl ? "Prévisualiser" : "Document manquant",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: hasUrl ? Colors.white70 : Colors.white38,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.open_in_full_rounded,
-                            color: hasUrl ? Colors.white54 : Colors.white24,
-                            size: 16),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            _LuxAction(
-              label: "Approve",
-              icon: ic,
-              enabled: hasUrl && status != 'approved',
-              onTap: onApprove,
-            ),
-            const SizedBox(width: 8),
-            _LuxAction(
-              label: "Reject",
-              icon: Icons.block_rounded,
-              danger: true,
-              enabled: hasUrl && status != 'rejected',
-              onTap: onReject,
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
+import '../services/admin_stats_service.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -206,23 +207,48 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                     final incomplete = total - complete;
 
                                     return _KpiCard(
-                                      title: "Passagers",
-                                      value:
-                                          "$total  •  $complete ✅  /  $incomplete ❌",
-                                      icon: Icons.people_rounded,
-                                      accent: const Color(0xFFFFC44D),
-                                      onTap: () =>
-                                          context.go('/admin/passengers'),
+                                        title: "Passagers",
+                                        value:
+                                            "$total  •  $complete ✅  /  $incomplete ❌",
+                                        icon: Icons.people_rounded,
+                                        accent: const Color(0xFFFFC44D),
+                                        onTap: () =>
+                                            context.go('/admin/passengers'));
+                                  },
+                                ),
+
+                                FutureBuilder<Map<String, dynamic>>(
+                                  future: AdminStatsService.getDashboardStats(
+                                      days: 30),
+                                  builder: (context, snap) {
+                                    if (!snap.hasData) {
+                                      return _KpiCard(
+                                        title: "Stats",
+                                        value: "…",
+                                        icon: Icons.query_stats_rounded,
+                                        accent: const Color(0xFF45E27A),
+                                        onTap: () => context.go('/admin/stats'),
+                                      );
+                                    }
+
+                                    final data = snap.data!;
+                                    final totals = Map<String, dynamic>.from(
+                                        data['totals'] ?? {});
+                                    final done =
+                                        (totals['doneReservations'] ?? 0)
+                                            .toString();
+
+                                    // Tu peux afficher ce que tu veux ici (doneReservations est sûr)
+                                    return _KpiCard(
+                                      title: "Stats",
+                                      value: "$done • Terminées (30j)",
+                                      icon: Icons.query_stats_rounded,
+                                      accent: const Color(0xFF45E27A),
+                                      onTap: () => context.go('/admin/stats'),
                                     );
                                   },
                                 ),
 
-                                const _KpiCard(
-                                  title: "Réservations",
-                                  value: "—",
-                                  icon: Icons.receipt_long_rounded,
-                                  accent: Color(0xFF45E27A),
-                                ),
                                 const _KpiCard(
                                   title: "Signalements",
                                   value: "—",

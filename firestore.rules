@@ -1,0 +1,159 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 🚘 Conducteurs
+    match /drivers/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 👤 Passagers
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 📅 Réservations
+    match /reservations/{docId} {
+      // ✅ Création uniquement par le passager
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      // ✅ Lecture autorisée si :
+      // - passager
+      // - conducteur assigné
+      // - ou statut visible
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.status in [
+          'En attente',
+          'Confirmée',
+          'Prise en charge',
+          'En route',
+          'Prêt',
+          'A bord',
+          'En cours',
+          'Terminée'
+        ]
+      );
+
+      // ✅ Mise à jour autorisée si :
+      allow update: if request.auth != null && (
+        // 🔹 Le passager modifie sa réservation
+        resource.data.userId == request.auth.uid ||
+
+        // 🔹 Le conducteur accepte une course "En attente" → "Confirmée"
+        (
+          resource.data.status == 'En attente' &&
+          request.resource.data.status == 'Confirmée' &&
+          request.resource.data.driverId == request.auth.uid
+        ) ||
+
+        // 🔹 Le conducteur commence la prise en charge → "Prise en charge"
+        (
+          resource.data.status == 'Confirmée' &&
+          request.resource.data.status == 'Prise en charge' &&
+          resource.data.driverId == request.auth.uid
+        ) ||
+
+        // 🔹 Le conducteur commence la prise en charge → "En route"
+        (
+          resource.data.status == 'Confirmée' &&
+          request.resource.data.status == 'En route' &&
+          resource.data.driverId == request.auth.uid
+        ) ||
+
+        // 🔹 Le conducteur est arrivé au point de départ → "Prêt"
+        (
+          resource.data.status == 'En route' &&
+          request.resource.data.status == 'Prêt' &&
+          resource.data.driverId == request.auth.uid
+        ) ||
+
+        // 🔹 Le passager monte → "En cours"
+        (
+          resource.data.status == 'Prêt' &&
+          request.resource.data.status == 'En cours' &&
+          resource.data.userId == request.auth.uid
+        ) ||
+
+        // 🔹 Le conducteur termine → "Terminée"
+        (
+          resource.data.status == 'En cours' &&
+          request.resource.data.status == 'Terminée' &&
+          resource.data.driverId == request.auth.uid
+        ) ||
+
+        // 🔹 Le conducteur met à jour sa position GPS
+        (
+          request.resource.data.driverLocation != null &&
+          resource.data.driverId == request.auth.uid
+        )
+      );
+
+      // ❌ Suppression : uniquement par le passager
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // ❤️ Favoris
+    match /favorites/{favId} {
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      allow read, update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // ✨ Feedbacks
+    match /feedbacks/{docId} {
+      allow create: if request.auth != null && (
+        request.resource.data.passengerId == request.auth.uid ||
+        request.resource.data.driverId == request.auth.uid
+      );
+
+      // ✅ Lecture si concerné
+      allow read: if request.auth != null && (
+        resource.data.driverId == request.auth.uid ||
+        resource.data.passengerId == request.auth.uid
+      );
+
+      allow update, delete: if false;
+    }
+
+    // 💬 Chats (drivers ↔ passagers)
+    match /chats/{chatId} {
+
+      function isMember() {
+        return request.auth != null
+          && get(/databases/$(database)/documents/chats/$(chatId)).data.members
+               .hasAny([request.auth.uid]);
+      }
+
+      // doc chat
+      allow read, update: if isMember();
+
+      // création : l’initiateur doit être dans members
+      allow create: if request.auth != null
+        && request.resource.data.members.hasAny([request.auth.uid]);
+
+      // messages
+      match /messages/{messageId} {
+        allow create: if isMember()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+
+        allow read: if isMember();
+
+        allow update, delete: if false;
+      }
+    }
+
+    // 🚫 Par défaut : interdiction totale
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

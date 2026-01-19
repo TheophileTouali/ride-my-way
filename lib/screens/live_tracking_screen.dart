@@ -475,6 +475,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
     await docRef.update({
       "status": "Terminée",
+      "completedAt":
+          FieldValue.serverTimestamp(), // ✅ champ attendu par les stats
       "endTime": FieldValue.serverTimestamp(),
     });
 

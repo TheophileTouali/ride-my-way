@@ -1,11 +1,10 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { assertSuperAdmin } from "./admin_guard";
 
 const kPlatformCommissionRate = 0.40;
 const kDriverNetRate = 1.0 - kPlatformCommissionRate; // 0.60
-const kTZ = "Europe/Paris"; // ✅ important pour stats par heure/jour
+const kTZ = "Europe/Paris";
 
 function toNumber(v: any): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -16,7 +15,7 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-// ✅ force la date en timezone Paris (sinon Cloud Functions peut te sortir de l’UTC)
+// force date en timezone Paris
 function toParisDate(ts: Timestamp) {
   return new Date(ts.toDate().toLocaleString("en-US", { timeZone: kTZ }));
 }
@@ -24,7 +23,6 @@ function toParisDate(ts: Timestamp) {
 function ymd(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-
 function ym(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
@@ -51,6 +49,14 @@ function endOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 }
 
+/**
+ * ✅ ADMIN DASHBOARD STATS — VERSION PRÊTE À L’EMPLOI
+ * Corrections clés:
+ * - doneQuery supporte completedAt ET fallback endTime (ton LiveTracking écrit endTime)
+ * - completedAt dans l’agrégat = completedAt ?? endTime
+ * - gross supporte amountReceived (cents) si price absent
+ * - doneReservations cohérent avec doneSnap final (après fallback)
+ */
 export const adminGetDashboardStats = onCall(
   { region: "europe-west1" },
   async (request) => {
@@ -61,15 +67,11 @@ export const adminGetDashboardStats = onCall(
 
       // ─────────────────────────────────────────────────────────────
       // INPUTS
-      // - days: période glissante (default 180)
-      // - from/to: ISO string ou ms epoch (optionnel)
-      // - driverId: optionnel (si présent => stats filtrées chauffeur)
       // ─────────────────────────────────────────────────────────────
       const days = toNumber(request.data?.days ?? 180);
       const now = new Date();
 
-      const driverRaw = request.data?.driverId;
-      const driverIdIn = String(driverRaw ?? "").trim();
+      const driverIdIn = String(request.data?.driverId ?? "").trim();
       const hasDriverFilter = driverIdIn.length > 0;
 
       let fromDate: Date;
@@ -94,14 +96,13 @@ export const adminGetDashboardStats = onCall(
       const toTs = Timestamp.fromDate(toDate);
 
       // ─────────────────────────────────────────────────────────────
-      // 1) Totaux de base (global)
+      // 1) Totaux base
       // ─────────────────────────────────────────────────────────────
       const [driversSnap, usersSnap] = await Promise.all([
         db.collection("drivers").get(),
         db.collection("users").get(),
       ]);
 
-      // feedbacks : global ou filtré driver (si ton feedback a driverId)
       const feedbacksQuery = hasDriverFilter
         ? db.collection("feedbacks").where("driverId", "==", driverIdIn)
         : db.collection("feedbacks");
@@ -109,19 +110,13 @@ export const adminGetDashboardStats = onCall(
       const feedbacksSnap = await feedbacksQuery.get();
 
       // ─────────────────────────────────────────────────────────────
-      // 2) Réservations sur la période (POUR totals.reservations + status + users uniques)
-      //
-      // ⚠️ IMPORTANT: si tu n'as pas createdAt mais departureTime,
-      // remplace "createdAt" par "departureTime" ici.
-      //
-      // Index composite requis:
-      // - createdAt ASC
-      // - + driverId ASC (si filtre chauffeur)
+      // 2) Réservations sur la période (totals.reservations + status + users uniques)
+      // ⚠️ createdAt doit être un Timestamp (serverTimestamp) : OK chez toi
       // ─────────────────────────────────────────────────────────────
       let periodReservationsQuery: FirebaseFirestore.Query = db
         .collection("reservations")
-        .where("createdAt", ">=", fromTs) // <-- ou departureTime
-        .where("createdAt", "<=", toTs); // <-- ou departureTime
+        .where("createdAt", ">=", fromTs)
+        .where("createdAt", "<=", toTs);
 
       if (hasDriverFilter) {
         periodReservationsQuery = periodReservationsQuery.where("driverId", "==", driverIdIn);
@@ -129,7 +124,6 @@ export const adminGetDashboardStats = onCall(
 
       const periodReservationsSnap = await periodReservationsQuery.get();
 
-      // statuses normalisés côté UI
       const statuses: Record<string, string> = {
         pending: "En attente",
         confirmed: "Confirmée",
@@ -139,12 +133,10 @@ export const adminGetDashboardStats = onCall(
         terminee: "Terminée",
       };
 
-      // ✅ reservationsByStatus calculé en 1 passe
       const reservationsByStatus: Record<string, number> = Object.fromEntries(
         Object.keys(statuses).map((k) => [k, 0])
       );
 
-      // ✅ users uniques (si le doc reservation a userId / passengerId)
       const uniqueUsers = new Set<string>();
 
       periodReservationsSnap.forEach((doc) => {
@@ -163,7 +155,7 @@ export const adminGetDashboardStats = onCall(
       });
 
       // ─────────────────────────────────────────────────────────────
-      // 3) driversByVerification : global ou “1 driver”
+      // 3) driversByVerification
       // ─────────────────────────────────────────────────────────────
       const driversByVerification: Record<string, number> = {
         verified: 0,
@@ -201,20 +193,35 @@ export const adminGetDashboardStats = onCall(
       }
 
       // ─────────────────────────────────────────────────────────────
-      // 4) Courses terminées (filtrées sur completedAt)
+      // 4) Courses terminées (completedAt OU fallback endTime)
       // ─────────────────────────────────────────────────────────────
+      let doneSnap: FirebaseFirestore.QuerySnapshot;
+
+      // Primary: completedAt
       let doneQuery: FirebaseFirestore.Query = db
         .collection("reservations")
         .where("status", "==", "Terminée")
         .where("completedAt", ">=", fromTs)
         .where("completedAt", "<=", toTs);
 
-      if (hasDriverFilter) {
-        doneQuery = doneQuery.where("driverId", "==", driverIdIn);
-      }
-
+      if (hasDriverFilter) doneQuery = doneQuery.where("driverId", "==", driverIdIn);
       doneQuery = doneQuery.orderBy("completedAt", "asc");
-      const doneSnap = await doneQuery.get();
+
+      doneSnap = await doneQuery.get();
+
+      // Fallback: endTime (car ton LiveTracking écrit endTime)
+      if (doneSnap.empty) {
+        let doneEndQuery: FirebaseFirestore.Query = db
+          .collection("reservations")
+          .where("status", "==", "Terminée")
+          .where("endTime", ">=", fromTs)
+          .where("endTime", "<=", toTs);
+
+        if (hasDriverFilter) doneEndQuery = doneEndQuery.where("driverId", "==", driverIdIn);
+        doneEndQuery = doneEndQuery.orderBy("endTime", "asc");
+
+        doneSnap = await doneEndQuery.get();
+      }
 
       // ─────────────────────────────────────────────────────────────
       // 5) Aggregations business (sur courses terminées)
@@ -279,12 +286,18 @@ export const adminGetDashboardStats = onCall(
       doneSnap.forEach((doc) => {
         const data = doc.data() as Record<string, any>;
 
-        const completedAt = data.completedAt as Timestamp | undefined;
+        // ✅ IMPORTANT : support des deux champs
+        const completedAt = (data.completedAt ?? data.endTime) as Timestamp | undefined;
         if (!completedAt) return;
 
         const dt = toParisDate(completedAt);
 
-        const gross = toNumber(data.price ?? data.amount ?? data.fare);
+        // ✅ prix tolérant
+        let gross = toNumber(data.price ?? data.amount ?? data.fare);
+        if (!gross && data.amountReceived) {
+          const cents = toNumber(data.amountReceived);
+          gross = cents > 0 ? cents / 100 : 0;
+        }
         if (gross <= 0) return;
 
         const driverId = String(data.driverId ?? "").trim();
@@ -381,7 +394,7 @@ export const adminGetDashboardStats = onCall(
         users: hasDriverFilter ? uniqueUsers.size : usersSnap.size,
         reservations: periodReservationsSnap.size,
         feedbacks: feedbacksSnap.size,
-        doneReservations: doneSnap.size,
+        doneReservations: doneSnap.size, // ✅ après fallback
       };
 
       // ─────────────────────────────────────────────────────────────
@@ -413,29 +426,26 @@ export const adminGetDashboardStats = onCall(
         },
         generatedAt: Date.now(),
       };
-    } } catch (e: any) {
-  console.error("adminGetDashboardStats error:", e);
+    } catch (e: any) {
+      console.error("adminGetDashboardStats error:", e);
 
-  // ✅ IMPORTANT : si c'est déjà une HttpsError (permission-denied, unauthenticated, etc.)
-  // on la renvoie telle quelle (sinon tu te retrouves avec INTERNAL)
-  if (e instanceof HttpsError) {
-    throw e;
+      if (e instanceof HttpsError) throw e;
+
+      const msg = String(e?.message ?? e);
+
+      if (msg.includes("requires an index") || msg.includes("FAILED_PRECONDITION") || e?.code === 9) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Index Firestore manquant pour cette requête. Crée l’index composite demandé (reservations).",
+          { raw: msg }
+        );
+      }
+
+      throw new HttpsError(
+        "internal",
+        "Erreur interne lors du calcul des statistiques admin.",
+        { raw: msg }
+      );
+    }
   }
-
-  const msg = String(e?.message ?? e);
-
-  // ✅ index Firestore manquant
-  if (msg.includes("requires an index") || msg.includes("FAILED_PRECONDITION") || e?.code === 9) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Index Firestore manquant pour cette requête. Crée l’index composite demandé (reservations).",
-      { raw: msg }
-    );
-  }
-
-  throw new HttpsError(
-    "internal",
-    "Erreur interne lors du calcul des statistiques admin.",
-    { raw: msg }
-  );
-}
+);

@@ -437,52 +437,57 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
           }
         }
 
-        return Row(
-          children: [
-            Expanded(
-              child: _MiniKpi(
-                title: "Total",
-                value: "$total",
-                icon: Icons.badge_rounded,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
-                title: "Complets",
-                value: "$complete",
-                icon: Icons.verified_rounded,
-                good: true,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
-                title: "Pending",
-                value: "$pending",
-                icon: Icons.hourglass_bottom_rounded,
-                warn: true,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
-                title: "Verified",
-                value: "$verified",
-                icon: Icons.verified_user_rounded,
-                good: true,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
-                title: "Rejected",
-                value: "$rejected",
-                icon: Icons.block_rounded,
-                bad: true,
-              ),
-            ),
-          ],
+        return LayoutBuilder(
+          builder: (context, c) {
+            final isNarrow = c.maxWidth < 720;
+
+            final tiles = <Widget>[
+              _MiniKpi(
+                  title: "Total", value: "$total", icon: Icons.badge_rounded),
+              _MiniKpi(
+                  title: "Complets",
+                  value: "$complete",
+                  icon: Icons.verified_rounded,
+                  good: true),
+              _MiniKpi(
+                  title: "Pending",
+                  value: "$pending",
+                  icon: Icons.hourglass_bottom_rounded,
+                  warn: true),
+              _MiniKpi(
+                  title: "Verified",
+                  value: "$verified",
+                  icon: Icons.verified_user_rounded,
+                  good: true),
+              _MiniKpi(
+                  title: "Rejected",
+                  value: "$rejected",
+                  icon: Icons.block_rounded,
+                  bad: true),
+            ];
+
+            if (!isNarrow) {
+              // Desktop / tablette : 1 ligne
+              return Row(
+                children: [
+                  for (int i = 0; i < tiles.length; i++) ...[
+                    Expanded(child: tiles[i]),
+                    if (i != tiles.length - 1) const SizedBox(width: 10),
+                  ],
+                ],
+              );
+            }
+
+            // Mobile : 2 colonnes (grille fluide)
+            final w = (c.maxWidth - 10) / 2; // 10 = spacing
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final t in tiles) SizedBox(width: w, child: t),
+              ],
+            );
+          },
         );
       },
     );
@@ -547,235 +552,252 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   }
 
   Widget _list() {
+    final q = FirebaseFirestore.instance.collection('drivers');
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('drivers')
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
+      stream: q.snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Center(
+            child: Text(
+              "Erreur Firestore: ${snap.error}",
+              style: const TextStyle(color: Colors.white60),
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
         if (!snap.hasData) {
           return const Center(
             child: CircularProgressIndicator(color: AppColors.gold),
           );
         }
 
-        final docs = snap.data!.docs.where((d) {
-          final data = d.data();
-          return _matchFilter(data) && _matchQuery(data);
-        }).toList();
+        return _buildDriversList(snap.data!.docs);
+      },
+    );
+  }
 
-        if (docs.isEmpty) {
-          return const Center(
-            child: Text("Aucun driver trouvé.",
-                style: TextStyle(color: Colors.white60)),
-          );
-        }
+  Widget _buildDriversList(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docsRaw) {
+    // ✅ Filtrage local (query + pills)
+    final docs = docsRaw.where((doc) {
+      final data = doc.data();
+      return _matchFilter(data) && _matchQuery(data);
+    }).toList();
 
-        return ListView.separated(
-          padding: const EdgeInsets.only(top: 2, bottom: 10),
-          itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) {
-            final doc = docs[i];
-            final d = doc.data();
-            final uid = doc.id;
+    // ✅ Tri local SAFE si fallback sans createdAt
+    docs.sort((a, b) {
+      final ta = a.data()['createdAt'];
+      final tb = b.data()['createdAt'];
+      final da = ta is Timestamp
+          ? ta.toDate()
+          : DateTime.fromMillisecondsSinceEpoch(0);
+      final db = tb is Timestamp
+          ? tb.toDate()
+          : DateTime.fromMillisecondsSinceEpoch(0);
+      return db.compareTo(da);
+    });
 
-            final fullName =
-                "${d['firstName'] ?? ''} ${d['lastName'] ?? ''}".trim();
-            final email = (d['email'] ?? '').toString();
-            final phone = (d['phone'] ?? '').toString();
+    if (docs.isEmpty) {
+      return const Center(
+        child: Text(
+          "Aucun driver trouvé.",
+          style: TextStyle(color: Colors.white60),
+        ),
+      );
+    }
 
-            final hasBirth = _hasBirthdate(d);
-            final birthLabel = _birthLabel(d['birthdate']);
-            final birthValidated = (d['birthdateValidated'] ?? false) == true;
-            final canAccept = _canAccept(d);
+    return ListView.separated(
+      padding: const EdgeInsets.only(top: 2, bottom: 10),
+      itemCount: docs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, i) {
+        final doc = docs[i];
+        final d = doc.data();
+        final uid = doc.id;
 
-            final brand =
-                (d['carBrand'] ?? d['vehicleBrand'] ?? '').toString().trim();
-            final type = (d['vehicleType'] ?? '').toString().trim();
-            final year = (d['vehicleYear'] ?? '').toString().trim();
-            final plate = (d['licensePlate'] ?? '').toString().trim();
+        final fullName =
+            "${d['firstName'] ?? ''} ${d['lastName'] ?? ''}".trim();
+        final email = (d['email'] ?? '').toString();
+        final phone = (d['phone'] ?? '').toString();
 
-            final status = _status(d);
-            final complete = _isProfileComplete(d);
+        final hasBirth = _hasBirthdate(d);
+        final birthLabel = _birthLabel(d['birthdate']);
+        final birthValidated = (d['birthdateValidated'] ?? false) == true;
+        final canAccept = _canAccept(d);
 
-            return AnimatedBuilder(
-              animation: _glow,
-              builder: (_, __) {
-                final glow = 0.10 + 0.10 * _glow.value;
+        final brand =
+            (d['carBrand'] ?? d['vehicleBrand'] ?? '').toString().trim();
+        final type = (d['vehicleType'] ?? '').toString().trim();
+        final year = (d['vehicleYear'] ?? '').toString().trim();
+        final plate = (d['licensePlate'] ?? '').toString().trim();
 
-                return _glass(
-                  radius: 20,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  borderGlowOpacity: complete ? glow : 0.06,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Medallion(
-                        icon: Icons.badge_rounded,
-                        status: status,
-                        complete: complete,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+        final status = _status(d).toLowerCase().trim(); // ✅ normalisation
+        final complete = _isProfileComplete(d);
+
+        return AnimatedBuilder(
+          animation: _glow,
+          builder: (_, __) {
+            final glow = 0.10 + 0.10 * _glow.value;
+
+            return _glass(
+              radius: 20,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              borderGlowOpacity: complete ? glow : 0.06,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Medallion(
+                      icon: Icons.badge_rounded,
+                      status: status,
+                      complete: complete),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            // Ligne 1 : nom + pills
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    fullName.isEmpty ? uid : fullName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontFamily: 'PlayfairDisplay',
-                                      fontSize: 16,
-                                      letterSpacing: .15,
-                                    ),
-                                  ),
+                            Expanded(
+                              child: Text(
+                                fullName.isEmpty ? uid : fullName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontSize: 16,
+                                  letterSpacing: .15,
                                 ),
-                                const SizedBox(width: 10),
-                                _StatusPill(status: status),
-                                const SizedBox(width: 8),
-                                _BadgePill(
-                                  text: complete ? "Complet" : "Incomplet",
-                                  color: complete
-                                      ? const Color(0xFF45E27A)
-                                      : const Color(0xFFE55B5B),
-                                ),
-                              ],
+                              ),
                             ),
-
-                            const SizedBox(height: 6),
-
-                            // Ligne 2 : infos compressibles
-                            _InfoLine(icon: Icons.email_rounded, text: email),
-                            const SizedBox(height: 2),
-                            _InfoLine(
-                                icon: Icons.phone_android_rounded, text: phone),
-                            if (brand.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              _InfoLine(
-                                  icon: Icons.branding_watermark_rounded,
-                                  text: "Marque • $brand"),
-                            ],
-
-                            if (type.isNotEmpty || year.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              _InfoLine(
-                                icon: Icons.directions_car_rounded,
-                                text: "Type • ${[
-                                  type,
-                                  if (year.isNotEmpty) year
-                                ].where((e) => e.trim().isNotEmpty).join(' ')}",
-                              ),
-                            ],
-
-                            if (plate.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              _InfoLine(
-                                icon: Icons.confirmation_number_rounded,
-                                text: "Immat • $plate",
-                              ),
-                            ],
-
-                            const SizedBox(height: 10),
-
-                            // Pills + actions ultra propres
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                _BadgePill(
-                                  text: hasBirth
-                                      ? "Birthdate: $birthLabel"
-                                      : "Birthdate manquante",
-                                  color: hasBirth
-                                      ? AppColors.gold
-                                      : const Color(0xFFE55B5B),
-                                  dark: true,
-                                ),
-                                _BadgePill(
-                                  text: birthValidated
-                                      ? "Birthdate VALIDÉE"
-                                      : "Birthdate NON validée",
-                                  color: birthValidated
-                                      ? const Color(0xFF45E27A)
-                                      : const Color(0xFFFFC44D),
-                                  dark: true,
-                                ),
-                                _BadgePill(
-                                  text: canAccept
-                                      ? "canAcceptRides: ON"
-                                      : "canAcceptRides: OFF",
-                                  color: canAccept
-                                      ? const Color(0xFF45E27A)
-                                      : const Color(0xFFE55B5B),
-                                  dark: true,
-                                ),
-                                _LuxAction(
-                                  label: "Valider birthdate",
-                                  icon: Icons.verified_rounded,
-                                  enabled: hasBirth && !birthValidated,
-                                  onTap: () async {
-                                    await _validateBirthdate(
-                                        uid: uid, reviewedBy: "Admin");
-                                    if (!mounted) return;
-                                    _toast("✅ Birthdate validée");
-                                  },
-                                ),
-                                _LuxAction(
-                                  label: "Marquer VERIFIED",
-                                  icon: Icons.verified_user_rounded,
-                                  enabled: complete && status != 'verified',
-                                  onTap: () async {
-                                    await _setVerificationStatus(
-                                      uid: uid,
-                                      status: 'verified',
-                                      reviewedBy: "Admin",
-                                      canAcceptRides: true,
-                                    );
-                                    if (!mounted) return;
-                                    _toast(
-                                        "✅ Driver vérifié (canAcceptRides = true)");
-                                  },
-                                ),
-                                _LuxAction(
-                                  label: "Reject",
-                                  icon: Icons.block_rounded,
-                                  danger: true,
-                                  enabled: status != 'rejected',
-                                  onTap: () async {
-                                    await _setVerificationStatus(
-                                      uid: uid,
-                                      status: 'rejected',
-                                      reviewedBy: "Admin",
-                                      canAcceptRides: false,
-                                    );
-                                    if (!mounted) return;
-                                    _toast(
-                                        "⛔ Driver rejeté (canAcceptRides = false)");
-                                  },
-                                ),
-                              ],
+                            const SizedBox(width: 10),
+                            _StatusPill(status: status),
+                            const SizedBox(width: 8),
+                            _BadgePill(
+                              text: complete ? "Complet" : "Incomplet",
+                              color: complete
+                                  ? const Color(0xFF45E27A)
+                                  : const Color(0xFFE55B5B),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      _IconGlassBtn(
-                        icon: Icons.chevron_right_rounded,
-                        onTap: () => _openDetails(uid, d),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        _InfoLine(icon: Icons.email_rounded, text: email),
+                        const SizedBox(height: 2),
+                        _InfoLine(
+                            icon: Icons.phone_android_rounded, text: phone),
+                        if (brand.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          _InfoLine(
+                              icon: Icons.branding_watermark_rounded,
+                              text: "Marque • $brand"),
+                        ],
+                        if (type.isNotEmpty || year.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          _InfoLine(
+                            icon: Icons.directions_car_rounded,
+                            text: "Type • ${[
+                              type,
+                              if (year.isNotEmpty) year
+                            ].where((e) => e.trim().isNotEmpty).join(' ')}",
+                          ),
+                        ],
+                        if (plate.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          _InfoLine(
+                              icon: Icons.confirmation_number_rounded,
+                              text: "Immat • $plate"),
+                        ],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _BadgePill(
+                              text: hasBirth
+                                  ? "Birthdate: $birthLabel"
+                                  : "Birthdate manquante",
+                              color: hasBirth
+                                  ? AppColors.gold
+                                  : const Color(0xFFE55B5B),
+                              dark: true,
+                            ),
+                            _BadgePill(
+                              text: birthValidated
+                                  ? "Birthdate VALIDÉE"
+                                  : "Birthdate NON validée",
+                              color: birthValidated
+                                  ? const Color(0xFF45E27A)
+                                  : const Color(0xFFFFC44D),
+                              dark: true,
+                            ),
+                            _BadgePill(
+                              text: canAccept
+                                  ? "canAcceptRides: ON"
+                                  : "canAcceptRides: OFF",
+                              color: canAccept
+                                  ? const Color(0xFF45E27A)
+                                  : const Color(0xFFE55B5B),
+                              dark: true,
+                            ),
+                            _LuxAction(
+                              label: "Valider birthdate",
+                              icon: Icons.verified_rounded,
+                              enabled: hasBirth && !birthValidated,
+                              onTap: () async {
+                                await _validateBirthdate(
+                                    uid: uid, reviewedBy: "Admin");
+                                if (!mounted) return;
+                                _toast("✅ Birthdate validée");
+                              },
+                            ),
+                            _LuxAction(
+                              label: "Marquer VERIFIED",
+                              icon: Icons.verified_user_rounded,
+                              enabled: complete && status != 'verified',
+                              onTap: () async {
+                                await _setVerificationStatus(
+                                  uid: uid,
+                                  status: 'verified',
+                                  reviewedBy: "Admin",
+                                  canAcceptRides: true,
+                                );
+                                if (!mounted) return;
+                                _toast(
+                                    "✅ Driver vérifié (canAcceptRides = true)");
+                              },
+                            ),
+                            _LuxAction(
+                              label: "Reject",
+                              icon: Icons.block_rounded,
+                              danger: true,
+                              enabled: status != 'rejected',
+                              onTap: () async {
+                                await _setVerificationStatus(
+                                  uid: uid,
+                                  status: 'rejected',
+                                  reviewedBy: "Admin",
+                                  canAcceptRides: false,
+                                );
+                                if (!mounted) return;
+                                _toast(
+                                    "⛔ Driver rejeté (canAcceptRides = false)");
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
+                  const SizedBox(width: 10),
+                  _IconGlassBtn(
+                    icon: Icons.chevron_right_rounded,
+                    onTap: () => _openDetails(uid, d),
+                  ),
+                ],
+              ),
             );
           },
         );

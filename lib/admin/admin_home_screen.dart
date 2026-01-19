@@ -137,11 +137,26 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                       .collection('drivers')
                                       .snapshots(),
                                   builder: (context, snap) {
-                                    if (!snap.hasData) {
-                                      return const _KpiCard(
+                                    // ✅ Toujours cliquable
+                                    if (snap.hasError) {
+                                      return _KpiCard(
                                         title: "Drivers",
-                                        value: "…",
+                                        value: "Erreur accès",
                                         icon: Icons.badge_rounded,
+                                        accent: AppColors.gold,
+                                        onTap: () =>
+                                            context.go('/admin/drivers'),
+                                      );
+                                    }
+
+                                    if (!snap.hasData) {
+                                      return _KpiCard(
+                                        title: "Drivers",
+                                        value: "Chargement…",
+                                        icon: Icons.badge_rounded,
+                                        accent: AppColors.gold,
+                                        onTap: () =>
+                                            context.go('/admin/drivers'),
                                       );
                                     }
 
@@ -172,22 +187,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                       .collection('passengers')
                                       .snapshots(),
                                   builder: (context, snap) {
-                                    if (!snap.hasData) {
-                                      return const _KpiCard(
-                                        title: "Passagers",
-                                        value: "…",
-                                        icon: Icons.people_rounded,
-                                        accent: Color(0xFFFFC44D),
-                                      );
-                                    }
-
-                                    final list = snap.data!.docs
-                                        .map((e) => e.data())
-                                        .toList();
-                                    final total = list.length;
-
-                                    // même logique que ta page passengers : complet = birthdate + address + identityCardUrl
-                                    bool _isPassengerComplete(
+                                    bool isPassengerComplete(
                                         Map<String, dynamic> d) {
                                       final hasBirth = d['birthdate'] != null;
                                       final address = (d['address'] ?? '')
@@ -202,18 +202,46 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                           idCard.isNotEmpty;
                                     }
 
-                                    final complete =
-                                        list.where(_isPassengerComplete).length;
-                                    final incomplete = total - complete;
-
-                                    return _KpiCard(
+                                    // ✅ Toujours cliquable
+                                    if (snap.hasError) {
+                                      return _KpiCard(
                                         title: "Passagers",
-                                        value:
-                                            "$total  •  $complete ✅  /  $incomplete ❌",
+                                        value: "Erreur accès",
                                         icon: Icons.people_rounded,
                                         accent: const Color(0xFFFFC44D),
                                         onTap: () =>
-                                            context.go('/admin/passengers'));
+                                            context.go('/admin/passengers'),
+                                      );
+                                    }
+
+                                    if (!snap.hasData) {
+                                      return _KpiCard(
+                                        title: "Passagers",
+                                        value: "Chargement…",
+                                        icon: Icons.people_rounded,
+                                        accent: const Color(0xFFFFC44D),
+                                        onTap: () =>
+                                            context.go('/admin/passengers'),
+                                      );
+                                    }
+
+                                    final list = snap.data!.docs
+                                        .map((e) => e.data())
+                                        .toList();
+                                    final total = list.length;
+                                    final complete =
+                                        list.where(isPassengerComplete).length;
+                                    final incomplete = total - complete;
+
+                                    return _KpiCard(
+                                      title: "Passagers",
+                                      value:
+                                          "$total  •  $complete ✅  /  $incomplete ❌",
+                                      icon: Icons.people_rounded,
+                                      accent: const Color(0xFFFFC44D),
+                                      onTap: () =>
+                                          context.go('/admin/passengers'),
+                                    );
                                   },
                                 ),
 
@@ -518,65 +546,73 @@ class _KpiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 220,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              colors: [Colors.white.withOpacity(0.06), Colors.black12],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: Colors.white10),
-            boxShadow: const [
-              BoxShadow(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                colors: [Colors.white.withOpacity(0.06), Colors.black12],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: Colors.white10),
+              boxShadow: const [
+                BoxShadow(
                   color: Color(0x33000000),
                   blurRadius: 14,
-                  offset: Offset(0, 6)),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: accent.withOpacity(.12),
-                  border: Border.all(color: accent.withOpacity(.35)),
+                  offset: Offset(0, 6),
                 ),
-                child: Icon(icon, color: accent),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.withOpacity(.12),
+                    border: Border.all(color: accent.withOpacity(.35)),
+                  ),
+                  child: Icon(icon, color: accent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
                         style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 6),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.gold,
-                        fontFamily: 'PlayfairDisplay',
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.gold,
+                          fontFamily: 'PlayfairDisplay',
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              if (onTap != null)
-                const Icon(Icons.chevron_right_rounded, color: Colors.white30),
-            ],
+                if (onTap != null)
+                  const Icon(Icons.chevron_right_rounded,
+                      color: Colors.white30),
+              ],
+            ),
           ),
         ),
       ),

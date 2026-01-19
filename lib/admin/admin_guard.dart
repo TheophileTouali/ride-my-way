@@ -32,15 +32,25 @@ class _AdminGuardState extends State<AdminGuard> {
         return;
       }
 
-      // Force refresh du token pour récupérer les claims
-      final token = await user.getIdTokenResult(true);
-      final claims = token.claims ?? {};
-      final isSuperAdmin = claims['super_admin'] == true;
+      bool isSuperAdmin = false;
+
+      // 🔁 Retry pour laisser le temps au claim de se propager (Flutter Web)
+      for (int i = 0; i < 5; i++) {
+        final token = await user.getIdTokenResult(true);
+        final claims = token.claims ?? {};
+
+        if (claims['super_admin'] == true) {
+          isSuperAdmin = true;
+          break;
+        }
+
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
 
       setState(() {
         _loading = false;
         _allowed = isSuperAdmin;
-        _error = isSuperAdmin ? null : "Accès refusé";
+        _error = isSuperAdmin ? null : "Accès refusé (claim non propagé)";
       });
     } catch (e) {
       setState(() {

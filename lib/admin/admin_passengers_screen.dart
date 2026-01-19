@@ -279,7 +279,10 @@ class _AdminPassengersScreenState extends State<AdminPassengersScreen>
 
   Widget _liveStrip() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'passenger')
+          .snapshots(),
       builder: (context, snap) {
         final total = snap.data?.docs.length ?? 0;
         int complete = 0;
@@ -291,59 +294,72 @@ class _AdminPassengersScreenState extends State<AdminPassengersScreen>
           for (final doc in snap.data!.docs) {
             final d = doc.data();
             if (_isProfileComplete(d)) complete++;
-            final s = _status(d);
+
+            final s = _status(d).toLowerCase().trim();
             if (s == 'verified') verified++;
             if (s == 'pending') pending++;
             if (s == 'rejected') rejected++;
           }
         }
 
-        return Row(
-          children: [
-            Expanded(
-              child: _MiniKpi(
+        return LayoutBuilder(
+          builder: (context, c) {
+            final isNarrow = c.maxWidth < 720;
+
+            final tiles = <Widget>[
+              _MiniKpi(
                 title: "Total",
                 value: "$total",
                 icon: Icons.people_alt_rounded,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
+              _MiniKpi(
                 title: "Complets",
                 value: "$complete",
                 icon: Icons.verified_rounded,
                 good: true,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
+              _MiniKpi(
                 title: "Pending",
                 value: "$pending",
                 icon: Icons.hourglass_bottom_rounded,
                 warn: true,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
+              _MiniKpi(
                 title: "Verified",
                 value: "$verified",
                 icon: Icons.verified_user_rounded,
                 good: true,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _MiniKpi(
+              _MiniKpi(
                 title: "Rejected",
                 value: "$rejected",
                 icon: Icons.block_rounded,
                 bad: true,
               ),
-            ),
-          ],
+            ];
+
+            if (!isNarrow) {
+              // tablette/desktop : 1 ligne
+              return Row(
+                children: [
+                  for (int i = 0; i < tiles.length; i++) ...[
+                    Expanded(child: tiles[i]),
+                    if (i != tiles.length - 1) const SizedBox(width: 10),
+                  ],
+                ],
+              );
+            }
+
+            // mobile : 2 colonnes (plus d’overflow)
+            final w = (c.maxWidth - 10) / 2; // 10 = spacing
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final t in tiles) SizedBox(width: w, child: t),
+              ],
+            );
+          },
         );
       },
     );

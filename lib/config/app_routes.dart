@@ -198,7 +198,9 @@ class AppRoutes {
       ),
       GoRoute(
         path: '/admin/passengers',
-        builder: (context, state) => const AdminPassengersScreen(),
+        builder: (context, state) => AdminGuard(
+          child: const AdminPassengersScreen(),
+        ),
       ),
       GoRoute(
         path: '/admin/stats',

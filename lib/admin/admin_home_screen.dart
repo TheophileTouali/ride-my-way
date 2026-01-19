@@ -184,7 +184,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
                                 StreamBuilder<
                                     QuerySnapshot<Map<String, dynamic>>>(
                                   stream: FirebaseFirestore.instance
-                                      .collection('passengers')
+                                      .collection('users')
+                                      .where('role', isEqualTo: 'passenger')
                                       .snapshots(),
                                   builder: (context, snap) {
                                     bool isPassengerComplete(
@@ -594,15 +595,19 @@ class _KpiCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(
-                        value,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.gold,
-                          fontFamily: 'PlayfairDisplay',
-                          fontWeight: FontWeight.w900,
-                          fontSize: 17,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.gold,
+                            fontFamily: 'PlayfairDisplay',
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                          ),
                         ),
                       ),
                     ],

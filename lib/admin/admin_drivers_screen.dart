@@ -397,14 +397,18 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
   Widget _topBar(BuildContext context) {
     return Row(
       children: [
-        _GoldTitle("Super Admin • Drivers"),
+        Expanded(
+          child: _GoldTitle(
+            "Super Admin • Drivers",
+            maxLines: 1,
+          ),
+        ),
         const SizedBox(width: 10),
         const _LiveChip(),
-        const Spacer(),
+        const SizedBox(width: 10),
         _IconGlassBtn(
           icon: Icons.arrow_back_rounded,
           onTap: () {
-            // GoRouter friendly
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             } else {
@@ -1328,7 +1332,8 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 class _GoldTitle extends StatelessWidget {
   final String text;
-  const _GoldTitle(this.text);
+  final int maxLines;
+  const _GoldTitle(this.text, {this.maxLines = 1});
 
   @override
   Widget build(BuildContext context) {
@@ -1340,6 +1345,9 @@ class _GoldTitle extends StatelessWidget {
       ).createShader(r),
       child: Text(
         text,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 24,

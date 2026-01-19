@@ -365,7 +365,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
               Navigator.of(context).pop();
             } else {
               // fallback si pas d'historique
-              context.go('/'); // ou '/login' ou '/home' selon ton app
+              context.go(
+                  '/driver-profile'); // ou '/login' ou '/home' selon ton app
             }
           },
         ),

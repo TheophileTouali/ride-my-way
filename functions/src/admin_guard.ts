@@ -1,20 +1,15 @@
-import { HttpsError, CallableRequest } from "firebase-functions/v2/https";
+import { HttpsError } from "firebase-functions/v2/https";
 
-/**
- * Vérifie que l'utilisateur appelant possède le claim custom:
- *   super_admin === true
- * Fonction compatible avec onCall (Firebase Functions v2)
- */
-export function assertSuperAdmin(request: CallableRequest): string {
+export function assertSuperAdmin(request: any) {
   const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Connexion requise");
 
-  if (!auth) {
-    throw new HttpsError("unauthenticated", "Connexion requise");
-  }
+  const claims = auth.token || {};
+  const isAdmin = claims.super_admin === true;
 
-  if (auth.token?.super_admin !== true) {
+  if (!isAdmin) {
     throw new HttpsError("permission-denied", "Accès Super Admin requis");
   }
 
-  return auth.uid;
+  return auth.uid as string;
 }

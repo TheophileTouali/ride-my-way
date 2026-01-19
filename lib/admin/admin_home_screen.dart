@@ -357,16 +357,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen>
   Widget _topBar(BuildContext context) {
     return Row(
       children: [
-        const _GoldTitle("Console Super Admin"),
+        // ✅ Bouton retour (si possible)
+        _IconGlassBtn(
+          icon: Icons.arrow_back_rounded,
+          onTap: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              // fallback si pas d'historique
+              context.go('/'); // ou '/login' ou '/home' selon ton app
+            }
+          },
+        ),
+        const SizedBox(width: 10),
+
+        const _GoldTitle("Super Admin"),
         const SizedBox(width: 10),
         const _LiveChip(),
         const Spacer(),
+
         _IconGlassBtn(
           icon: Icons.logout_rounded,
           onTap: () async {
             await FirebaseAuth.instance.signOut();
             if (context.mounted) {
-              // retourne au login admin ou login classique selon ton routing
               context.go('/login');
             }
           },

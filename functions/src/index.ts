@@ -15,3 +15,7 @@ initializeApp();
 
 // ✅ stats admin (une seule fois)
 export { adminGetDashboardStats } from "./admin_dashboard";
+
+export { grantSuperAdmin } from "./admin_users";
+export { removeSuperAdmin } from "./admin_users";
+

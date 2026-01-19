@@ -259,20 +259,26 @@ class _AdminPassengersScreenState extends State<AdminPassengersScreen>
   Widget _topBar(BuildContext context) {
     return Row(
       children: [
-        _GoldTitle("Super Admin • Passagers"),
-        const SizedBox(width: 10),
-        const _LiveChip(),
-        const Spacer(),
+        // ✅ Retour à gauche (UX standard)
         _IconGlassBtn(
           icon: Icons.arrow_back_rounded,
           onTap: () {
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
             } else {
-              context.go('/admin');
+              context.go('/admin'); // fallback si pas d'historique
             }
           },
         ),
+        const SizedBox(width: 10),
+
+        _GoldTitle("Passagers"),
+        const SizedBox(width: 10),
+        const _LiveChip(),
+        const Spacer(),
+
+        // Optionnel : refresh droits / autre action
+        // _IconGlassBtn(icon: Icons.refresh_rounded, onTap: _reload),
       ],
     );
   }

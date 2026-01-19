@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../themes/app_theme.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'widgets/doc_preview.dart';
 
 class AdminDriversScreen extends StatefulWidget {
   const AdminDriversScreen({super.key});
@@ -218,29 +219,65 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     }, SetOptions(merge: true));
   }
 
+  // ✅ Helpers (mets-les dans la même classe que _openPreview)
+  String _cacheBust(String url) {
+    final sep = url.contains('?') ? '&' : '?';
+    return '$url${sep}ts=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  bool _isPdfUrl(String url) {
+    final u = url.toLowerCase();
+    return u.endsWith('.pdf') || u.contains('application/pdf');
+  }
+
+  bool _isImageUrl(String url) {
+    final u = url.toLowerCase();
+
+    // extensions classiques
+    if (u.endsWith('.png') ||
+        u.endsWith('.jpg') ||
+        u.endsWith('.jpeg') ||
+        u.endsWith('.webp') ||
+        u.endsWith('.gif')) {
+      return true;
+    }
+
+    // Firebase Storage : souvent pas d'extension, mais alt=media est présent
+    if (u.contains('alt=media') || u.contains('firebasestorage')) return true;
+
+    // fallback (certains serveurs ajoutent "image" dans les params)
+    if (u.contains('image')) return true;
+
+    return false;
+  }
+
+// ✅ Version améliorée (remplace ta fonction par celle-ci)
   Future<void> _openPreview(BuildContext context, String url,
       {String? title}) async {
     final resolved = await _resolveStorageUrl(url);
-    if (resolved.isEmpty) return;
+    if (resolved.trim().isEmpty) return;
 
-    final lower = resolved.toLowerCase();
-
-    // Si ce n'est pas une image (pdf, etc) => on ouvre dans un nouvel onglet
-    final isImage = lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.webp') ||
-        lower.contains('image');
-
-    if (!isImage) {
+    // 1) PDF → ouverture externe
+    if (_isPdfUrl(resolved)) {
       final uri = Uri.parse(resolved);
       await launchUrl(uri, mode: LaunchMode.externalApplication);
       return;
     }
 
+    // 2) Si pas image → ouverture externe (doc, etc.)
+    if (!_isImageUrl(resolved)) {
+      final uri = Uri.parse(resolved);
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // 3) Image → preview + cache bust
+    final bust = _cacheBust(resolved);
+
     showDialog(
       context: context,
       barrierDismissible: true,
+      barrierColor: Colors.black87,
       builder: (_) => Dialog(
         backgroundColor: Colors.black,
         insetPadding: const EdgeInsets.all(12),
@@ -249,9 +286,9 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
             Positioned.fill(
               child: InteractiveViewer(
                 minScale: 0.8,
-                maxScale: 5,
+                maxScale: 6,
                 child: Image.network(
-                  resolved,
+                  bust,
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => const Center(
                     child: Text(
@@ -399,7 +436,7 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
       children: [
         Expanded(
           child: _GoldTitle(
-            "Super Admin • Drivers",
+            "Drivers",
             maxLines: 1,
           ),
         ),
@@ -1208,7 +1245,9 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                                     url: url,
                                     status: st,
                                     onPreview: () =>
-                                        _openPreview(context, url, title: e.$2),
+                                        DocPreview.openDocumentPreview(
+                                            context, url,
+                                            title: e.$2),
                                     onApprove: () async {
                                       await _reviewDriverDoc(
                                         uid: uid,
@@ -1813,6 +1852,8 @@ class _SheetHandle extends StatelessWidget {
   }
 }
 
+// ✅ Remplace UNIQUEMENT ta classe _DocTile par celle-ci (prête à l’emploi)
+
 class _DocTile extends StatelessWidget {
   final String label;
   final String docKey;
@@ -1875,70 +1916,103 @@ class _DocTile extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Opacity(
-                opacity: hasUrl ? 1 : .45,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: hasUrl ? onPreview : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      color: Colors.white.withOpacity(0.04),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          hasUrl
-                              ? Icons.image_rounded
-                              : Icons.image_not_supported_rounded,
-                          color:
-                              hasUrl ? const Color(0xFFFFD700) : Colors.white38,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            hasUrl ? "Prévisualiser" : "Document manquant",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: hasUrl ? Colors.white70 : Colors.white38,
-                              fontWeight: FontWeight.w700,
-                            ),
+
+        // ✅ Fix overflow : responsive (mobile = 2 lignes)
+        LayoutBuilder(
+          builder: (context, cst) {
+            final isNarrow = cst.maxWidth < 420;
+
+            final preview = Opacity(
+              opacity: hasUrl ? 1 : .45,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: hasUrl ? onPreview : null,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white.withOpacity(0.04),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        hasUrl
+                            ? Icons.image_rounded
+                            : Icons.image_not_supported_rounded,
+                        color:
+                            hasUrl ? const Color(0xFFFFD700) : Colors.white38,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          hasUrl ? "Prévisualiser" : "Document manquant",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: hasUrl ? Colors.white70 : Colors.white38,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.open_in_full_rounded,
-                            color: hasUrl ? Colors.white54 : Colors.white24,
-                            size: 16),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.open_in_full_rounded,
+                        color: hasUrl ? Colors.white54 : Colors.white24,
+                        size: 16,
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            _LuxAction(
-              label: "Approve",
-              icon: ic,
-              enabled: hasUrl && status != 'approved',
-              onTap: onApprove,
-            ),
-            const SizedBox(width: 8),
-            _LuxAction(
-              label: "Reject",
-              icon: Icons.block_rounded,
-              danger: true,
-              enabled: hasUrl && status != 'rejected',
-              onTap: onReject,
-            ),
-          ],
+            );
+
+            final actions = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _LuxAction(
+                  label: "Approve",
+                  icon: ic,
+                  enabled: hasUrl && status != 'approved',
+                  onTap: onApprove,
+                ),
+                const SizedBox(width: 8),
+                _LuxAction(
+                  label: "Reject",
+                  icon: Icons.block_rounded,
+                  danger: true,
+                  enabled: hasUrl && status != 'rejected',
+                  onTap: onReject,
+                ),
+              ],
+            );
+
+            if (isNarrow) {
+              // Mobile : preview au-dessus, actions en dessous
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  preview,
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: actions,
+                  ),
+                ],
+              );
+            }
+
+            // Desktop/tablette : 1 ligne
+            return Row(
+              children: [
+                Expanded(child: preview),
+                const SizedBox(width: 10),
+                actions,
+              ],
+            );
+          },
         ),
       ],
     );

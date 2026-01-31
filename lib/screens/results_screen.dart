@@ -72,36 +72,36 @@ const List<VehicleOption> _options = <VehicleOption>[
   VehicleOption(
     'Voitures électriques',
     Icons.electric_car,
-    4.0,
-    2.10, // 2,10 €/km
+    0.0,
+    2.3, // ✅ 2,3 €/km
     badge: 'Silence d’or',
   ),
   VehicleOption(
     'Berlines',
     Icons.directions_car_filled,
-    5.0,
-    2.10, // 2,10 €/km
+    0.0,
+    2.5, // ✅ 2,5 €/km
     badge: 'L’équilibre parfait',
   ),
   VehicleOption(
     'Vans Standing',
     Icons.airport_shuttle_rounded,
-    6.5,
-    3.70, // 3,70 €/km
+    0.0,
+    6.0, // ✅ 6 €/km
     badge: 'Espace & prestance',
   ),
   VehicleOption(
     'Véhicules Premiums',
     Icons.directions_car,
-    8.0,
-    3.70, // 3,70 €/km
+    0.0,
+    7.0, // ✅ 7 €/km (Voiture particulière V.P)
     badge: 'L’art du trajet',
   ),
   VehicleOption(
     'Motos',
     Icons.motorcycle,
-    2.5,
-    3.50, // 3,50 €/km
+    0.0,
+    5.0, // ✅ 5 €/km
     badge: 'L’instinct libre',
   ),
 ];

@@ -889,36 +889,45 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
     bools.putIfAbsent(
         'birthdateValidated', () => (d['birthdateValidated'] ?? false) == true);
     bools.putIfAbsent('isVisible', () => (d['isVisible'] ?? true) == true);
+    bool _saving = false;
 
     Future<void> save() async {
-      final patch = <String, dynamic>{
-        'firstName': cFirst.text.trim(),
-        'lastName': cLast.text.trim(),
-        'email': cEmail.text.trim(),
-        'phone': cPhone.text.trim(),
-        'carBrand': cBrand.text.trim(),
-        'vehicleType': cType.text.trim(),
-        'vehicleYear': cYear.text.trim(),
-        'licensePlate': cPlate.text.trim(),
-        'driverLicenseNumber': cLicenseNo.text.trim(),
-        'verificationStatus': status,
-        'reviewedBy': 'Admin',
-        'reviewedAt': FieldValue.serverTimestamp(),
-        // bools
-        ...bools,
-      };
+      try {
+        final patch = <String, dynamic>{
+          'firstName': cFirst.text.trim(),
+          'lastName': cLast.text.trim(),
+          'email': cEmail.text.trim(),
+          'phone': cPhone.text.trim(),
+          'carBrand': cBrand.text.trim(),
+          'vehicleType': cType.text.trim(),
+          'vehicleYear': cYear.text.trim(),
+          'licensePlate': cPlate.text.trim(),
+          'driverLicenseNumber': cLicenseNo.text.trim(),
+          'verificationStatus': status,
+          'reviewedBy': 'Admin',
+          'reviewedAt': FieldValue.serverTimestamp(),
+          ...bools,
+        };
 
-      // birthdate (Timestamp)
-      if (birthDt != null) {
-        patch['birthdate'] = Timestamp.fromDate(birthDt!);
-      } else {
-        patch['birthdate'] = FieldValue.delete();
+        if (birthDt != null) {
+          patch['birthdate'] = Timestamp.fromDate(birthDt!);
+        } else {
+          patch['birthdate'] = FieldValue.delete();
+        }
+
+        await FirebaseFirestore.instance
+            .collection('drivers')
+            .doc(uid)
+            .set(patch, SetOptions(merge: true));
+
+        debugPrint("✅ SAVE OK for driver=$uid");
+      } on FirebaseException catch (e) {
+        debugPrint("🔥 FirebaseException: ${e.code} - ${e.message}");
+        rethrow;
+      } catch (e) {
+        debugPrint("🔥 Unknown save error: $e");
+        rethrow;
       }
-
-      await FirebaseFirestore.instance
-          .collection('drivers')
-          .doc(uid)
-          .set(patch, SetOptions(merge: true));
     }
 
     showModalBottomSheet(
@@ -1278,16 +1287,33 @@ class _AdminDriversScreenState extends State<AdminDriversScreen>
                         const SizedBox(height: 14),
                         // SAVE
                         _LuxAction(
-                          label: "Sauvegarder",
-                          icon: Icons.save_rounded,
-                          enabled: true,
+                          label: _saving ? "Sauvegarde..." : "Sauvegarder",
+                          icon: _saving
+                              ? Icons.hourglass_top_rounded
+                              : Icons.save_rounded,
+                          enabled: !_saving,
                           onTap: () async {
-                            await save();
-                            if (!mounted) return;
-                            Navigator.of(ctx).pop();
-                            _toast("✅ Modifications enregistrées");
+                            setSheet(() => _saving = true);
+                            try {
+                              await save();
+
+                              if (!mounted) return;
+                              Navigator.of(ctx)
+                                  .pop(); // ferme la sheet uniquement si OK
+                              _toast("✅ Modifications enregistrées");
+                            } catch (e, st) {
+                              debugPrint("❌ SAVE ERROR: $e");
+                              debugPrint("$st");
+
+                              if (!mounted) return;
+                              _toast(
+                                  "⛔ Impossible de sauvegarder : ${e.toString()}");
+                            } finally {
+                              if (mounted) setSheet(() => _saving = false);
+                            }
                           },
                         ),
+
                         const SizedBox(height: 10),
                       ],
                     ),

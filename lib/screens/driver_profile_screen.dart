@@ -343,6 +343,51 @@ class DriverProfileScreen extends StatelessWidget {
     return lower.contains('alt=media') || lower.contains('firebasestorage');
   }
 
+  String _formatBirthdate(dynamic birthdate) {
+    if (birthdate == null) return '';
+
+    // ✅ 1) Firestore Timestamp natif
+    if (birthdate is Timestamp) {
+      final dt = birthdate.toDate();
+      return '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.month.toString().padLeft(2, '0')}/'
+          '${dt.year}';
+    }
+
+    // ✅ 2) DateTime natif
+    if (birthdate is DateTime) {
+      return '${birthdate.day.toString().padLeft(2, '0')}/'
+          '${birthdate.month.toString().padLeft(2, '0')}/'
+          '${birthdate.year}';
+    }
+
+    // ✅ 3) String (ISO ou "Timestamp(seconds=...)")
+    final s = birthdate.toString().trim();
+
+    // Cas "Timestamp(seconds=453333600, nanoseconds=0)"
+    final match = RegExp(r'seconds\s*=\s*(\d+)').firstMatch(s);
+    if (match != null) {
+      final seconds = int.tryParse(match.group(1)!);
+      if (seconds != null) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+        return '${dt.day.toString().padLeft(2, '0')}/'
+            '${dt.month.toString().padLeft(2, '0')}/'
+            '${dt.year}';
+      }
+    }
+
+    // Cas ISO "2000-01-31" / "2000-01-31T00:00:00.000"
+    final iso = DateTime.tryParse(s);
+    if (iso != null) {
+      return '${iso.day.toString().padLeft(2, '0')}/'
+          '${iso.month.toString().padLeft(2, '0')}/'
+          '${iso.year}';
+    }
+
+    // Fallback (au pire)
+    return s;
+  }
+
   Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -847,6 +892,7 @@ class DriverProfileScreen extends StatelessWidget {
 
   /// --- CONTENT (colonne) ---
   Widget _content(BuildContext context, DriverUser user) {
+    final birthLabel = _formatBirthdate(user.birthdate);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -922,11 +968,12 @@ class DriverProfileScreen extends StatelessWidget {
                             icon: Icons.location_on_rounded,
                             value: user.address!,
                             color: Colors.white60),
-                      if (user.birthdate?.isNotEmpty ?? false)
+                      if (birthLabel.isNotEmpty)
                         _infoLine(
-                            icon: Icons.cake_outlined,
-                            value: user.birthdate!,
-                            color: Colors.white54),
+                          icon: Icons.cake_outlined,
+                          value: birthLabel,
+                          color: Colors.white54,
+                        ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
